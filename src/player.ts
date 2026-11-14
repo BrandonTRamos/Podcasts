@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { connectMediaSession } from './mediaSession'
+import { connectMediaSession, offerNextTrack } from './mediaSession'
 import type { AudioElement, MediaSessionControls } from './services'
 
 export const SKIP_BACK_SECONDS = 15
@@ -45,6 +45,14 @@ export type Progress = { positionSeconds: number; played?: true }
 export type SaveProgress = (episode: PlayableEpisode, progress: Progress) => void
 
 /**
+ * Takes the next episode off the queue, with where to start it, or returns
+ * null if nothing is queued. Called from the audio element's `ended` event,
+ * so it must answer at once: iOS throttles scripts while the screen is
+ * locked, and awaiting anything there can stall the queue.
+ */
+export type TakeNext = () => { episode: PlayableEpisode; startAt: number } | null
+
+/**
  * The player engine: plays one episode at a time through a plain audio
  * element and reports what it is doing. The element's own events are the
  * source of truth for playing, position and length.
@@ -52,6 +60,9 @@ export type SaveProgress = (episode: PlayableEpisode, progress: Progress) => voi
  * It saves the position on pause, at the end (marking the episode played),
  * when another episode replaces it, when told the app is going to the
  * background, and while playing at most once every `SAVE_INTERVAL_MS`.
+ *
+ * When an episode plays to the end, it takes the next from the queue and
+ * plays that, setting its source within the `ended` event itself.
  */
 export interface Player {
   getState(): PlayerState
@@ -68,6 +79,8 @@ export interface Player {
   seekTo(seconds: number): void
   skipBack(): void
   skipForward(): void
+  /** Moves on to the next queued episode, keeping the place in this one. Does nothing if none is queued. */
+  skipToNext(): void
   /** Plays this and every later episode at this speed (1 is normal), starting now. */
   setSpeed(speed: number): void
   /** Saves the position now, if it has moved since it was last saved: the app is going to the background. */
@@ -82,7 +95,12 @@ export interface Player {
   stop(): void
 }
 
-export function createPlayer(audio: AudioElement, saveProgress: SaveProgress, initialSpeed = 1): Player {
+export function createPlayer(
+  audio: AudioElement,
+  saveProgress: SaveProgress,
+  initialSpeed = 1,
+  takeNext: TakeNext = () => null,
+): Player {
   let state: PlayerState = { episode: null, speed: initialSpeed }
   const listeners = new Set<() => void>()
   /** Bumped whenever a new file loads or the player stops, so a late answer about an earlier one is ignored. */
@@ -134,7 +152,12 @@ export function createPlayer(audio: AudioElement, saveProgress: SaveProgress, in
       // Reaching the end pauses first; `ended` saves that.
       if (!audio.ended) save()
     },
-    ended: () => save({ positionSeconds: audio.currentTime, played: true }),
+    ended: () => {
+      save({ positionSeconds: audio.currentTime, played: true })
+      // Straight away, with nothing awaited: see `TakeNext`.
+      const next = takeNext()
+      if (next) load(next.episode, next.startAt)
+    },
     timeupdate: () => {
       update({ position: audio.currentTime })
       if (state.episode && !audio.paused && Date.now() - lastSaveAt >= SAVE_INTERVAL_MS) save()
@@ -164,6 +187,36 @@ export function createPlayer(audio: AudioElement, saveProgress: SaveProgress, in
     })
   }
 
+  /** Loads the episode in place of whatever is loaded, and starts it. */
+  function load(episode: PlayableEpisode, startAt: number) {
+    loadCount++
+    const start = Math.max(startAt, 0)
+    const duration = episode.durationSeconds
+    set({ episode, playing: false, position: start, duration, failed: false, speed: state.speed })
+    savedPosition = start
+    lastSaveAt = Date.now()
+    audio.src = episode.enclosureUrl
+    applySpeed()
+    if (start > 0) {
+      pendingStart = start
+      audio.currentTime = start
+    } else {
+      pendingStart = null
+    }
+    attemptPlay()
+  }
+
+  function play(episode: PlayableEpisode, startAt = 0) {
+    if (state.episode && state.episode.id === episode.id && !state.failed) {
+      attemptPlay()
+      return
+    }
+    // The element is about to be reused, so take its position for the episode it holds now.
+    save()
+    // Called straight from the tap, as iOS only lets a user gesture start audio.
+    load(episode, startAt)
+  }
+
   function seekTo(seconds: number) {
     if (!state.episode) return
     pendingStart = null
@@ -189,30 +242,7 @@ export function createPlayer(audio: AudioElement, saveProgress: SaveProgress, in
       }
     },
 
-    play(episode, startAt = 0) {
-      if (state.episode && state.episode.id === episode.id && !state.failed) {
-        attemptPlay()
-        return
-      }
-      // The element is about to be reused, so take its position for the episode it holds now.
-      save()
-      loadCount++
-      const start = Math.max(startAt, 0)
-      const duration = episode.durationSeconds
-      set({ episode, playing: false, position: start, duration, failed: false, speed: state.speed })
-      savedPosition = start
-      lastSaveAt = Date.now()
-      audio.src = episode.enclosureUrl
-      applySpeed()
-      if (start > 0) {
-        pendingStart = start
-        audio.currentTime = start
-      } else {
-        pendingStart = null
-      }
-      // Called straight from the tap, as iOS only lets a user gesture start audio.
-      attemptPlay()
-    },
+    play,
 
     resume() {
       if (state.episode && !state.failed) attemptPlay()
@@ -229,6 +259,11 @@ export function createPlayer(audio: AudioElement, saveProgress: SaveProgress, in
     },
     skipForward() {
       if (state.episode) seekTo(state.position + SKIP_FORWARD_SECONDS)
+    },
+
+    skipToNext() {
+      const next = takeNext()
+      if (next) play(next.episode, next.startAt)
     },
 
     setSpeed(speed) {
@@ -281,20 +316,24 @@ function storeSpeed(speed: number) {
  * A player for this audio element, for the life of the calling component,
  * shown on and controlled from the OS media controls. It saves the position
  * whenever the app goes to the background, and keeps the chosen speed on this
- * device for the next launch. `saveProgress` is taken once, when the player
- * is made, so later values are ignored.
+ * device for the next launch. `saveProgress` and `takeNext` are taken once,
+ * when the player is made, so later values are ignored. `hasNext` says
+ * whether anything is queued, for the OS controls' next button.
  */
 export function usePlayer(
   audio: AudioElement,
   mediaSession: MediaSessionControls,
   saveProgress: SaveProgress,
+  takeNext: TakeNext,
+  hasNext: boolean,
 ): { player: Player; state: PlayerState } {
   // The engine attaches to the element only while subscribed, so a discarded
   // instance (React may call the initialiser twice) leaves nothing behind.
-  const [player] = useState(() => createPlayer(audio, saveProgress, storedSpeed()))
+  const [player] = useState(() => createPlayer(audio, saveProgress, storedSpeed(), takeNext))
   const state = useSyncExternalStore(player.subscribe, player.getState)
   useEffect(() => () => player.stop(), [player])
   useEffect(() => connectMediaSession(mediaSession, player), [mediaSession, player])
+  useEffect(() => offerNextTrack(mediaSession, player, hasNext), [mediaSession, player, hasNext])
   useEffect(() => storeSpeed(state.speed), [state.speed])
   useEffect(() => {
     const saveIfHidden = () => {

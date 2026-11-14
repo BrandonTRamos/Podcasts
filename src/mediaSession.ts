@@ -17,7 +17,8 @@ export function connectMediaSession(session: MediaSessionControls, player: Playe
     ['seekbackward', () => player.skipBack()],
     ['seekforward', () => player.skipForward()],
     ['seekto', ({ seekTime }) => seekTime !== undefined && player.seekTo(seekTime)],
-    // No next or previous track: on iOS they would take the place of the skip buttons.
+    // No previous track, and next only while something is queued (`offerNextTrack`):
+    // on iOS they take the place of the skip buttons.
   ]
   for (const [action, handler] of actions) session.setActionHandler(action, handler)
 
@@ -64,6 +65,18 @@ export function connectMediaSession(session: MediaSessionControls, player: Playe
     for (const [action] of actions) session.setActionHandler(action, null)
     clear()
   }
+}
+
+/**
+ * Offers the OS controls' next-track button, which skips to the next queued
+ * episode, while something is queued. With nothing queued it is left off, so
+ * iOS shows its skip-forward button in that place. Returns a function that
+ * takes it away again.
+ */
+export function offerNextTrack(session: MediaSessionControls, player: Player, hasNext: boolean): () => void {
+  if (!hasNext) return () => {}
+  session.setActionHandler('nexttrack', () => player.skipToNext())
+  return () => session.setActionHandler('nexttrack', null)
 }
 
 /**

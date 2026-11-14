@@ -12,6 +12,7 @@ export function PodcastScreen({
   listening,
   onBack,
   onPlayEpisode,
+  onQueueEpisode,
 }: {
   data: DataApi
   podcastId: string
@@ -20,6 +21,7 @@ export function PodcastScreen({
   listening: ListeningStore
   onBack: () => void
   onPlayEpisode: (episode: Episode) => void
+  onQueueEpisode: (episode: Episode, where: 'last' | 'next') => void
 }) {
   const [episodes, setEpisodes] = useState<LoadState<Episode>>({ status: 'loading' })
   const [unplayedOnly, setUnplayedOnly] = useState(false)
@@ -67,6 +69,7 @@ export function PodcastScreen({
             unplayedOnly={unplayedOnly}
             onUnplayedOnlyChange={setUnplayedOnly}
             onPlay={onPlayEpisode}
+            onQueue={onQueueEpisode}
             onMarkPlayed={(episode, played) =>
               listening.update(episode.id, episode.podcastId, played ? { played } : { played, positionSeconds: 0 })
             }
@@ -82,6 +85,7 @@ function EpisodeList({
   unplayedOnly,
   onUnplayedOnlyChange,
   onPlay,
+  onQueue,
   onMarkPlayed,
 }: {
   episodes: Episode[]
@@ -89,6 +93,7 @@ function EpisodeList({
   unplayedOnly: boolean
   onUnplayedOnlyChange: (unplayedOnly: boolean) => void
   onPlay: (episode: Episode) => void
+  onQueue: (episode: Episode, where: 'last' | 'next') => void
   /** Marking an episode unplayed also takes it back to the start. */
   onMarkPlayed: (episode: Episode, played: boolean) => void
 }) {
@@ -120,8 +125,17 @@ function EpisodeList({
                 </p>
                 <div className="episode-state">
                   <ListeningProgress episode={episode} state={state} />
+                  {state?.queueOrder != null && <span className="episode-queued">Queued</span>}
                   <button type="button" onClick={() => onMarkPlayed(episode, !played)}>
                     {played ? 'Mark unplayed' : 'Mark played'}
+                  </button>
+                </div>
+                <div className="episode-queue">
+                  <button type="button" onClick={() => onQueue(episode, 'next')}>
+                    Play next
+                  </button>
+                  <button type="button" onClick={() => onQueue(episode, 'last')}>
+                    Add to queue
                   </button>
                 </div>
               </li>

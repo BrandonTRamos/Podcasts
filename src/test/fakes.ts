@@ -8,6 +8,7 @@ import type {
   MediaSessionControls,
   Observer,
   Podcast,
+  QueuedEpisode,
   SavedEpisodeState,
   SignInResult,
   SubscribeRequestState,
@@ -57,6 +58,7 @@ interface Connection {
  * The returned API is one device's view of the backend; `anotherDevice` gives
  * a second view of the same data, as another phone or computer would have. A
  * device that is `asleep` misses live updates, and does not get them later.
+ * `goOffline` takes the network away from every device at once.
  */
 export function fakeDataApi() {
   const podcasts: (Podcast & { feedUrl: string })[] = []
@@ -70,7 +72,9 @@ export function fakeDataApi() {
   const episodeListeners = new Map<string, Set<Listener<Episode[]>>>()
   const stateListeners = new Map<string, Set<Listener<SavedEpisodeState[]>>>()
   const requestListeners = new Map<string, Set<Listener<SubscribeRequestState>>>()
+  const queueListeners = new Set<Listener<QueuedEpisode[]>>()
   let failNext = false
+  let offline = false
   let nextId = 1
   /** The backend's clock, for each state's updated time: a second on with every write. */
   let tick = 0
@@ -78,6 +82,10 @@ export function fakeDataApi() {
   const publicPodcasts = () => podcasts.map(({ feedUrl: _feedUrl, ...podcast }) => podcast)
   const episodesOf = (podcastId: string) => episodes.filter((episode) => episode.podcastId === podcastId)
   const statesOf = (podcastId: string) => [...states.values()].filter((state) => state.podcastId === podcastId)
+  const queue = (): QueuedEpisode[] =>
+    [...states.values()]
+      .filter((state) => state.queueOrder !== null)
+      .map((state) => ({ state, episode: episodes.find((episode) => episode.id === state.episodeId)! }))
 
   function listenersFor<T>(map: Map<string, Set<Listener<T>>>, key: string) {
     const listeners = map.get(key) ?? new Set()
@@ -88,12 +96,21 @@ export function fakeDataApi() {
   function listen<T>(connection: Connection, listeners: Set<Listener<T>>, observer: Observer<T>, current: () => T) {
     const listener = { connection, observer }
     listeners.add(listener)
-    queueMicrotask(() => listeners.has(listener) && observer.next(current()))
+    queueMicrotask(() => listeners.has(listener) && (offline ? observer.error() : observer.next(current())))
     return () => void listeners.delete(listener)
   }
 
   function notify<T>(listeners: Set<Listener<T>> | undefined, value: T) {
-    listeners?.forEach(({ connection, observer }) => connection.asleep || observer.next(value))
+    listeners?.forEach(({ connection, observer }) => connection.asleep || offline || observer.next(value))
+  }
+
+  /** Fails the request if the network is down. */
+  function reach() {
+    if (offline) throw new Error('Network error')
+    if (failNext) {
+      failNext = false
+      throw new Error('Network error')
+    }
   }
 
   const notifyPodcasts = () => notify(podcastListeners, publicPodcasts())
@@ -116,6 +133,7 @@ export function fakeDataApi() {
       podcastId,
       positionSeconds: 0,
       played: false,
+      queueOrder: null,
       ...states.get(episodeId),
       ...change,
       updatedAt: new Date(Date.UTC(2026, 0, 1) + ++tick * 1000).toISOString(),
@@ -133,10 +151,7 @@ export function fakeDataApi() {
         return listen(connection, listenersFor(episodeListeners, podcastId), observer, () => episodesOf(podcastId))
       },
       async subscribeToFeed(feedUrl): Promise<SubscribeStart> {
-        if (failNext) {
-          failNext = false
-          throw new Error('Network error')
-        }
+        reach()
         if (!/^https?:\/\//.test(feedUrl)) return { outcome: 'invalidUrl' }
         const existing = podcasts.find((podcast) => podcast.feedUrl === feedUrl)
         if (existing) return { outcome: 'alreadySubscribed', podcastId: existing.id }
@@ -151,15 +166,18 @@ export function fakeDataApi() {
         return listen(connection, listenersFor(stateListeners, podcastId), observer, () => statesOf(podcastId))
       },
       async saveEpisodeState(episodeId, podcastId, change) {
-        if (failNext) {
-          failNext = false
-          throw new Error('Network error')
-        }
+        reach()
         stateWrites.push({ ...change })
         const saved = storeState(episodeId, podcastId, change)
         // The write's own subscription event arrives separately from its response, as with the real API.
-        queueMicrotask(() => notify(stateListeners.get(podcastId), statesOf(podcastId)))
+        queueMicrotask(() => {
+          notify(stateListeners.get(podcastId), statesOf(podcastId))
+          notify(queueListeners, queue())
+        })
         return saved
+      },
+      observeQueue(observer) {
+        return listen(connection, queueListeners, observer, queue)
       },
     }
   }
@@ -197,6 +215,10 @@ export function fakeDataApi() {
     failNextRequest() {
       failNext = true
     },
+    /** The network goes down for every device: requests fail and live updates stop. */
+    goOffline() {
+      offline = true
+    },
     /** Runs the background check of every pending subscribe, as the backend does. */
     finishSubscribing() {
       for (const [requestId, { feedUrl, state }] of requests) {
@@ -231,7 +253,11 @@ export function fakeDataApi() {
       return ids
     },
     /** Listening state saved earlier, by this device or another. */
-    seedEpisodeState({ episodeId, podcastId, ...state }: EpisodeState) {
+    seedEpisodeState({
+      episodeId,
+      podcastId,
+      ...state
+    }: Omit<EpisodeState, 'queueOrder'> & Partial<Pick<EpisodeState, 'queueOrder'>>) {
       storeState(episodeId, podcastId, state)
     },
     /** The listening state the backend holds for an episode. */
@@ -416,7 +442,7 @@ export class FakeMediaSession implements MediaSessionControls {
   }
 
   /** The listener presses a control: on the lock screen, or a headphone or Bluetooth button. */
-  press(action: 'play' | 'pause' | 'seekbackward' | 'seekforward') {
+  press(action: 'play' | 'pause' | 'seekbackward' | 'seekforward' | 'nexttrack') {
     this.#call({ action })
   }
 

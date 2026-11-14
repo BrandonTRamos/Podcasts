@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { LibraryScreen } from './LibraryScreen'
 import { createListeningStore, resumePosition, useEpisodeStates } from './listening'
 import { MiniPlayer, NowPlayingScreen } from './NowPlaying'
-import { type SaveProgress, usePlayer } from './player'
+import { type PlayableEpisode, type SaveProgress, type TakeNext, usePlayer } from './player'
 import { PodcastScreen } from './PodcastScreen'
+import { QueueScreen } from './QueueScreen'
 import type { AudioElement, DataApi, Episode, MediaSessionControls, Podcast } from './services'
 
 export type LoadState<T> = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; items: T[] }
 
-type Screen = { name: 'library' } | { name: 'podcast'; podcastId: string }
+type Screen = { name: 'library' } | { name: 'podcast'; podcastId: string } | { name: 'queue' }
 
 export function SignedInApp({
   data,
@@ -31,7 +32,35 @@ export function SignedInApp({
       listening.update(episode.id, episode.podcastId, played ? { positionSeconds, played } : { positionSeconds }),
     [listening],
   )
-  const { player, state: playerState } = usePlayer(audio, mediaSession, saveProgress)
+  // Read when the player moves on by itself, which is outside any render.
+  const podcastsRef = useRef(podcasts)
+  useEffect(() => {
+    podcastsRef.current = podcasts
+  }, [podcasts])
+  const toPlayable = useCallback((episode: Episode): PlayableEpisode => {
+    const current = podcastsRef.current
+    const podcast = current.status === 'loaded' ? current.items.find((p) => p.id === episode.podcastId) : undefined
+    return {
+      id: episode.id,
+      podcastId: episode.podcastId,
+      title: episode.title,
+      enclosureUrl: episode.enclosureUrl,
+      durationSeconds: episode.durationSeconds,
+      podcastTitle: podcast?.title ?? null,
+      artworkUrl: podcast?.artworkUrl ?? null,
+    }
+  }, [])
+  const takeNext = useCallback<TakeNext>(() => {
+    const episode = listening.takeNext()
+    if (!episode) return null
+    return { episode: toPlayable(episode), startAt: resumePosition(listening.get(episode.id)) ?? 0 }
+  }, [listening, toPlayable])
+  const queue = listening.queue()
+  const { player, state: playerState } = usePlayer(audio, mediaSession, saveProgress, takeNext, queue.length > 0)
+
+  // The queue is kept current for as long as the app is open, so the player
+  // can move on to an episode queued on another device without fetching it then.
+  useEffect(() => listening.watchQueue(), [listening])
 
   // Keep the loaded episode's state current wherever the listener is, so a
   // position saved on another device reaches it.
@@ -67,26 +96,39 @@ export function SignedInApp({
   const podcastById = (podcastId: string) =>
     podcasts.status === 'loaded' ? podcasts.items.find((p) => p.id === podcastId) : undefined
 
+  /** Plays the episode now; if it was queued, it leaves the queue. */
   function playEpisode(episode: Episode) {
-    const podcast = podcastById(episode.podcastId)
-    const startAt = resumePosition(listening.get(episode.id)) ?? 0
-    player.play(
-      {
-        id: episode.id,
-        podcastId: episode.podcastId,
-        title: episode.title,
-        enclosureUrl: episode.enclosureUrl,
-        durationSeconds: episode.durationSeconds,
-        podcastTitle: podcast?.title ?? null,
-        artworkUrl: podcast?.artworkUrl ?? null,
-      },
-      startAt,
-    )
+    player.play(toPlayable(episode), resumePosition(listening.get(episode.id)) ?? 0)
+    listening.dequeue(episode.id)
+  }
+
+  function openQueue() {
+    setNowPlayingOpen(false)
+    setScreen({ name: 'queue' })
   }
 
   let content
   if (nowPlayingOpen && playerState.episode) {
-    content = <NowPlayingScreen state={playerState} player={player} onClose={() => setNowPlayingOpen(false)} />
+    content = (
+      <NowPlayingScreen
+        state={playerState}
+        player={player}
+        onClose={() => setNowPlayingOpen(false)}
+        onOpenQueue={openQueue}
+      />
+    )
+  } else if (screen.name === 'queue') {
+    content = (
+      <QueueScreen
+        queue={queue}
+        status={listening.queueStatus()}
+        podcastTitleOf={(podcastId) => podcastById(podcastId)?.title}
+        onBack={() => setScreen({ name: 'library' })}
+        onPlay={playEpisode}
+        onMove={(episodeId, index) => listening.moveInQueue(episodeId, index)}
+        onRemove={(episodeId) => listening.dequeue(episodeId)}
+      />
+    )
   } else if (screen.name === 'podcast') {
     content = (
       <PodcastScreen
@@ -96,10 +138,19 @@ export function SignedInApp({
         listening={listening}
         onBack={() => setScreen({ name: 'library' })}
         onPlayEpisode={playEpisode}
+        onQueueEpisode={(episode, where) => listening.enqueue(episode, where)}
       />
     )
   } else {
-    content = <LibraryScreen podcasts={podcasts} data={data} onOpenPodcast={openPodcast} onSignOut={onSignOut} />
+    content = (
+      <LibraryScreen
+        podcasts={podcasts}
+        data={data}
+        onOpenPodcast={openPodcast}
+        onOpenQueue={openQueue}
+        onSignOut={onSignOut}
+      />
+    )
   }
 
   return (

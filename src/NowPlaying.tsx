@@ -20,13 +20,26 @@ export function MiniPlayer({ state, player, onOpen }: { state: LoadedState; play
 }
 
 /** The focused view of what is playing, with the full set of controls. */
-export function NowPlayingScreen({ state, player, onClose }: { state: LoadedState; player: Player; onClose: () => void }) {
+export function NowPlayingScreen({
+  state,
+  player,
+  onClose,
+  onOpenQueue,
+}: {
+  state: LoadedState
+  player: Player
+  onClose: () => void
+  onOpenQueue: () => void
+}) {
   const { episode, position, duration, failed } = state
   return (
     <main className="now-playing">
       <nav>
         <button type="button" onClick={onClose} aria-label="Close now playing">
           ‹ Back
+        </button>
+        <button type="button" onClick={onOpenQueue}>
+          Queue
         </button>
       </nav>
       <Artwork url={episode.artworkUrl} size="hero" />
