@@ -79,9 +79,9 @@ Two seams, one per deployable, run as two Vitest projects (`vitest.config.ts`):
 
 There is one environment: `main` is production. Development uses the sandbox above. Work lands by pull request; nothing is committed to `main` directly.
 
-- **CI** (GitHub Actions, `.github/workflows/ci.yml`): on every push and every pull request, runs `npm ci`, `npm run check` (lint, typecheck, tests) and `npm run build`. Any failure marks the check red.
+- **CI** (GitHub Actions, `.github/workflows/ci.yml`): on every pull request and every push to `main`, runs `npm ci`, fails if that rewrote `package-lock.json`, then runs `npm run check` (lint, typecheck, tests) and `npm run build`. Any failure marks the check red.
 - **CD** (AWS Amplify Hosting, `amplify.yml`): Amplify Hosting is connected to this repo's `main` branch. Every push to `main` (a merged pull request) starts a build that:
-  1. runs `npm run check` and a trial `npm run build`. If either fails, the build stops and **nothing is deployed**, backend or frontend;
+  1. runs the same lockfile check, `npm run check` and a trial `npm run build`. If either fails, the build stops and **nothing is deployed**, backend or frontend;
   2. deploys the backend (`npx ampx pipeline-deploy`, CloudFormation), which writes `amplify_outputs.json` for this build;
   3. builds the frontend against it and publishes `dist/`.
 

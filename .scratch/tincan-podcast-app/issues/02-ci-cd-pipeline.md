@@ -29,9 +29,9 @@
 
 **2026-11-14 (agent):** The owner connected the repo. Amplify app `TinCan` (`d1s9jkcv1hp6j9`, us-east-1), branch `main` (production), auto-build on, pull-request previews off, service role `AmplifyBackendDeploy-TinCan`. Live: https://main.d1s9jkcv1hp6j9.amplifyapp.com
 
-- Job 1 (the console's first build, of `main` at 8da9310, ticket 01 code, console default spec) deployed the backend stack and the frontend. The live bundle points at the production user pool `us-east-1_LztZHEfXz`. Admin-only sign-up is on, and the pool has 0 users.
+- Job 1 (the console's first build, of `main` at 8da9310, ticket 01 code, console default spec) deployed the backend stack and the frontend. The live bundle points at the production user pool. Admin-only sign-up is on, and the pool has 0 users.
 - Deploy gate verified on Amplify's own build image. Amplify clones only the connected branch, so a release of an off-branch commit fails at clone (jobs 2 and 3 on `main`, harmless). Instead, the failing-test probe commit was connected as a temporary Amplify branch with auto-build off. Its build ran `nvm install` (Node 22 from `.nvmrc`) and `npm ci`, then failed at `npm run check`. `pipeline-deploy` never ran, and no stack was created. The temporary Amplify branch and GitHub branch are deleted. Production was unchanged: same stack, same page.
-- README now has the live URL and the app id. A second, empty app also named `TinCan` (`d3ifosvl4s7v5d`, no branches) exists from the console, so the README uses the id rather than looking the app up by name.
+- README now has the live URL and the app id. A second, empty app also named `TinCan` (no branches) exists from the console, so the README uses the id rather than looking the app up by name.
 - Still open:
   - "push to `main` deploys both": the merge of this PR is the first push-triggered build through `amplify.yml`.
   - Sign-in at the live URL: needs the owner's production account.

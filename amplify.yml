@@ -12,6 +12,7 @@ backend:
         - nvm install
         - nvm use
         - npm ci --cache .npm --prefer-offline
+        - git diff --exit-code package-lock.json
         - npm run check
         - npm run build
     build:

@@ -1,9 +1,11 @@
-# Lint, typecheck and tests on every push and pull request. A failing step marks
-# the check red. Production deploys (amplify.yml) run the same two commands.
+# Lint, typecheck and tests on every pull request and every push to main. A
+# failing step marks the check red. Production deploys (amplify.yml) run the same
+# lockfile check, `npm run check` and `npm run build`.
 name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -25,6 +27,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Lockfile unchanged by install
+        run: git diff --exit-code package-lock.json
       - name: Lint, typecheck, test
         run: npm run check
       - name: Build
