@@ -6,7 +6,7 @@ A single-user podcast web app. React + TypeScript client (Vite), AWS Amplify Gen
 
 ## Prerequisites
 
-- Node 22 and npm
+- Node 22 (`.nvmrc`) and npm
 - AWS credentials for your account configured on this machine (`aws sts get-caller-identity` should succeed)
 
 ```sh
@@ -79,11 +79,13 @@ Two seams, one per deployable, run as two Vitest projects (`vitest.config.ts`):
 
 There is one environment: `main` is production. Development uses the sandbox above. Work lands by pull request; nothing is committed to `main` directly.
 
-- **CI** (GitHub Actions, `.github/workflows/ci.yml`): on every push and every pull request, runs `npm ci`, lint, typecheck, tests and a build. Any failure marks the check red.
+- **CI** (GitHub Actions, `.github/workflows/ci.yml`): on every push and every pull request, runs `npm ci`, `npm run check` (lint, typecheck, tests) and `npm run build`. Any failure marks the check red.
 - **CD** (AWS Amplify Hosting, `amplify.yml`): Amplify Hosting is connected to this repo's `main` branch. Every push to `main` (a merged pull request) starts a build that:
   1. runs `npm run check` and a trial `npm run build`. If either fails, the build stops and **nothing is deployed**, backend or frontend;
   2. deploys the backend (`npx ampx pipeline-deploy`, CloudFormation), which writes `amplify_outputs.json` for this build;
   3. builds the frontend against it and publishes `dist/`.
+
+  Only `main` is connected. Do not connect other branches or turn on pull-request previews: each connected branch deploys its own backend.
 
   Build logs: AWS console → Amplify → TinCan → `main` → Deployments.
 

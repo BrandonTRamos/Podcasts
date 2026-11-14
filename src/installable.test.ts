@@ -16,14 +16,16 @@ const manifest = JSON.parse(manifestText) as {
   icons: { src: string; sizes: string; type: string; purpose?: string }[]
 }
 
-function servedFile(path: string): string {
+// A file in public/ as the data URL Vite inlines it to, looked up by the absolute
+// path the browser would request (the base URL only resolves relative paths).
+function publicAsset(path: string): string {
   const dataUrl = publicFiles[`../public${new URL(path, 'https://tincan.test/').pathname}`]
   if (!dataUrl) throw new Error(`${path} is not in public/`)
   return dataUrl
 }
 
 function pngSize(path: string): string {
-  const bytes = Uint8Array.from(atob(servedFile(path).split(',')[1]), (c) => c.charCodeAt(0))
+  const bytes = Uint8Array.from(atob(publicAsset(path).split(',')[1]), (c) => c.charCodeAt(0))
   expect([...bytes.slice(1, 4)].map((b) => String.fromCharCode(b)).join('')).toBe('PNG')
   const view = new DataView(bytes.buffer)
   return `${view.getUint32(16)}x${view.getUint32(20)}`
@@ -49,11 +51,11 @@ describe('installing TinCan to a home screen', () => {
   it('has home-screen icons at the sizes Android and iOS ask for', () => {
     const icons = manifest.icons.filter((icon) => icon.type === 'image/png')
     for (const size of ['192x192', '512x512']) {
-      const icon = icons.find((i) => i.sizes === size && (i.purpose ?? 'any').includes('any'))
+      const icon = icons.find((i) => i.sizes === size && (i.purpose ?? 'any').split(' ').includes('any'))
       expect(icon, `${size} icon`).toBeDefined()
       expect(pngSize(icon!.src)).toBe(size)
     }
-    expect(icons.some((i) => i.purpose?.includes('maskable'))).toBe(true)
+    expect(icons.some((i) => i.purpose?.split(' ').includes('maskable'))).toBe(true)
 
     const appleIcon = head.querySelector('link[rel="apple-touch-icon"]')?.getAttribute('href')
     expect(appleIcon).toBeTruthy()
@@ -61,6 +63,6 @@ describe('installing TinCan to a home screen', () => {
 
     const favicon = head.querySelector('link[rel="icon"]')?.getAttribute('href')
     expect(favicon).toBeTruthy()
-    expect(servedFile(favicon!)).toMatch(/^data:image\/svg\+xml/)
+    expect(publicAsset(favicon!)).toMatch(/^data:image\/svg\+xml/)
   })
 })
