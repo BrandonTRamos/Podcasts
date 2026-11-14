@@ -34,3 +34,28 @@
   The test records were deleted afterwards.
 - **Not observed live:** episodes arriving in an open browser. It needs the owner signed in. The client-seam test covers it with the faked data API. Owner check: run `npm run dev` against the sandbox, subscribe to a feed, and watch episodes appear on the podcast screen.
 - **Known gap:** two subscribes to the same new URL sent at the same moment could both pass the duplicate check. This is acceptable for a single user.
+
+**2026-11-14 (agent), PR review fix round 1:** This supersedes the "Design" and "Brought forward from ticket 09" points above.
+
+- **Subscribe now returns at once**, as the spec asks.
+  - The `subscribe` mutation does no fetching. It refuses URLs that are not http or https, says if the feed is already in the library, and otherwise records a pending `SubscribeRequest` and returns it.
+  - The request table's DynamoDB stream triggers `ingest-feed`. That function fetches and checks the feed. A bad feed marks the request `unreachable`, `notAFeed` or `failed`, and nothing is added to the library. A good feed adds the podcast, marks the request `subscribed`, then ingests the newest 100 episodes.
+  - The client watches the request through a data subscription. It shows "Checking the feed…", then opens the podcast or shows the error.
+  - Requests expire after a day (DynamoDB time to live).
+  - ADR 0001 is removed.
+- **Ticket 09 scope removed:**
+  - recording a failed refresh and showing it;
+  - the `lastFetchedAt`, `lastFetchError`, `etag` and `lastModified` fields;
+  - the user-callable `refreshPodcast` mutation.
+
+  A podcast with no episodes shows "No episodes yet."
+- **Re-verified live in the sandbox** with the repo's fixture feed. These calls returned at once, and the background step then set the request's status:
+
+  | Feed URL | Returned at once | Request status | Library |
+  |---|---|---|---|
+  | Fixture feed | `pending` | `subscribed` | Podcast added with 2 episodes |
+  | Web page | `pending` | `notAFeed` | Nothing added |
+  | Unresolvable `.invalid` host | `pending` | `unreachable` | Nothing added |
+
+  `ftp://` gave `invalidUrl` at once, and subscribing again gave `alreadySubscribed`. The ingest function ran once per new request and not for updates or deletes. Time to live is enabled, no feed URL appears in either function's logs, and AppSync logging is off. The test records were deleted afterwards.
+- **Still not observed live:** the browser receiving the request outcome and new episodes. It needs the owner signed in. The client-seam tests cover it with the faked data API. Owner check: run `npm run dev` against the sandbox and subscribe to a feed.

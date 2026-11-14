@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { LibraryScreen } from './LibraryScreen'
 import { PodcastScreen } from './PodcastScreen'
 import type { DataApi, Podcast } from './services'
@@ -20,6 +20,8 @@ export function SignedInApp({ data, onSignOut }: { data: DataApi; onSignOut: () 
     [data],
   )
 
+  const openPodcast = useCallback((podcastId: string) => setScreen({ name: 'podcast', podcastId }), [])
+
   if (screen.name === 'podcast') {
     const podcast = podcasts.status === 'loaded' ? podcasts.items.find((p) => p.id === screen.podcastId) : undefined
     return (
@@ -35,8 +37,8 @@ export function SignedInApp({ data, onSignOut }: { data: DataApi; onSignOut: () 
   return (
     <LibraryScreen
       podcasts={podcasts}
-      subscribeToFeed={(feedUrl) => data.subscribeToFeed(feedUrl)}
-      onOpenPodcast={(podcastId) => setScreen({ name: 'podcast', podcastId })}
+      data={data}
+      onOpenPodcast={openPodcast}
       onSignOut={onSignOut}
     />
   )

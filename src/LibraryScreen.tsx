@@ -1,15 +1,15 @@
-import { type FormEvent, useState } from 'react'
-import type { Podcast, SubscribeResult } from './services'
+import { type FormEvent, useEffect, useState } from 'react'
+import type { DataApi, Podcast, SubscribeRequestState } from './services'
 import type { LoadState } from './SignedInApp'
 
 export function LibraryScreen({
   podcasts,
-  subscribeToFeed,
+  data,
   onOpenPodcast,
   onSignOut,
 }: {
   podcasts: LoadState<Podcast>
-  subscribeToFeed: (feedUrl: string) => Promise<SubscribeResult>
+  data: DataApi
   onOpenPodcast: (podcastId: string) => void
   onSignOut: () => Promise<void>
 }) {
@@ -22,7 +22,7 @@ export function LibraryScreen({
         </button>
       </header>
       <AddPodcastForm
-        subscribeToFeed={subscribeToFeed}
+        data={data}
         titleOf={(podcastId) =>
           podcasts.status === 'loaded' ? podcasts.items.find((p) => p.id === podcastId)?.title : undefined
         }
@@ -57,58 +57,73 @@ export function Artwork({ url, size = 'small' }: { url: string | null; size?: 's
   return url ? <img className={className} src={url} alt="" /> : <span className={className} aria-hidden="true" />
 }
 
-type Feedback = { kind: 'error' | 'info'; message: string }
+/** Where a subscribe stands, as the form shows it. */
+type SubscribeState = SubscribeRequestState | { status: 'offline' } | { status: 'lost' }
 
-const failureMessages = {
+const errorMessages = {
   invalidUrl: 'Enter a feed URL that starts with http:// or https://.',
   unreachable: 'Couldn’t reach that feed. Check the URL and try again.',
   notAFeed: 'That URL isn’t a podcast feed.',
+  failed: 'Couldn’t subscribe. Try again.',
+  offline: 'Couldn’t subscribe. Check your connection and try again.',
+  lost: 'Couldn’t check on the subscription. Reload to see if it was added.',
 } as const
 
 function AddPodcastForm({
-  subscribeToFeed,
+  data,
   titleOf,
   onSubscribed,
 }: {
-  subscribeToFeed: (feedUrl: string) => Promise<SubscribeResult>
+  data: Pick<DataApi, 'subscribeToFeed' | 'observeSubscribeRequest'>
   titleOf: (podcastId: string) => string | undefined
   onSubscribed: (podcastId: string) => void
 }) {
   const [feedUrl, setFeedUrl] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [feedback, setFeedback] = useState<Feedback | null>(null)
+  const [sending, setSending] = useState(false)
+  /** The subscribe request whose background check is under way. */
+  const [requestId, setRequestId] = useState<string | null>(null)
+  const [state, setState] = useState<SubscribeState | null>(null)
+
+  useEffect(() => {
+    if (!requestId) return
+    return data.observeSubscribeRequest(requestId, {
+      next(next) {
+        setState(next)
+        if (next.status !== 'pending') setRequestId(null)
+      },
+      error() {
+        setState({ status: 'lost' })
+        setRequestId(null)
+      },
+    })
+  }, [data, requestId])
+
+  useEffect(() => {
+    if (state?.status === 'subscribed') onSubscribed(state.podcastId)
+  }, [state, onSubscribed])
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
-    setFeedback(null)
+    setState(null)
     const url = feedUrl.trim()
     if (!isHttpUrl(url)) {
-      setFeedback({ kind: 'error', message: failureMessages.invalidUrl })
+      setState({ status: 'invalidUrl' })
       return
     }
 
-    setBusy(true)
-    let result: SubscribeResult
+    setSending(true)
     try {
-      result = await subscribeToFeed(url)
+      const result = await data.subscribeToFeed(url)
+      if (result.outcome === 'pending') {
+        setState({ status: 'pending' })
+        setRequestId(result.requestId)
+      } else {
+        setState(result.outcome === 'alreadySubscribed' ? { status: 'alreadySubscribed', podcastId: result.podcastId } : { status: 'invalidUrl' })
+      }
     } catch {
-      setFeedback({ kind: 'error', message: 'Couldn’t subscribe. Check your connection and try again.' })
-      return
+      setState({ status: 'offline' })
     } finally {
-      setBusy(false)
-    }
-
-    if (result.outcome === 'subscribed') {
-      setFeedUrl('')
-      onSubscribed(result.podcastId)
-    } else if (result.outcome === 'alreadySubscribed') {
-      const title = titleOf(result.podcastId)
-      setFeedback({
-        kind: 'info',
-        message: title ? `You’re already subscribed to ${title}.` : 'You’re already subscribed to that podcast.',
-      })
-    } else {
-      setFeedback({ kind: 'error', message: failureMessages[result.outcome] })
+      setSending(false)
     }
   }
 
@@ -125,11 +140,20 @@ function AddPodcastForm({
           onChange={(e) => setFeedUrl(e.target.value)}
         />
       </label>
-      <button type="submit" disabled={busy}>
-        {busy ? 'Subscribing…' : 'Subscribe'}
+      <button type="submit" disabled={sending || state?.status === 'pending'}>
+        Subscribe
       </button>
-      {feedback?.kind === 'error' && <p role="alert">{feedback.message}</p>}
-      {feedback?.kind === 'info' && <p role="status">{feedback.message}</p>}
+      {state?.status === 'pending' && <p role="status">Checking the feed…</p>}
+      {state?.status === 'alreadySubscribed' && (
+        <p role="status">
+          {titleOf(state.podcastId)
+            ? `You’re already subscribed to ${titleOf(state.podcastId)}.`
+            : 'You’re already subscribed to that podcast.'}
+        </p>
+      )}
+      {state && state.status in errorMessages && (
+        <p role="alert">{errorMessages[state.status as keyof typeof errorMessages]}</p>
+      )}
     </form>
   )
 }

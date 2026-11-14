@@ -1,51 +1,31 @@
 import type { FeedStore } from './feedStore'
 import { normaliseFeedUrl, withUrlsRedactedFromErrors } from './feedUrl'
-import { fetchFeed } from './fetchFeed'
-
-export type SubscribeOutcome = 'subscribed' | 'alreadySubscribed' | 'invalidUrl' | 'unreachable' | 'notAFeed'
 
 export interface SubscribeEvent {
   arguments: { feedUrl: string }
 }
 
-export interface SubscribeResult {
-  outcome: SubscribeOutcome
-  /** The new podcast, or the existing one when already subscribed. */
-  podcastId: string | null
-}
+export type SubscribeResult =
+  /** The feed is being checked and ingested in the background; watch the request for the outcome. */
+  | { outcome: 'pending'; requestId: string; podcastId: null }
+  | { outcome: 'alreadySubscribed'; requestId: null; podcastId: string }
+  | { outcome: 'invalidUrl'; requestId: null; podcastId: null }
 
 /**
- * Subscribes to a feed. It fetches the feed once to check it is a real podcast
- * feed and to read its title, author and artwork, then creates the podcast and
- * returns. Episodes are ingested by a background refresh, so a feed with
- * thousands of items cannot hold the request up.
+ * The `subscribe` mutation. Returns at once: it only checks the URL is http or
+ * https and not already in the library, then records a subscribe request.
+ * Fetching, checking and ingesting the feed happen in the background (see
+ * `ingestFeed.ts`), and the client learns the outcome by watching the request.
  */
 export function createSubscribeHandler({ store }: { store: FeedStore }) {
   return withUrlsRedactedFromErrors('subscribe', async (event: SubscribeEvent): Promise<SubscribeResult> => {
     const feedUrl = normaliseFeedUrl(event.arguments.feedUrl)
-    if (!feedUrl) return { outcome: 'invalidUrl', podcastId: null }
+    if (!feedUrl) return { outcome: 'invalidUrl', requestId: null, podcastId: null }
 
     const existing = await store.findPodcastByFeedUrl(feedUrl)
-    if (existing) return { outcome: 'alreadySubscribed', podcastId: existing.id }
+    if (existing) return { outcome: 'alreadySubscribed', requestId: null, podcastId: existing.id }
 
-    const fetched = await fetchFeed(feedUrl)
-    if (!fetched.ok) return { outcome: fetched.reason, podcastId: null }
-
-    const podcast = await store.createPodcast({
-      feedUrl,
-      ...fetched.feed.podcast,
-      etag: null,
-      lastModified: null,
-      lastFetchedAt: null,
-      lastFetchError: null,
-    })
-    try {
-      await store.requestRefresh(podcast.id)
-    } catch (error) {
-      // A podcast whose episodes will never arrive is broken: take it back out.
-      await store.deletePodcast(podcast.id)
-      throw error
-    }
-    return { outcome: 'subscribed', podcastId: podcast.id }
+    const request = await store.createSubscribeRequest(feedUrl)
+    return { outcome: 'pending', requestId: request.id, podcastId: null }
   })
 }

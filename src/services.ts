@@ -22,10 +22,6 @@ export interface Podcast {
   title: string
   author: string | null
   artworkUrl: string | null
-  /** When episodes were last ingested. Null until the first ingest after subscribing finishes. */
-  lastFetchedAt: string | null
-  /** Why the last refresh failed, or null if it succeeded. */
-  lastFetchError: string | null
 }
 
 export interface Episode {
@@ -36,23 +32,33 @@ export interface Episode {
   durationSeconds: number | null
 }
 
-export type SubscribeResult =
-  | { outcome: 'subscribed' | 'alreadySubscribed'; podcastId: string }
-  | { outcome: 'invalidUrl' | 'unreachable' | 'notAFeed' }
+/** What the subscribe call says straight away. */
+export type SubscribeStart =
+  /** The feed is being checked in the background: watch the request for the outcome. */
+  | { outcome: 'pending'; requestId: string }
+  | { outcome: 'alreadySubscribed'; podcastId: string }
+  | { outcome: 'invalidUrl' }
 
-/** Receives the full current list each time it changes. */
-export interface ListObserver<T> {
-  next(items: T[]): void
+/** A subscribe request as the background check moves it on. */
+export type SubscribeRequestState =
+  | { status: 'pending' }
+  | { status: 'subscribed' | 'alreadySubscribed'; podcastId: string }
+  | { status: 'invalidUrl' | 'unreachable' | 'notAFeed' | 'failed' }
+
+export interface Observer<T> {
+  next(value: T): void
   error(): void
 }
 
 export interface DataApi {
   /** The library, kept current as podcasts are added. Returns a function that stops observing. */
-  observePodcasts(observer: ListObserver<Podcast>): () => void
+  observePodcasts(observer: Observer<Podcast[]>): () => void
   /** One podcast's episodes, in no particular order, kept current as they are ingested. */
-  observeEpisodes(podcastId: string, observer: ListObserver<Episode>): () => void
-  /** Returns once the podcast is in the library; its episodes follow through `observeEpisodes`. */
-  subscribeToFeed(feedUrl: string): Promise<SubscribeResult>
+  observeEpisodes(podcastId: string, observer: Observer<Episode[]>): () => void
+  /** Returns at once; the feed is fetched and checked in the background. */
+  subscribeToFeed(feedUrl: string): Promise<SubscribeStart>
+  /** A subscribe request's state, now and as it changes. */
+  observeSubscribeRequest(requestId: string, observer: Observer<SubscribeRequestState>): () => void
 }
 
 export interface Services {

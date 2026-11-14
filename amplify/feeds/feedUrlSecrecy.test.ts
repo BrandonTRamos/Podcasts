@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fakeFeedStore, fakeHttp, fixture } from '../test/fakes'
-import { createRefreshPodcastHandler } from './refreshPodcast'
-import { createSubscribeHandler } from './subscribe'
+import { fakeHttp, fixture } from '../test/fakes'
+import { subscribeFlow } from '../test/subscribeFlow'
 
 // Private feeds carry access tokens in their URLs, so a feed URL is a secret.
 const secret = 's3cret-token'
@@ -22,23 +21,13 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function setup() {
-  const data = fakeFeedStore()
-  return {
-    data,
-    subscribe: createSubscribeHandler({ store: data.store }),
-    refresh: createRefreshPodcastHandler({ store: data.store, episodeLimit: 100 }),
-  }
-}
-
 describe('feed URLs are not written to logs', () => {
-  it('when subscribing, re-subscribing and ingesting', async () => {
+  it('when subscribing, ingesting and re-subscribing', async () => {
     fakeHttp({ [feedUrl]: fixture('show.xml') })
-    const { data, subscribe, refresh } = setup()
+    const { data, subscribe, subscribeAndIngest } = subscribeFlow()
 
-    const { podcastId } = await subscribe({ arguments: { feedUrl } })
-    await refresh({ arguments: { podcastId: podcastId! } })
-    await subscribe({ arguments: { feedUrl } })
+    const { podcastId } = await subscribeAndIngest(feedUrl)
+    await subscribe(feedUrl)
 
     expect(data.episodesOf(podcastId!)).toHaveLength(2)
     expect(logged.join('\n')).not.toContain(secret)
@@ -49,28 +38,25 @@ describe('feed URLs are not written to logs', () => {
     ['not a feed', { [feedUrl]: '<html></html>' }],
   ])('when the feed is %s', async (_case, responses) => {
     fakeHttp(responses)
-    const { subscribe } = setup()
+    const { subscribeAndIngest } = subscribeFlow()
 
-    await subscribe({ arguments: { feedUrl } })
+    await subscribeAndIngest(feedUrl)
 
     expect(logged.join('\n')).not.toContain(secret)
   })
 
   it('when the data store fails with the URL in its error, which is not passed on either', async () => {
     fakeHttp({ [feedUrl]: fixture('show.xml') })
-    const leakyFailure = async (record: object): Promise<never> => {
+    const leakyFailure = async (record: unknown): Promise<never> => {
       throw new Error(`Write failed for ${JSON.stringify(record)} (${feedUrl}, ${encodeURIComponent(feedUrl)})`)
     }
-    const subscribing = setup()
-    subscribing.data.store.createPodcast = leakyFailure
-    const refreshing = setup()
-    const { podcastId } = await refreshing.subscribe({ arguments: { feedUrl } })
-    refreshing.data.store.createEpisode = leakyFailure
+    const subscribing = subscribeFlow()
+    subscribing.data.store.createSubscribeRequest = leakyFailure
+    const ingesting = subscribeFlow()
+    ingesting.data.store.createPodcast = leakyFailure
+    await ingesting.subscribe(feedUrl)
 
-    const failures = await Promise.allSettled([
-      subscribing.subscribe({ arguments: { feedUrl } }),
-      refreshing.refresh({ arguments: { podcastId: podcastId! } }),
-    ])
+    const failures = await Promise.allSettled([subscribing.subscribe(feedUrl), ingesting.runBackground()])
 
     for (const failure of failures) {
       expect(failure.status).toBe('rejected')

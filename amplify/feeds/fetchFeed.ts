@@ -2,7 +2,7 @@ import { normaliseFeedUrl } from './feedUrl'
 import { type ParsedFeed, parseFeed } from './parseFeed'
 
 export type FetchFeedResult =
-  | { ok: true; feed: ParsedFeed; etag: string | null; lastModified: string | null }
+  | { ok: true; feed: ParsedFeed }
   | { ok: false; reason: 'invalidUrl' | 'unreachable' | 'notAFeed' }
 
 const TIMEOUT_MS = 15_000
@@ -35,10 +35,5 @@ export async function fetchFeed(feedUrl: string): Promise<FetchFeedResult> {
   const feed = parseFeed(body)
   if (!feed) return { ok: false, reason: 'notAFeed' }
 
-  return {
-    ok: true,
-    feed,
-    etag: response.headers.get('etag'),
-    lastModified: response.headers.get('last-modified'),
-  }
+  return { ok: true, feed }
 }

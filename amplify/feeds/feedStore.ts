@@ -11,11 +11,6 @@ export interface PodcastRecord {
   title: string
   author: string | null
   artworkUrl: string | null
-  etag: string | null
-  lastModified: string | null
-  /** When episodes were last ingested. Null until the first ingest finishes. */
-  lastFetchedAt: string | null
-  lastFetchError: string | null
 }
 
 export interface EpisodeRecord {
@@ -32,18 +27,35 @@ export interface EpisodeRecord {
   showNotes: string | null
 }
 
-export type NewPodcast = Omit<PodcastRecord, 'id'>
-export type PodcastChanges = Partial<NewPodcast>
+/** How a subscribe request ended, or `pending` while the background check runs. */
+export type SubscribeStatus =
+  | 'pending'
+  | 'subscribed'
+  | 'alreadySubscribed'
+  | 'invalidUrl'
+  | 'unreachable'
+  | 'notAFeed'
+  | 'failed'
+
+/**
+ * One subscribe in progress. Creating it is what starts the background ingest
+ * (the table's stream triggers it); the client watches it for the outcome.
+ */
+export interface SubscribeRequestRecord {
+  id: string
+  feedUrl: string
+  status: SubscribeStatus
+  /** Set once the request ends with `subscribed` or `alreadySubscribed`. */
+  podcastId: string | null
+}
 
 export interface FeedStore {
   findPodcastByFeedUrl(feedUrl: string): Promise<PodcastRecord | null>
-  getPodcast(id: string): Promise<PodcastRecord | null>
-  createPodcast(podcast: NewPodcast): Promise<PodcastRecord>
-  updatePodcast(id: string, changes: PodcastChanges): Promise<void>
-  deletePodcast(id: string): Promise<void>
+  createPodcast(podcast: Omit<PodcastRecord, 'id'>): Promise<PodcastRecord>
   getEpisode(id: string): Promise<EpisodeRecord | null>
   /** Fails if an episode with this ID already exists. */
   createEpisode(episode: EpisodeRecord): Promise<void>
-  /** Starts a background refresh of one podcast (the data API's async `refreshPodcast`). */
-  requestRefresh(podcastId: string): Promise<void>
+  createSubscribeRequest(feedUrl: string): Promise<SubscribeRequestRecord>
+  getSubscribeRequest(id: string): Promise<SubscribeRequestRecord | null>
+  settleSubscribeRequest(id: string, outcome: { status: SubscribeStatus; podcastId: string | null }): Promise<void>
 }
