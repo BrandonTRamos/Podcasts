@@ -1,7 +1,7 @@
 import { generateClient } from 'aws-amplify/data'
 import { getCurrentUser, signIn, signOut } from 'aws-amplify/auth'
 import type { Schema } from '../amplify/data/resource'
-import type { Services, SignInResult } from './services'
+import type { Services, SignInResult, SubscribeStart } from './services'
 
 /** Production `Services`: Cognito for auth, the AppSync data API for data. */
 export function amplifyServices(): Services {
@@ -41,10 +41,74 @@ export function amplifyServices(): Services {
     },
 
     data: {
-      async listPodcasts() {
-        const { data, errors } = await client.models.Podcast.list()
-        if (errors?.length) throw new Error(errors.map((e) => e.message).join('; '))
-        return data.map((podcast) => ({ id: podcast.id, title: podcast.title }))
+      observePodcasts(observer) {
+        const subscription = client.models.Podcast.observeQuery({
+          selectionSet: ['id', 'title', 'author', 'artworkUrl'],
+        }).subscribe({
+          next: ({ items }) =>
+            observer.next(
+              items.map((podcast) => ({
+                id: podcast.id,
+                title: podcast.title,
+                author: podcast.author ?? null,
+                artworkUrl: podcast.artworkUrl ?? null,
+              })),
+            ),
+          error: () => observer.error(),
+        })
+        return () => subscription.unsubscribe()
+      },
+
+      observeEpisodes(podcastId, observer) {
+        const subscription = client.models.Episode.observeQuery({
+          filter: { podcastId: { eq: podcastId } },
+          selectionSet: ['id', 'podcastId', 'title', 'publishedAt', 'durationSeconds'],
+        }).subscribe({
+          next: ({ items }) =>
+            observer.next(
+              items.map((episode) => ({
+                id: episode.id,
+                podcastId: episode.podcastId,
+                title: episode.title,
+                publishedAt: episode.publishedAt ?? null,
+                durationSeconds: episode.durationSeconds ?? null,
+              })),
+            ),
+          error: () => observer.error(),
+        })
+        return () => subscription.unsubscribe()
+      },
+
+      async subscribeToFeed(feedUrl): Promise<SubscribeStart> {
+        const { data, errors } = await client.mutations.subscribe({ feedUrl })
+        if (errors?.length || !data) throw new Error(errors?.map((e) => e.message).join('; ') ?? 'No result')
+        if (data.outcome === 'pending' && data.requestId) return { outcome: 'pending', requestId: data.requestId }
+        if (data.outcome === 'alreadySubscribed' && data.podcastId) {
+          return { outcome: 'alreadySubscribed', podcastId: data.podcastId }
+        }
+        if (data.outcome === 'invalidUrl') return { outcome: 'invalidUrl' }
+        throw new Error(`Unexpected subscribe result: ${data.outcome}`)
+      },
+
+      observeSubscribeRequest(requestId, observer) {
+        const subscription = client.models.SubscribeRequest.observeQuery({
+          filter: { id: { eq: requestId } },
+          selectionSet: ['id', 'status', 'podcastId'],
+        }).subscribe({
+          next: ({ items }) => {
+            const request = items[0]
+            if (!request) return
+            const { status, podcastId } = request
+            if (status === 'subscribed' || status === 'alreadySubscribed') {
+              if (podcastId) observer.next({ status, podcastId })
+              else observer.error()
+            } else {
+              observer.next({ status })
+            }
+          },
+          error: () => observer.error(),
+        })
+        return () => subscription.unsubscribe()
       },
     },
   }

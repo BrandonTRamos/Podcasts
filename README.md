@@ -71,9 +71,18 @@ npm run test:watch  # tests in watch mode
 Two seams, one per deployable, run as two Vitest projects (`vitest.config.ts`):
 
 - **client** (`src/**/*.test.{ts,tsx}`, jsdom): renders `<App>` and drives it as a user would with Testing Library. The UI talks to the backend only through the `Services` interface in `src/services.ts`; tests pass in-memory fakes from `src/test/fakes.ts`, and production passes `amplifyServices()`.
-- **backend** (`amplify/**/*.test.ts`, node): invokes function handlers with an event. Real network access is refused by `amplify/test/setup.ts`; a test fakes outbound HTTP with `vi.stubGlobal('fetch', ...)`.
+- **backend** (`amplify/**/*.test.ts`, node): invokes function handlers with an event. Real network access is refused by `amplify/test/setup.ts`. Tests fake outbound HTTP with `fakeHttp` and the data store with `fakeFeedStore` (both in `amplify/test/fakes.ts`; the fake store also plays the request table's stream), and use fixture feeds from `amplify/test/fixtures/`. Handlers are built by factories in `amplify/feeds/` that take the store; `amplify/functions/*/handler.ts` wires in the real one (`amplifyFeedStore.ts`, the AppSync data API).
 
 `src/installable.test.ts` (client project) checks what a browser reads to install the app to a home screen: the manifest, the `<head>` tags and the icon files in `public/`.
+
+## Feeds
+
+Subscribing returns at once and finishes in the background; the client learns the outcome through data subscriptions.
+
+- **Subscribe** (`subscribe` mutation, `amplify/feeds/subscribe.ts`): refuses URLs that are not http or https, says if the feed is already in the library, and otherwise records a pending `SubscribeRequest` and returns it. Requests expire after a day (DynamoDB time to live).
+- **Ingest** (`ingest-feed` function, `amplify/feeds/ingestFeed.ts`): triggered by the `SubscribeRequest` table's stream for each new request (wired in `amplify/backend.ts`). It fetches and parses the feed. A bad feed marks the request `unreachable`, `notAFeed` or `failed`, and nothing is added to the library. A good feed adds the podcast, marks the request `subscribed`, then ingests the newest `FIRST_INGEST_EPISODE_LIMIT` episodes (100; set in `amplify/functions/ingest-feed/resource.ts`). Episode IDs derive from the podcast and the item's GUID (or enclosure URL), so ingesting the same feed again creates no duplicates.
+- The client (`src/LibraryScreen.tsx`) shows "Checking the feed…" while the request is pending, then opens the podcast or shows the error.
+- Feed URLs are secrets: handlers never log them, and unexpected errors are logged and rethrown with URLs redacted.
 
 ## Pipeline
 

@@ -20,10 +20,45 @@ export interface AuthService {
 export interface Podcast {
   id: string
   title: string
+  author: string | null
+  artworkUrl: string | null
+}
+
+export interface Episode {
+  id: string
+  podcastId: string
+  title: string
+  publishedAt: string | null
+  durationSeconds: number | null
+}
+
+/** What the subscribe call says straight away. */
+export type SubscribeStart =
+  /** The feed is being checked in the background: watch the request for the outcome. */
+  | { outcome: 'pending'; requestId: string }
+  | { outcome: 'alreadySubscribed'; podcastId: string }
+  | { outcome: 'invalidUrl' }
+
+/** A subscribe request as the background check moves it on. */
+export type SubscribeRequestState =
+  | { status: 'pending' }
+  | { status: 'subscribed' | 'alreadySubscribed'; podcastId: string }
+  | { status: 'invalidUrl' | 'unreachable' | 'notAFeed' | 'failed' }
+
+export interface Observer<T> {
+  next(value: T): void
+  error(): void
 }
 
 export interface DataApi {
-  listPodcasts(): Promise<Podcast[]>
+  /** The library, kept current as podcasts are added. Returns a function that stops observing. */
+  observePodcasts(observer: Observer<Podcast[]>): () => void
+  /** One podcast's episodes, in no particular order, kept current as they are ingested. */
+  observeEpisodes(podcastId: string, observer: Observer<Episode[]>): () => void
+  /** Returns at once; the feed is fetched and checked in the background. */
+  subscribeToFeed(feedUrl: string): Promise<SubscribeStart>
+  /** A subscribe request's state, now and as it changes. */
+  observeSubscribeRequest(requestId: string, observer: Observer<SubscribeRequestState>): () => void
 }
 
 export interface Services {

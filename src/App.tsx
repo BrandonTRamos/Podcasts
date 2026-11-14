@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { LibraryScreen } from './LibraryScreen'
 import type { Services, User } from './services'
+import { SignedInApp } from './SignedInApp'
 import { SignInScreen } from './SignInScreen'
 
 type Session = { status: 'loading' } | { status: 'signedOut' } | { status: 'signedIn'; user: User }
@@ -33,7 +33,7 @@ export function App({ services }: { services: Services }) {
   }
 
   return (
-    <LibraryScreen
+    <SignedInApp
       data={services.data}
       onSignOut={async () => {
         try {
