@@ -98,8 +98,8 @@ export interface Player {
 export function createPlayer(
   audio: AudioElement,
   saveProgress: SaveProgress,
-  initialSpeed = 1,
-  takeNext: TakeNext = () => null,
+  initialSpeed: number,
+  takeNext: TakeNext,
 ): Player {
   let state: PlayerState = { episode: null, speed: initialSpeed }
   const listeners = new Set<() => void>()
@@ -155,7 +155,7 @@ export function createPlayer(
     ended: () => {
       save({ positionSeconds: audio.currentTime, played: true })
       // Straight away, with nothing awaited: see `TakeNext`.
-      const next = takeNext()
+      const next = takeNextOther()
       if (next) load(next.episode, next.startAt)
     },
     timeupdate: () => {
@@ -185,6 +185,13 @@ export function createPlayer(
       // Refused (no user gesture) or aborted: show what the element is actually doing.
       if (load === loadCount && state.episode && !state.failed) update({ playing: !audio.paused })
     })
+  }
+
+  /** The next queued episode other than the one loaded, which, if queued too, leaves the queue. */
+  function takeNextOther() {
+    let next = takeNext()
+    while (next && next.episode.id === state.episode?.id) next = takeNext()
+    return next
   }
 
   /** Loads the episode in place of whatever is loaded, and starts it. */
@@ -262,7 +269,7 @@ export function createPlayer(
     },
 
     skipToNext() {
-      const next = takeNext()
+      const next = takeNextOther()
       if (next) play(next.episode, next.startAt)
     },
 

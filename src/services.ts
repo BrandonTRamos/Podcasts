@@ -64,6 +64,17 @@ export interface QueuedEpisode {
   state: SavedEpisodeState
 }
 
+/** The whole queue, as one delivery of it shows it. */
+export interface QueueSnapshot {
+  entries: QueuedEpisode[]
+  /**
+   * The latest save it takes account of (ISO 8601): an episode missing from it
+   * has left the queue only if it was saved as queued before then. Null for a
+   * fresh fetch, which takes account of every save so far.
+   */
+  asOf: string | null
+}
+
 /** What the subscribe call says straight away. */
 export type SubscribeStart =
   /** The feed is being checked in the background: watch the request for the outcome. */
@@ -106,9 +117,9 @@ export interface DataApi {
    * Every queued episode, whatever its podcast, with its details and listening
    * state: all of them once fetched, then again whenever any device changes the
    * queue. Each delivery is the whole queue, so an episode missing from it has
-   * left the queue.
+   * left (see `QueueSnapshot.asOf`).
    */
-  observeQueue(observer: Observer<QueuedEpisode[]>): () => void
+  observeQueue(observer: Observer<QueueSnapshot>): () => void
 }
 
 /**

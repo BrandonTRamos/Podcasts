@@ -10,6 +10,32 @@ const stateFields = ['id', 'podcastId', 'positionSeconds', 'played', 'queueOrder
 export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
   const client = generateClient<Schema>()
 
+  /** Every queued episode's state, all pages of them. */
+  async function listQueuedStates(): Promise<SavedEpisodeState[]> {
+    const states: SavedEpisodeState[] = []
+    let nextToken: string | null | undefined = null
+    do {
+      const page: { data: StateRecord[]; errors?: unknown[]; nextToken?: string | null } =
+        await client.models.EpisodeState.list({
+          filter: { queueOrder: { attributeExists: true } },
+          selectionSet: [...stateFields],
+          limit: 1000,
+          nextToken,
+        })
+      if (page.errors?.length) throw new Error('Could not list the queue')
+      states.push(...page.data.map(toSavedEpisodeState))
+      nextToken = page.nextToken
+    } while (nextToken)
+    return states
+  }
+
+  /** One episode's details, or null if it no longer exists. */
+  async function fetchEpisode(id: string): Promise<Episode | null> {
+    const { data, errors } = await client.models.Episode.get({ id }, { selectionSet: [...episodeFields] })
+    if (errors?.length) throw new Error(errors.map((e) => e.message).join('; '))
+    return data ? toEpisode(data) : null
+  }
+
   return {
     auth: {
       async currentUser() {
@@ -146,86 +172,74 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
       // would miss an episode joining or leaving the queue. Instead the queued
       // states are listed, and every state change is watched and sorted here.
       observeQueue(observer) {
-        /** The latest state seen of each episode, queued or not, so an older event cannot undo a newer one. */
+        /** The latest state seen of each episode, queued or not, so an older event cannot undo a newer one. A deleted one stays, unqueued. */
         const latest = new Map<string, SavedEpisodeState>()
-        const deleted = new Set<string>()
         const episodes = new Map<string, Episode>()
+        /** Queued, but its episode is gone with its podcast: left out until its state changes again. */
+        const gone = new Set<string>()
+        /** The latest save any live event has shown; null until the first. */
+        let asOf: string | null = null
         let synced = false
         let closed = false
         const fail = () => {
           if (!closed) observer.error()
         }
 
-        function take(record: StateRecord) {
-          const state = toSavedEpisodeState(record)
+        /** Keeps the state if it is the newest seen. Returns whether it changes the queue. */
+        function take(state: SavedEpisodeState): boolean {
           const current = latest.get(state.episodeId)
-          if (deleted.has(state.episodeId)) return
-          if (current && Date.parse(current.updatedAt) > Date.parse(state.updatedAt)) return
+          if (current && Date.parse(current.updatedAt) > Date.parse(state.updatedAt)) return false
           latest.set(state.episodeId, state)
+          gone.delete(state.episodeId)
+          return state.queueOrder !== null || (current?.queueOrder ?? null) !== null
         }
 
-        const queued = () => [...latest.values()].filter((state) => state.queueOrder !== null)
+        const queued = () =>
+          [...latest.values()].filter((state) => state.queueOrder !== null && !gone.has(state.episodeId))
 
         /** Sends the whole queue, once the details of every episode in it have been fetched. */
-        async function deliver() {
-          if (!synced) return
+        async function deliver(snapshotAsOf: string | null) {
           let missing = queued().filter((state) => !episodes.has(state.episodeId))
           while (missing.length) {
-            const results = await Promise.all(
-              missing.map((state) => client.models.Episode.get({ id: state.episodeId }, { selectionSet: [...episodeFields] })),
-            )
+            const found = await Promise.all(missing.map((state) => fetchEpisode(state.episodeId)))
             if (closed) return
-            missing.forEach((state, i) => {
-              const { data: episode, errors } = results[i]
-              if (errors?.length) throw new Error(errors.map((e) => e.message).join('; '))
-              // Gone with its podcast: it can't be shown or played, so it is left out.
-              if (!episode) deleted.add(state.episodeId)
-              else episodes.set(episode.id, toEpisode(episode))
+            missing.forEach(({ episodeId }, i) => {
+              const episode = found[i]
+              if (episode) episodes.set(episodeId, episode)
+              else gone.add(episodeId)
             })
-            missing = queued().filter((state) => !episodes.has(state.episodeId) && !deleted.has(state.episodeId))
+            missing = queued().filter((state) => !episodes.has(state.episodeId))
           }
-          observer.next(
-            queued()
-              .filter((state) => episodes.has(state.episodeId))
-              .map((state) => ({ state, episode: episodes.get(state.episodeId)! })),
-          )
+          if (closed) return
+          observer.next({
+            entries: queued().map((state) => ({ state, episode: episodes.get(state.episodeId)! })),
+            asOf: snapshotAsOf,
+          })
         }
 
-        const onChange = (record: StateRecord) => {
-          take(record)
-          deliver().catch(fail)
+        function onEvent(state: SavedEpisodeState) {
+          if (asOf === null || Date.parse(state.updatedAt) > Date.parse(asOf)) asOf = state.updatedAt
+          if (take(state) && synced) deliver(asOf).catch(fail)
         }
+        const selectionSet = [...stateFields]
         const subscriptions = [
-          client.models.EpisodeState.onCreate({ selectionSet: [...stateFields] }).subscribe({ next: onChange, error: fail }),
-          client.models.EpisodeState.onUpdate({ selectionSet: [...stateFields] }).subscribe({ next: onChange, error: fail }),
-          client.models.EpisodeState.onDelete({ selectionSet: [...stateFields] }).subscribe({
-            next: ({ id }) => {
-              deleted.add(id)
-              latest.delete(id)
-              deliver().catch(fail)
-            },
+          client.models.EpisodeState.onCreate({ selectionSet }).subscribe({ next: (record) => onEvent(toSavedEpisodeState(record)), error: fail }),
+          client.models.EpisodeState.onUpdate({ selectionSet }).subscribe({ next: (record) => onEvent(toSavedEpisodeState(record)), error: fail }),
+          client.models.EpisodeState.onDelete({ selectionSet }).subscribe({
+            next: (record) => onEvent({ ...toSavedEpisodeState(record), queueOrder: null }),
             error: fail,
           }),
         ]
 
-        ;(async () => {
-          let nextToken: string | null | undefined = null
-          do {
-            const page: { data: StateRecord[]; errors?: unknown[]; nextToken?: string | null } =
-              await client.models.EpisodeState.list({
-                filter: { queueOrder: { attributeExists: true } },
-                selectionSet: [...stateFields],
-                limit: 1000,
-                nextToken,
-              })
+        listQueuedStates()
+          .then((states) => {
             if (closed) return
-            if (page.errors?.length) throw new Error('Could not list the queue')
-            page.data.forEach(take)
-            nextToken = page.nextToken
-          } while (nextToken)
-          synced = true
-          await deliver()
-        })().catch(fail)
+            states.forEach(take)
+            synced = true
+            // A fresh fetch: it takes account of every save so far.
+            return deliver(null)
+          })
+          .catch(fail)
 
         return () => {
           closed = true

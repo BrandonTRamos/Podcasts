@@ -40,7 +40,7 @@ export interface ListeningStore {
   /** The queued episodes, in the order they will play. */
   queue(): Episode[]
   /** Queues the episode last, or first to play next. One already queued moves there. */
-  enqueue(episode: Episode, where: 'last' | 'next'): void
+  enqueue(episode: Episode, where: QueuePlace): void
   /** Moves a queued episode to this place in the queue, counting from 0. */
   moveInQueue(episodeId: string, index: number): void
   /** Takes the episode off the queue, if it is on it. */
@@ -113,12 +113,17 @@ export function createListeningStore(
 
   function observeQueue() {
     return data.observeQueue({
-      next(entries) {
+      next({ entries, asOf }) {
         // Each delivery is the whole queue, so one queued as last saved but
-        // missing from it has since left. When is unknown, so its time stays.
+        // missing from it has since left, unless that save is newer than the
+        // delivery (its own update is still on the way). When it left is
+        // unknown, so its time stays.
         const queued = new Set(entries.map(({ episode }) => episode.id))
+        const before = asOf === null ? Infinity : Date.parse(asOf)
         for (const [episodeId, state] of saved) {
-          if (state.queueOrder !== null && !queued.has(episodeId)) saved.set(episodeId, { ...state, queueOrder: null })
+          if (state.queueOrder !== null && !queued.has(episodeId) && Date.parse(state.updatedAt) <= before) {
+            saved.set(episodeId, { ...state, queueOrder: null })
+          }
         }
         for (const { episode, state } of entries) {
           episodes.set(episode.id, episode)
@@ -283,6 +288,9 @@ export function createListeningStore(
     getVersion: () => version,
   }
 }
+
+/** Where `enqueue` puts an episode: at the end, or first to play next. */
+export type QueuePlace = 'last' | 'next'
 
 /** Keeps a podcast's episode states current while the calling component is mounted, and re-renders it when they change. */
 export function useEpisodeStates(store: ListeningStore, podcastId: string | null): ListeningStatus {

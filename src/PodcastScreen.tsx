@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { formatDate, formatDuration } from './format'
 import { Artwork } from './LibraryScreen'
-import { type ListeningStore, useEpisodeStates } from './listening'
+import { type ListeningStore, type QueuePlace, useEpisodeStates } from './listening'
 import type { DataApi, Episode, EpisodeState, Podcast } from './services'
 import type { LoadState } from './SignedInApp'
 
@@ -21,7 +21,7 @@ export function PodcastScreen({
   listening: ListeningStore
   onBack: () => void
   onPlayEpisode: (episode: Episode) => void
-  onQueueEpisode: (episode: Episode, where: 'last' | 'next') => void
+  onQueueEpisode: (episode: Episode, where: QueuePlace) => void
 }) {
   const [episodes, setEpisodes] = useState<LoadState<Episode>>({ status: 'loading' })
   const [unplayedOnly, setUnplayedOnly] = useState(false)
@@ -93,7 +93,7 @@ function EpisodeList({
   unplayedOnly: boolean
   onUnplayedOnlyChange: (unplayedOnly: boolean) => void
   onPlay: (episode: Episode) => void
-  onQueue: (episode: Episode, where: 'last' | 'next') => void
+  onQueue: (episode: Episode, where: QueuePlace) => void
   /** Marking an episode unplayed also takes it back to the start. */
   onMarkPlayed: (episode: Episode, played: boolean) => void
 }) {

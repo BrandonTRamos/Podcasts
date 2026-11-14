@@ -9,6 +9,7 @@ import type {
   Observer,
   Podcast,
   QueuedEpisode,
+  QueueSnapshot,
   SavedEpisodeState,
   SignInResult,
   SubscribeRequestState,
@@ -72,12 +73,13 @@ export function fakeDataApi() {
   const episodeListeners = new Map<string, Set<Listener<Episode[]>>>()
   const stateListeners = new Map<string, Set<Listener<SavedEpisodeState[]>>>()
   const requestListeners = new Map<string, Set<Listener<SubscribeRequestState>>>()
-  const queueListeners = new Set<Listener<QueuedEpisode[]>>()
+  const queueListeners = new Set<Listener<QueueSnapshot>>()
   let failNext = false
   let offline = false
   let nextId = 1
   /** The backend's clock, for each state's updated time: a second on with every write. */
   let tick = 0
+  const timeAt = (seconds: number) => new Date(Date.UTC(2026, 0, 1) + seconds * 1000).toISOString()
 
   const publicPodcasts = () => podcasts.map(({ feedUrl: _feedUrl, ...podcast }) => podcast)
   const episodesOf = (podcastId: string) => episodes.filter((episode) => episode.podcastId === podcastId)
@@ -136,7 +138,7 @@ export function fakeDataApi() {
       queueOrder: null,
       ...states.get(episodeId),
       ...change,
-      updatedAt: new Date(Date.UTC(2026, 0, 1) + ++tick * 1000).toISOString(),
+      updatedAt: timeAt(++tick),
     }
     states.set(episodeId, saved)
     return saved
@@ -172,12 +174,12 @@ export function fakeDataApi() {
         // The write's own subscription event arrives separately from its response, as with the real API.
         queueMicrotask(() => {
           notify(stateListeners.get(podcastId), statesOf(podcastId))
-          notify(queueListeners, queue())
+          notify(queueListeners, { entries: queue(), asOf: saved.updatedAt })
         })
         return saved
       },
       observeQueue(observer) {
-        return listen(connection, queueListeners, observer, queue)
+        return listen(connection, queueListeners, observer, () => ({ entries: queue(), asOf: null }))
       },
     }
   }

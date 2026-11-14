@@ -195,16 +195,23 @@ describe('editing the queue', () => {
     expect(within(device.queueEntry(third.title)).getByRole('button', { name: 'Move down' })).toBeDisabled()
   })
 
-  it('keeps the order through many moves between the same two episodes', async () => {
-    const { device } = await withThreeQueued()
-
-    for (let i = 0; i < 60; i++) {
-      await device.user.click(within(device.queueEntry(third.title)).getByRole('button', { name: 'Move up' }))
-      await device.user.click(within(device.queueEntry(third.title)).getByRole('button', { name: 'Move down' }))
+  it('keeps the order through many moves into the same gap', async () => {
+    const { data, device } = await withThreeQueued()
+    const moveLastUp = async () => {
+      const last = device.queued().at(-1)!
+      await device.user.click(within(device.queueEntry(last)).getByRole('button', { name: 'Move up' }))
     }
-    await device.user.click(within(device.queueEntry(third.title)).getByRole('button', { name: 'Move up' }))
 
+    // Each move goes between the first episode and the one after it, halving
+    // the room there, until there is none and the queue is numbered afresh.
+    for (let i = 0; i < 60; i++) await moveLastUp()
+    expect(device.queued()).toEqual([first.title, second.title, third.title])
+    await moveLastUp()
     expect(device.queued()).toEqual([first.title, third.title, second.title])
+
+    const other = await openShowOn(data.anotherDevice())
+    await other.openQueue()
+    expect(other.queued()).toEqual([first.title, third.title, second.title])
   })
 
   it('removes an episode', async () => {
@@ -258,6 +265,21 @@ describe('carrying on to the next episode', () => {
     expect(data.savedState(secondId)).toMatchObject({ queueOrder: null })
     await device.openQueue()
     expect(device.queued()).toEqual([third.title])
+  })
+
+  it('moves past the episode that just ended if it was queued too', async () => {
+    const { data } = backendWithShow()
+    const device = await openShowOn(data)
+    await device.tap(first.title)
+    await device.addToQueue(first.title)
+    await device.addToQueue(second.title)
+    act(() => device.audio.loadMetadata(2712))
+
+    act(() => device.audio.playToEnd())
+
+    expect(device.audio.src).toBe(second.enclosureUrl)
+    await device.openQueue()
+    expect(device.queued()).toEqual([])
   })
 
   it('goes through the queue in order', async () => {

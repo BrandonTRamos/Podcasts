@@ -9,6 +9,10 @@ import type { AudioElement, DataApi, Episode, MediaSessionControls, Podcast } fr
 
 export type LoadState<T> = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; items: T[] }
 
+function findPodcast(podcasts: LoadState<Podcast>, podcastId: string): Podcast | undefined {
+  return podcasts.status === 'loaded' ? podcasts.items.find((p) => p.id === podcastId) : undefined
+}
+
 type Screen = { name: 'library' } | { name: 'podcast'; podcastId: string } | { name: 'queue' }
 
 export function SignedInApp({
@@ -38,8 +42,7 @@ export function SignedInApp({
     podcastsRef.current = podcasts
   }, [podcasts])
   const toPlayable = useCallback((episode: Episode): PlayableEpisode => {
-    const current = podcastsRef.current
-    const podcast = current.status === 'loaded' ? current.items.find((p) => p.id === episode.podcastId) : undefined
+    const podcast = findPodcast(podcastsRef.current, episode.podcastId)
     return {
       id: episode.id,
       podcastId: episode.podcastId,
@@ -93,8 +96,7 @@ export function SignedInApp({
 
   const openPodcast = useCallback((podcastId: string) => setScreen({ name: 'podcast', podcastId }), [])
 
-  const podcastById = (podcastId: string) =>
-    podcasts.status === 'loaded' ? podcasts.items.find((p) => p.id === podcastId) : undefined
+  const podcastById = (podcastId: string) => findPodcast(podcasts, podcastId)
 
   /** Plays the episode now; if it was queued, it leaves the queue. */
   function playEpisode(episode: Episode) {
