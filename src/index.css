@@ -39,3 +39,115 @@ button {
   align-items: center;
   justify-content: space-between;
 }
+
+.add-podcast {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: end;
+  margin-block: 1rem;
+}
+
+.add-podcast label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.add-podcast input {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  min-width: 0;
+}
+
+.add-podcast p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.podcasts,
+.episodes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.podcasts button {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 0.75rem;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  padding: 0.5rem 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.podcasts .artwork {
+  grid-row: 1 / 3;
+}
+
+.podcast-title {
+  font-weight: 600;
+}
+
+.podcast-author {
+  opacity: 0.7;
+  margin: 0;
+}
+
+.artwork {
+  display: block;
+  border-radius: 0.375rem;
+  object-fit: cover;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.artwork-small {
+  width: 3.5rem;
+  height: 3.5rem;
+}
+
+.artwork-large {
+  width: 7rem;
+  height: 7rem;
+}
+
+.podcast header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-block: 1rem;
+}
+
+.podcast h1 {
+  margin: 0;
+}
+
+.podcast nav button {
+  background: none;
+  border: none;
+  padding-inline: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.episodes li {
+  padding-block: 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.episodes h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.episode-meta {
+  margin: 0;
+  opacity: 0.7;
+  font-size: 0.875rem;
+}

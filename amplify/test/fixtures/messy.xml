@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title><![CDATA[Messy & Co.]]></title>
+    <managingEditor>Jane Doe</managingEditor>
+    <image>
+      <url>https://cdn.example.com/messy/cover.png</url>
+      <title>Messy &amp; Co.</title>
+    </image>
+    <item>
+      <title><![CDATA[No GUID, no duration]]></title>
+      <pubDate>Wed, 4 Nov 2026 07:30:00 PST</pubDate>
+      <enclosure url="https://cdn.example.com/messy/no-guid.mp3" type="audio/mpeg"/>
+    </item>
+    <item>
+      <title>Wrong weekday and an unknown zone</title>
+      <guid isPermaLink="true">https://www.example.com/messy/2</guid>
+      <pubDate>Thursday, 06 Nov 2026 10:00:00 BST</pubDate>
+      <itunes:duration>45:30</itunes:duration>
+      <enclosure url="https://cdn.example.com/messy/2.mp3" type="audio/mpeg"/>
+    </item>
+    <item>
+      <title>Same GUID again</title>
+      <guid isPermaLink="true">https://www.example.com/messy/2</guid>
+      <enclosure url="https://cdn.example.com/messy/2-copy.mp3" type="audio/mpeg"/>
+    </item>
+    <item>
+      <title>Unreadable date and duration</title>
+      <guid>messy-3</guid>
+      <pubDate>sometime last week</pubDate>
+      <itunes:duration>about an hour</itunes:duration>
+      <enclosure url="https://cdn.example.com/messy/3.m4a"/>
+    </item>
+    <item>
+      <title>A blog post with no audio</title>
+      <guid>messy-post</guid>
+      <pubDate>Mon, 02 Nov 2026 09:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <guid>messy-untitled</guid>
+      <itunes:duration></itunes:duration>
+      <enclosure url="https://cdn.example.com/messy/untitled.mp3" type="audio/mpeg"/>
+    </item>
+  </channel>
+</rss>

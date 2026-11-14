@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>The Example Show</title>
+    <link>https://www.example.com/show</link>
+    <description>A show used in tests.</description>
+    <itunes:author>Example Media</itunes:author>
+    <itunes:image href="https://cdn.example.com/show/artwork.jpg"/>
+    <item>
+      <title>Episode 2: The Sequel</title>
+      <guid isPermaLink="false">example-show-ep-2</guid>
+      <pubDate>Tue, 10 Nov 2026 08:00:00 GMT</pubDate>
+      <itunes:duration>1:02:03</itunes:duration>
+      <enclosure url="https://cdn.example.com/show/ep2.mp3" length="123456" type="audio/mpeg"/>
+      <content:encoded><![CDATA[<p>Notes for <b>episode 2</b>.</p>]]></content:encoded>
+    </item>
+    <item>
+      <title>Episode 1: The Beginning</title>
+      <guid isPermaLink="false">example-show-ep-1</guid>
+      <pubDate>Tue, 03 Nov 2026 08:00:00 GMT</pubDate>
+      <itunes:duration>2700</itunes:duration>
+      <enclosure url="https://cdn.example.com/show/ep1.mp3" length="123456" type="audio/mpeg"/>
+      <description>Notes for episode 1.</description>
+    </item>
+  </channel>
+</rss>

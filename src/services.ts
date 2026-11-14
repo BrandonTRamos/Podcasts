@@ -20,10 +20,37 @@ export interface AuthService {
 export interface Podcast {
   id: string
   title: string
+  author: string | null
+  artworkUrl: string | null
+  /** When episodes were last ingested. Null until the first ingest after subscribing finishes. */
+  lastFetchedAt: string | null
+}
+
+export interface Episode {
+  id: string
+  podcastId: string
+  title: string
+  publishedAt: string | null
+  durationSeconds: number | null
+}
+
+export type SubscribeResult =
+  | { outcome: 'subscribed' | 'alreadySubscribed'; podcastId: string }
+  | { outcome: 'invalidUrl' | 'unreachable' | 'notAFeed' }
+
+/** Receives the full current list each time it changes. */
+export interface ListObserver<T> {
+  next(items: T[]): void
+  error(): void
 }
 
 export interface DataApi {
-  listPodcasts(): Promise<Podcast[]>
+  /** The library, kept current as podcasts are added. Returns a function that stops observing. */
+  observePodcasts(observer: ListObserver<Podcast>): () => void
+  /** One podcast's episodes, in no particular order, kept current as they are ingested. */
+  observeEpisodes(podcastId: string, observer: ListObserver<Episode>): () => void
+  /** Returns once the podcast is in the library; its episodes follow through `observeEpisodes`. */
+  subscribeToFeed(feedUrl: string): Promise<SubscribeResult>
 }
 
 export interface Services {
