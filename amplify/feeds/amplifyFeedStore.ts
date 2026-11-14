@@ -1,6 +1,7 @@
 import { getAmplifyDataClientConfig } from '@aws-amplify/backend/function/runtime'
 import { Amplify } from 'aws-amplify'
 import { generateClient } from 'aws-amplify/data'
+import { LATEST_LISTING } from '../data/latestEpisodes'
 import type { Schema } from '../data/resource'
 import type { EpisodeRecord, FeedStore, PodcastRecord, SubscribeRequestRecord } from './feedStore'
 
@@ -23,6 +24,25 @@ export async function amplifyFeedStore(): Promise<FeedStore> {
       return data[0] ? toPodcast(data[0]) : null
     },
 
+    async listPodcasts() {
+      const podcasts: PodcastRecord[] = []
+      let nextToken: string | null | undefined = null
+      do {
+        const page: { data: Schema['Podcast']['type'][]; errors?: GraphQLErrors; nextToken?: string | null } =
+          await client.models.Podcast.list({ limit: 1000, nextToken })
+        throwIfErrors(page.errors)
+        podcasts.push(...page.data.map(toPodcast))
+        nextToken = page.nextToken
+      } while (nextToken)
+      return podcasts
+    },
+
+    async getPodcast(id) {
+      const { data, errors } = await client.models.Podcast.get({ id })
+      throwIfErrors(errors)
+      return data ? toPodcast(data) : null
+    },
+
     async createPodcast(podcast) {
       const { data, errors } = await client.models.Podcast.create(podcast)
       throwIfErrors(errors)
@@ -30,14 +50,38 @@ export async function amplifyFeedStore(): Promise<FeedStore> {
       return toPodcast(data)
     },
 
+    async updatePodcast(id, changes) {
+      // A null removes the field.
+      const { errors } = await client.models.Podcast.update({ id, ...changes })
+      throwIfErrors(errors)
+    },
+
     async getEpisode(id) {
       const { data, errors } = await client.models.Episode.get({ id })
       throwIfErrors(errors)
-      return data ? toEpisode(data) : null
+      if (!data) return null
+      if (data.listing !== LATEST_LISTING) {
+        // Stored before the latest-episodes index existed: put it in the index.
+        // A one-off for each such episode, the first time a refresh looks at it.
+        const update = await client.models.Episode.update({ id, listing: LATEST_LISTING, publishedAt: data.publishedAt ?? null })
+        throwIfErrors(update.errors)
+      }
+      return toEpisode(data)
     },
 
-    async createEpisode(episode) {
-      const { errors } = await client.models.Episode.create(episode)
+    async createEpisode({ publishedAt, ...episode }) {
+      // Left out rather than null when undated: a null can't be stored in the index's sort key.
+      const { errors } = await client.models.Episode.create({
+        ...episode,
+        ...(publishedAt !== null && { publishedAt }),
+        listing: LATEST_LISTING,
+      })
+      throwIfErrors(errors)
+    },
+
+    async updateEpisode(episode) {
+      // An update removes a field set to null, so an episode that loses its date leaves the index.
+      const { errors } = await client.models.Episode.update({ ...episode, listing: LATEST_LISTING })
       throwIfErrors(errors)
     },
 
@@ -65,7 +109,9 @@ export async function amplifyFeedStore(): Promise<FeedStore> {
 /** Requests only matter while the client waits for the outcome; DynamoDB removes them after this. */
 const REQUEST_LIFETIME_SECONDS = 24 * 60 * 60
 
-function throwIfErrors(errors: { errorType?: string; message: string }[] | undefined) {
+type GraphQLErrors = { errorType?: string; message: string }[]
+
+function throwIfErrors(errors: GraphQLErrors | undefined) {
   if (errors?.length) {
     throw new Error(errors.map((error) => `${error.errorType ?? 'Error'}: ${error.message}`).join('; '))
   }
@@ -78,6 +124,10 @@ function toPodcast(podcast: Schema['Podcast']['type']): PodcastRecord {
     title: podcast.title,
     author: podcast.author ?? null,
     artworkUrl: podcast.artworkUrl ?? null,
+    etag: podcast.etag ?? null,
+    lastModified: podcast.lastModified ?? null,
+    lastFetchedAt: podcast.lastFetchedAt ?? null,
+    lastFetchError: podcast.lastFetchError ?? null,
   }
 }
 

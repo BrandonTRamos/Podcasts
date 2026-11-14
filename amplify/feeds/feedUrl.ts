@@ -17,6 +17,11 @@ export function normaliseFeedUrl(input: string): string | null {
 // Plain, JSON-escaped (https:\/\/) and percent-encoded (https%3A%2F%2F) forms.
 const URL_PATTERN = /https?(?::(?:\\?\/){2}|%3A%2F%2F)[^\s"'<>]*/gi
 
+/** The text with every URL in it replaced, in any of the forms above. */
+export function redactUrls(text: string): string {
+  return text.replace(URL_PATTERN, '[url]')
+}
+
 /**
  * Wraps a handler so that an unexpected failure (from the data store, say) is
  * logged and rethrown with every URL in its message replaced. Lambda logs what
@@ -31,7 +36,7 @@ export function withUrlsRedactedFromErrors<Event, Result>(
       return await handler(event)
     } catch (error) {
       const kind = error instanceof Error ? error.name : 'Error'
-      const message = (error instanceof Error ? error.message : String(error)).replace(URL_PATTERN, '[url]')
+      const message = redactUrls(error instanceof Error ? error.message : String(error))
       console.error(`${name} failed: ${kind}: ${message}`)
       throw new Error(`${name} failed: ${message}`)
     }

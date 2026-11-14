@@ -133,7 +133,8 @@ button {
 }
 
 .podcast nav button,
-.queue nav button {
+.queue nav button,
+.latest nav button {
   background: none;
   border: none;
   padding-inline: 0;
@@ -168,6 +169,28 @@ button {
   padding: 0;
   color: inherit;
   cursor: pointer;
+}
+
+.feed-health {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.feed-health p {
+  margin: 0;
+}
+
+.feed-health p[role] {
+  flex-basis: 100%;
+}
+
+.feed-health button {
+  font-size: 0.875rem;
+  padding: 0.25rem 0.5rem;
 }
 
 .episode-filter {

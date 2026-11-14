@@ -19,11 +19,18 @@ export interface AuthService {
   signOut(): Promise<void>
 }
 
+/** Why the latest refresh of a podcast's feed failed. */
+export type FeedError = 'invalidUrl' | 'unreachable' | 'notAFeed' | 'failed'
+
 export interface Podcast {
   id: string
   title: string
   author: string | null
   artworkUrl: string | null
+  /** When the feed was last fetched in full (ISO 8601); null if never. A check that finds it unchanged leaves this. */
+  lastFetchedAt: string | null
+  /** Why the latest refresh failed; null if it succeeded. */
+  lastFetchError: FeedError | null
 }
 
 export interface Episode {
@@ -88,6 +95,8 @@ export type SubscribeRequestState =
   | { status: 'subscribed' | 'alreadySubscribed'; podcastId: string }
   | { status: 'invalidUrl' | 'unreachable' | 'notAFeed' | 'failed' }
 
+export const LATEST_EPISODES_LIMIT = 50
+
 export interface Observer<T> {
   next(value: T): void
   error(): void
@@ -98,6 +107,19 @@ export interface DataApi {
   observePodcasts(observer: Observer<Podcast[]>): () => void
   /** One podcast's episodes, in no particular order, kept current as they are ingested. */
   observeEpisodes(podcastId: string, observer: Observer<Episode[]>): () => void
+  /**
+   * The newest dated episodes across every podcast, newest first, up to
+   * `LATEST_EPISODES_LIMIT` of them, kept current as new ones are found.
+   * Episodes without a publish date are left out.
+   */
+  observeLatestEpisodes(observer: Observer<Episode[]>): () => void
+  /**
+   * Asks for the podcast's feed to be refreshed. Returns once asked; the refresh
+   * runs in the background, and its outcome arrives through `observePodcasts`
+   * (the refresh time or error) and `observeEpisodes` (new episodes). A feed
+   * found unchanged changes nothing, so nothing arrives.
+   */
+  refreshPodcast(podcastId: string): Promise<void>
   /** Returns at once; the feed is fetched and checked in the background. */
   subscribeToFeed(feedUrl: string): Promise<SubscribeStart>
   /** A subscribe request's state, now and as it changes. */

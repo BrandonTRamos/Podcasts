@@ -1,8 +1,8 @@
-import { createHash } from 'node:crypto'
-import type { EpisodeRecord, FeedStore, PodcastRecord, SubscribeRequestRecord } from './feedStore'
+import type { FeedHandlerOptions, PodcastRecord, SubscribeRequestRecord } from './feedStore'
 import { withUrlsRedactedFromErrors } from './feedUrl'
-import { fetchFeed } from './fetchFeed'
-import type { ParsedEpisode } from './parseFeed'
+import { type FeedVersion, fetchFeed } from './fetchFeed'
+import type { ParsedFeed } from './parseFeed'
+import { storeEpisodes } from './storeEpisodes'
 
 /** The DynamoDB stream event for the subscribe-request table: only the fields used here. */
 export interface SubscribeRequestStreamEvent {
@@ -19,12 +19,16 @@ export interface SubscribeRequestStreamEvent {
  * Safe to run twice for a request: a settled request is not checked again, and
  * re-ingesting a subscribed one creates no duplicate episodes.
  */
-export function createIngestFeedHandler({ store, episodeLimit }: { store: FeedStore; episodeLimit: number }) {
+export function createIngestFeedHandler({
+  store,
+  episodeLimit,
+  now = () => new Date(),
+}: FeedHandlerOptions) {
   async function ingest(request: SubscribeRequestRecord) {
     if (request.status === 'subscribed' && request.podcastId) {
       // A retry after a failure part-way through ingesting episodes.
       const fetched = await fetchFeed(request.feedUrl)
-      if (fetched.ok) await addEpisodes(request.podcastId, fetched.feed.episodes)
+      if (fetched.ok) await storeFeed(request.podcastId, fetched)
       return
     }
     if (request.status !== 'pending') return
@@ -42,20 +46,30 @@ export function createIngestFeedHandler({ store, episodeLimit }: { store: FeedSt
         await store.settleSubscribeRequest(request.id, { status: 'alreadySubscribed', podcastId: existing.id })
         return
       }
-      podcast = await store.createPodcast({ feedUrl: request.feedUrl, ...fetched.feed.podcast })
+      podcast = await store.createPodcast({
+        feedUrl: request.feedUrl,
+        ...fetched.feed.podcast,
+        etag: null,
+        lastModified: null,
+        lastFetchedAt: now().toISOString(),
+        lastFetchError: null,
+      })
       await store.settleSubscribeRequest(request.id, { status: 'subscribed', podcastId: podcast.id })
-      await addEpisodes(podcast.id, fetched.feed.episodes)
+      await storeFeed(podcast.id, fetched)
     } catch (error) {
       if (!podcast) await store.settleSubscribeRequest(request.id, { status: 'failed', podcastId: null })
       throw error
     }
   }
 
-  async function addEpisodes(podcastId: string, episodes: ParsedEpisode[]) {
-    for (const parsed of newestFirst(episodes).slice(0, episodeLimit)) {
-      const episode: EpisodeRecord = { id: episodeId(podcastId, parsed.guid), podcastId, ...parsed }
-      if (!(await store.getEpisode(episode.id))) await store.createEpisode(episode)
-    }
+  /**
+   * Stores the episodes, then remembers the feed's version so the first refresh
+   * can ask whether it has changed. Only then: had storing failed part-way, a
+   * refresh told "unchanged" would never add the episodes left out.
+   */
+  async function storeFeed(podcastId: string, fetched: { feed: ParsedFeed; version: FeedVersion }) {
+    await storeEpisodes(store, podcastId, fetched.feed.episodes, episodeLimit)
+    if (fetched.version.etag || fetched.version.lastModified) await store.updatePodcast(podcastId, fetched.version)
   }
 
   return withUrlsRedactedFromErrors('ingestFeed', async (event: SubscribeRequestStreamEvent): Promise<void> => {
@@ -66,15 +80,4 @@ export function createIngestFeedHandler({ store, episodeLimit }: { store: FeedSt
       if (request) await ingest(request)
     }
   })
-}
-
-/** Dated episodes newest first, then undated ones in feed order (most feeds list newest first). */
-function newestFirst(episodes: ParsedEpisode[]): ParsedEpisode[] {
-  const time = (episode: ParsedEpisode) => (episode.publishedAt ? Date.parse(episode.publishedAt) : -Infinity)
-  return [...episodes].sort((a, b) => time(b) - time(a) || 0)
-}
-
-/** Stable per podcast and GUID, whatever characters the GUID contains. */
-function episodeId(podcastId: string, guid: string): string {
-  return `${podcastId}:${createHash('sha256').update(guid).digest('hex').slice(0, 32)}`
 }

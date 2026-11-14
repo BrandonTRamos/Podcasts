@@ -5,6 +5,7 @@ import { EventSourceMapping, FilterCriteria, FilterRule, StartingPosition } from
 import { auth } from './auth/resource'
 import { data } from './data/resource'
 import { ingestFeedFunction } from './functions/ingest-feed/resource'
+import { refreshFeedsFunction } from './functions/refresh-feeds/resource'
 import { subscribeFunction } from './functions/subscribe/resource'
 
 const backend = defineBackend({
@@ -12,6 +13,7 @@ const backend = defineBackend({
   data,
   subscribeFunction,
   ingestFeedFunction,
+  refreshFeedsFunction,
 })
 
 const { cfnUserPool, cfnIdentityPool } = backend.auth.resources.cfnResources
@@ -48,3 +50,7 @@ const streamMapping = new EventSourceMapping(Stack.of(requestTable), 'IngestFeed
   filters: [FilterCriteria.filter({ eventName: FilterRule.isEqual('INSERT') })],
 })
 streamMapping.node.addDependency(streamPolicy)
+
+// A failed run is not retried: the next hourly run is the retry. Lambda's
+// default of two retries would fetch every feed again for one failing podcast.
+backend.refreshFeedsFunction.resources.lambda.configureAsyncInvoke({ retryAttempts: 0 })
