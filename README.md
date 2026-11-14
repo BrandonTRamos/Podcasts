@@ -11,6 +11,8 @@ A single-user podcast web app. React + TypeScript client (Vite), AWS Amplify Gen
 npm install
 ```
 
+`npm install` runs `scripts/repair-lockfile.cjs` afterwards. Some Amplify packages publish inconsistent bundles, which leave npm 10's lockfile out of sync with what `npm ci` expects; the script writes npm's own resolved tree back to `package-lock.json`. Commit the lockfile it leaves.
+
 ## Start the sandbox (backend)
 
 Each developer gets a personal cloud sandbox: a private copy of the backend in your AWS account.

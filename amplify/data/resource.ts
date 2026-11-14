@@ -4,15 +4,9 @@ import { type ClientSchema, a, defineData } from '@aws-amplify/backend'
 // only, with no per-owner rules. Requests without a Cognito token are refused.
 const schema = a
   .schema({
+    // Only what the library screen reads. Later tickets add feed and refresh fields.
     Podcast: a.model({
-      feedUrl: a.url().required(),
-      title: a.string(),
-      author: a.string(),
-      artworkUrl: a.url(),
-      etag: a.string(),
-      lastModified: a.string(),
-      lastFetchedAt: a.datetime(),
-      lastFetchError: a.string(),
+      title: a.string().required(),
     }),
   })
   .authorization((allow) => [allow.authenticated()])

@@ -44,7 +44,7 @@ export function amplifyServices(): Services {
       async listPodcasts() {
         const { data, errors } = await client.models.Podcast.list()
         if (errors?.length) throw new Error(errors.map((e) => e.message).join('; '))
-        return data.map((podcast) => ({ id: podcast.id, title: podcast.title ?? podcast.feedUrl }))
+        return data.map((podcast) => ({ id: podcast.id, title: podcast.title }))
       },
     },
   }

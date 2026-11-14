@@ -28,3 +28,5 @@
 - **Deviation:** the client-seam test fakes auth as well as the data API, through the `Services` interface in `src/services.ts`. Using real Amplify Auth in jsdom would mean faking Cognito's SRP exchange on the wire. Suggest the spec says "only the backend (auth and data API)" instead.
 
 **2026-11-14 (agent):** The owner created the sandbox account and confirmed in the running app that sign-in reaches the empty library, the session survives a reload, and sign-out returns to sign-in. Those three are ticked. The client-seam criterion is unticked: the test fakes auth as well as the data API, so it does not meet "faking only the data API" as written. The owner still has to decide on the deviation, so the status stays `ready-for-agent`.
+
+**2026-11-14 (agent):** The owner approved rewording the client-seam criterion from "faking only the data API" to "faking sign-in and the data API". It is now ticked. All criteria are ticked and the status is `done`. This supersedes the entry above.
