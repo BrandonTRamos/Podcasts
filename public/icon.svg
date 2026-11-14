@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>TinCan</title>
+  <rect width="512" height="512" fill="#1f3a5f"/>
+  <!-- Two tin cans joined by a sagging string, inside the maskable safe zone. -->
+  <g transform="translate(256 270) scale(0.82) translate(-256 -270)">
+    <path d="M176 262 Q256 400 336 262" fill="none" stroke="#f4e9cd" stroke-width="8" stroke-linecap="round"/>
+    <g id="can" transform="translate(128 228) rotate(24)">
+      <rect x="-56" y="-60" width="112" height="120" fill="#c5cfd8"/>
+      <path d="M-24 -60 v120 M8 -60 v120 M40 -60 v120" stroke="#93a1ae" stroke-width="7"/>
+      <ellipse cx="56" cy="0" rx="19" ry="60" fill="#a9b6c2"/>
+      <ellipse cx="-56" cy="0" rx="23" ry="60" fill="#e3e9ee"/>
+      <ellipse cx="-56" cy="0" rx="15" ry="49" fill="#56636f"/>
+    </g>
+    <use href="#can" transform="translate(512 0) scale(-1 1)"/>
+  </g>
+</svg>

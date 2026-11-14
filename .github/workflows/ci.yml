@@ -1,0 +1,35 @@
+# Lint, typecheck and tests on every pull request and every push to main. A
+# failing step marks the check red. Production deploys (amplify.yml) run the same
+# lockfile check, `npm run check` and `npm run build`.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, typecheck, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Lockfile unchanged by install
+        run: git diff --exit-code package-lock.json
+      - name: Lint, typecheck, test
+        run: npm run check
+      - name: Build
+        run: npm run build
