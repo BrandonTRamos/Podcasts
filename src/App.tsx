@@ -35,6 +35,7 @@ export function App({ services }: { services: Services }) {
   return (
     <SignedInApp
       data={services.data}
+      audio={services.audio}
       onSignOut={async () => {
         try {
           await services.auth.signOut()

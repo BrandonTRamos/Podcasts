@@ -3,8 +3,8 @@ import { getCurrentUser, signIn, signOut } from 'aws-amplify/auth'
 import type { Schema } from '../amplify/data/resource'
 import type { Services, SignInResult, SubscribeStart } from './services'
 
-/** Production `Services`: Cognito for auth, the AppSync data API for data. */
-export function amplifyServices(): Services {
+/** Production auth and data: Cognito for auth, the AppSync data API for data. */
+export function amplifyServices(): Omit<Services, 'audio'> {
   const client = generateClient<Schema>()
 
   return {
@@ -62,7 +62,7 @@ export function amplifyServices(): Services {
       observeEpisodes(podcastId, observer) {
         const subscription = client.models.Episode.observeQuery({
           filter: { podcastId: { eq: podcastId } },
-          selectionSet: ['id', 'podcastId', 'title', 'publishedAt', 'durationSeconds'],
+          selectionSet: ['id', 'podcastId', 'title', 'publishedAt', 'durationSeconds', 'enclosureUrl'],
         }).subscribe({
           next: ({ items }) =>
             observer.next(
@@ -72,6 +72,7 @@ export function amplifyServices(): Services {
                 title: episode.title,
                 publishedAt: episode.publishedAt ?? null,
                 durationSeconds: episode.durationSeconds ?? null,
+                enclosureUrl: episode.enclosureUrl,
               })),
             ),
           error: () => observer.error(),

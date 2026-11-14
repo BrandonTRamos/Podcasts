@@ -9,12 +9,14 @@ export function PodcastScreen({
   podcastId,
   podcast,
   onBack,
+  onPlayEpisode,
 }: {
   data: DataApi
   podcastId: string
   /** Undefined until the library has loaded it. */
   podcast: Podcast | undefined
   onBack: () => void
+  onPlayEpisode: (episode: Episode) => void
 }) {
   const [episodes, setEpisodes] = useState<LoadState<Episode>>({ status: 'loading' })
 
@@ -54,7 +56,11 @@ export function PodcastScreen({
           <ol className="episodes" aria-label="Episodes">
             {newestFirst(episodes.items).map((episode) => (
               <li key={episode.id}>
-                <h2>{episode.title}</h2>
+                <h2>
+                  <button type="button" onClick={() => onPlayEpisode(episode)}>
+                    {episode.title}
+                  </button>
+                </h2>
                 <p className="episode-meta">
                   {episode.publishedAt && <time dateTime={episode.publishedAt}>{formatDate(episode.publishedAt)}</time>}
                   {episode.publishedAt && episode.durationSeconds !== null && ' · '}
