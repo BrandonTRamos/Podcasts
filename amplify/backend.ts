@@ -6,6 +6,7 @@ import { auth } from './auth/resource'
 import { data } from './data/resource'
 import { ingestFeedFunction } from './functions/ingest-feed/resource'
 import { refreshFeedsFunction } from './functions/refresh-feeds/resource'
+import { searchPodcastsFunction } from './functions/search-podcasts/resource'
 import { subscribeFunction } from './functions/subscribe/resource'
 
 const backend = defineBackend({
@@ -14,6 +15,7 @@ const backend = defineBackend({
   subscribeFunction,
   ingestFeedFunction,
   refreshFeedsFunction,
+  searchPodcastsFunction,
 })
 
 const { cfnUserPool, cfnIdentityPool } = backend.auth.resources.cfnResources

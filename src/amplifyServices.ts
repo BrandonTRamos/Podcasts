@@ -7,6 +7,7 @@ import {
   type Episode,
   LATEST_EPISODES_LIMIT,
   type Podcast,
+  type PodcastSearch,
   type SavedEpisodeState,
   type Services,
   type SignInResult,
@@ -176,6 +177,22 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
           error: () => observer.error(),
         })
         return () => subscription.unsubscribe()
+      },
+
+      async searchPodcasts(term): Promise<PodcastSearch> {
+        const { data, errors } = await client.queries.searchPodcasts({ term })
+        if (errors?.length || !data) throw new Error(errors?.map((e) => e.message).join('; ') ?? 'No result')
+        if (data.outcome === 'directoryUnavailable') return { outcome: 'directoryUnavailable' }
+        return {
+          outcome: 'found',
+          podcasts: data.podcasts.map((podcast) => ({
+            title: podcast.title,
+            author: podcast.author ?? null,
+            artworkUrl: podcast.artworkUrl ?? null,
+            feedUrl: podcast.feedUrl,
+            podcastId: podcast.podcastId ?? null,
+          })),
+        }
       },
 
       async subscribeToFeed(feedUrl): Promise<SubscribeStart> {

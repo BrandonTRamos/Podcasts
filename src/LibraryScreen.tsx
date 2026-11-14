@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react'
-import type { DataApi, Podcast, SubscribeRequestState } from './services'
+import type { DataApi, Podcast } from './services'
 import type { LoadState } from './SignedInApp'
+import { failureMessage, type SubscribeFailure, useSubscribe } from './subscribing'
 
 export function LibraryScreen({
   podcasts,
@@ -8,6 +9,7 @@ export function LibraryScreen({
   onOpenPodcast,
   onOpenQueue,
   onOpenLatest,
+  onOpenSearch,
   onSignOut,
 }: {
   podcasts: LoadState<Podcast>
@@ -15,12 +17,16 @@ export function LibraryScreen({
   onOpenPodcast: (podcastId: string) => void
   onOpenQueue: () => void
   onOpenLatest: () => void
+  onOpenSearch: () => void
   onSignOut: () => Promise<void>
 }) {
   return (
     <main className="library">
       <header>
         <h1>Library</h1>
+        <button type="button" onClick={onOpenSearch}>
+          Search
+        </button>
         <button type="button" onClick={onOpenLatest}>
           Latest
         </button>
@@ -67,17 +73,14 @@ export function Artwork({ url, size = 'small' }: { url: string | null; size?: 's
   return url ? <img className={className} src={url} alt="" /> : <span className={className} aria-hidden="true" />
 }
 
-/** Where a subscribe stands, as the form shows it. */
-type SubscribeState = SubscribeRequestState | { status: 'offline' } | { status: 'lost' }
-
-const errorMessages = {
+const errorMessages: Record<SubscribeFailure, string> = {
   invalidUrl: 'Enter a feed URL that starts with http:// or https://.',
   unreachable: 'Couldn’t reach that feed. Check the URL and try again.',
   notAFeed: 'That URL isn’t a podcast feed.',
   failed: 'Couldn’t subscribe. Try again.',
   offline: 'Couldn’t subscribe. Check your connection and try again.',
   lost: 'Couldn’t check on the subscription. Reload to see if it was added.',
-} as const
+}
 
 function AddPodcastForm({
   data,
@@ -89,52 +92,16 @@ function AddPodcastForm({
   onSubscribed: (podcastId: string) => void
 }) {
   const [feedUrl, setFeedUrl] = useState('')
-  const [sending, setSending] = useState(false)
-  /** The subscribe request whose background check is under way. */
-  const [requestId, setRequestId] = useState<string | null>(null)
-  const [state, setState] = useState<SubscribeState | null>(null)
-
-  useEffect(() => {
-    if (!requestId) return
-    return data.observeSubscribeRequest(requestId, {
-      next(next) {
-        setState(next)
-        if (next.status !== 'pending') setRequestId(null)
-      },
-      error() {
-        setState({ status: 'lost' })
-        setRequestId(null)
-      },
-    })
-  }, [data, requestId])
+  const { state, busy, subscribe } = useSubscribe(data)
+  const error = failureMessage(state, errorMessages)
 
   useEffect(() => {
     if (state?.status === 'subscribed') onSubscribed(state.podcastId)
   }, [state, onSubscribed])
 
-  async function handleSubmit(event: FormEvent) {
+  function handleSubmit(event: FormEvent) {
     event.preventDefault()
-    setState(null)
-    const url = feedUrl.trim()
-    if (!isHttpUrl(url)) {
-      setState({ status: 'invalidUrl' })
-      return
-    }
-
-    setSending(true)
-    try {
-      const result = await data.subscribeToFeed(url)
-      if (result.outcome === 'pending') {
-        setState({ status: 'pending' })
-        setRequestId(result.requestId)
-      } else {
-        setState(result.outcome === 'alreadySubscribed' ? { status: 'alreadySubscribed', podcastId: result.podcastId } : { status: 'invalidUrl' })
-      }
-    } catch {
-      setState({ status: 'offline' })
-    } finally {
-      setSending(false)
-    }
+    void subscribe(feedUrl)
   }
 
   return (
@@ -150,7 +117,7 @@ function AddPodcastForm({
           onChange={(e) => setFeedUrl(e.target.value)}
         />
       </label>
-      <button type="submit" disabled={sending || state?.status === 'pending'}>
+      <button type="submit" disabled={busy}>
         Subscribe
       </button>
       {state?.status === 'pending' && <p role="status">Checking the feed…</p>}
@@ -161,18 +128,7 @@ function AddPodcastForm({
             : 'You’re already subscribed to that podcast.'}
         </p>
       )}
-      {state && state.status in errorMessages && (
-        <p role="alert">{errorMessages[state.status as keyof typeof errorMessages]}</p>
-      )}
+      {error && <p role="alert">{error}</p>}
     </form>
   )
-}
-
-function isHttpUrl(value: string): boolean {
-  try {
-    const { protocol } = new URL(value)
-    return protocol === 'http:' || protocol === 'https:'
-  } catch {
-    return false
-  }
 }

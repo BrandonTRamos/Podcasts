@@ -87,6 +87,11 @@ Subscribing returns at once and finishes in the background; the client learns th
 - The podcast screen shows when the feed last refreshed, whether the latest attempt failed, and a Refresh button. The library's Latest screen lists the 50 newest episodes across all subscriptions.
 - Feed URLs are secrets: handlers never log them, and unexpected errors are logged and rethrown with URLs redacted.
 
+## Search
+
+- **Search** (`searchPodcasts` query, `search-podcasts` function, `amplify/directory/searchPodcasts.ts`): asks the iTunes Search API (no key needed) for up to 25 podcasts matching the term, and returns each one's title, author, artwork and feed URL, in the directory's order. Results with no http or https feed are left out. A result whose feed URL is already in the library carries that podcast's ID. If the directory can't be reached or gives no usable answer, the query returns `directoryUnavailable` rather than failing.
+- The client's Search screen (`src/SearchScreen.tsx`, from the library's Search button) lists the results. Subscribing to one goes through the same `subscribe` mutation as a pasted URL, with the result's feed URL, which the listener never sees. Results in the library show "Subscribed" and open the podcast.
+
 ## Pipeline
 
 There is one environment: `main` is production. Development uses the sandbox above. Work lands by pull request; nothing is committed to `main` directly.

@@ -376,3 +376,69 @@ button {
   font: inherit;
   font-variant-numeric: tabular-nums;
 }
+
+.search nav button {
+  background: none;
+  border: none;
+  padding-inline: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.search-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: end;
+  margin-block: 1rem;
+}
+
+.search-form label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.search-form input {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  min-width: 0;
+}
+
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.search-results li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto;
+  column-gap: 0.75rem;
+  align-items: center;
+  padding-block: 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.search-results .artwork {
+  grid-row: 1 / 3;
+}
+
+.search-results h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.search-result-action {
+  grid-column: 3;
+  grid-row: 1 / 3;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.search-results p[role='alert'] {
+  grid-column: 2 / -1;
+  margin: 0;
+  font-size: 0.875rem;
+}
