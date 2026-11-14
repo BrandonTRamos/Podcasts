@@ -70,7 +70,8 @@ export function SignedInApp({
   return (
     <div className={playerState.episode ? 'with-mini-player' : undefined}>
       {content}
-      {playerState.episode && !nowPlayingOpen && (
+      {/* On every screen, now playing included, where tapping it to open now playing changes nothing. */}
+      {playerState.episode && (
         <MiniPlayer state={playerState} player={player} onOpen={() => setNowPlayingOpen(true)} />
       )}
     </div>

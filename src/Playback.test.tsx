@@ -176,6 +176,9 @@ describe('the mini player and now playing', () => {
       expect(within(nowPlaying).getByRole('button', { name })).toBeEnabled()
     }
     expect(within(nowPlaying).getByRole('slider', { name: 'Seek' })).toBeEnabled()
+    expect(miniPlayer()).toHaveTextContent(first.title)
+    expect(miniPlayer().querySelector('img')).toHaveAttribute('src', show.artworkUrl)
+    expect(within(miniPlayer()).getByRole('button', { name: 'Pause' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Close now playing' }))
 
@@ -240,9 +243,11 @@ describe('an episode that fails to load', () => {
     expect(within(miniPlayer()).getByRole('alert')).toHaveTextContent(message)
     expect(within(miniPlayer()).queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument()
     await user.click(within(miniPlayer()).getByRole('button', { name: new RegExp(first.title) }))
-    expect(screen.getByRole('alert')).toHaveTextContent(message)
-    expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled()
-    expect(screen.getByRole('slider', { name: 'Seek' })).toBeDisabled()
+    const nowPlaying = screen.getByRole('main')
+    expect(within(nowPlaying).getByRole('alert')).toHaveTextContent(message)
+    expect(within(nowPlaying).getByRole('button', { name: 'Play' })).toBeDisabled()
+    expect(within(nowPlaying).getByRole('slider', { name: 'Seek' })).toBeDisabled()
+    expect(within(miniPlayer()).getByRole('alert')).toHaveTextContent(message)
 
     await user.click(screen.getByRole('button', { name: 'Close now playing' }))
     await user.click(screen.getByRole('button', { name: second.title }))

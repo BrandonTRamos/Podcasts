@@ -19,6 +19,6 @@
 ## Comments
 
 - Implemented with a player engine (`src/player.ts`) over one plain `<audio>` element injected as `Services.audio`; UI in `src/NowPlaying.tsx`; client-seam tests in `src/Playback.test.tsx` with `FakeAudio` (`src/test/fakes.ts`).
-- The mini player is hidden while the now-playing screen is open, since that screen carries the same controls and more.
+- The mini player stays visible on the now-playing screen too; tapping it there changes nothing.
 - Tapping the episode already loaded carries on from where it is (or retries it, if it failed to load), rather than restarting it.
 - Not exercised against a live publisher in a real browser from this session: no sandbox here. Ticket 08 covers the iPhone check.
