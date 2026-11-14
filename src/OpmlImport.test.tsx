@@ -153,6 +153,22 @@ describe('importing an OPML file', () => {
     expect(libraryTitles()).toEqual([])
   })
 
+  it('refuses a file over 5 MB without reading it', async () => {
+    const data = fakeDataApi()
+    data.publishFeed(feed(1).feedUrl, { title: 'Show 1' })
+    const { user } = await renderSignedIn(data)
+    const contents = opml([feed(1)])
+    const file = new File([contents, ' '.repeat(5 * 1024 * 1024)], 'huge.opml', { type: 'text/x-opml' })
+    const read = vi.spyOn(file, 'text')
+
+    await user.upload(screen.getByLabelText('Import OPML file'), file)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('That file is too big for an OPML file (over 5 MB).')
+    expect(read).not.toHaveBeenCalled()
+    act(() => data.finishSubscribing())
+    expect(libraryTitles()).toEqual([])
+  })
+
   it('says so when the OPML file lists no feeds', async () => {
     const { user } = await renderSignedIn(fakeDataApi())
 

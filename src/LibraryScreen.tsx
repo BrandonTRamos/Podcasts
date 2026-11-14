@@ -161,6 +161,7 @@ function OpmlImport({ state, onImport }: { state: ImportState; onImport: (file: 
           disabled={busy}
         />
       </label>
+      {state.status === 'tooLarge' && <p role="alert">That file is too big for an OPML file (over 5 MB).</p>}
       {state.status === 'invalid' && <p role="alert">That file isn’t a valid OPML file.</p>}
       {state.status === 'empty' && <p role="alert">That OPML file lists no podcast feeds.</p>}
       {(state.status === 'importing' || state.status === 'finished') && <ImportSummary state={state} />}

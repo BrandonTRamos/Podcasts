@@ -26,6 +26,8 @@ export function createUnsubscribeHandler({ store }: { store: FeedStore }) {
   }
 
   return withUrlsRedactedFromErrors('unsubscribe', async ({ arguments: { podcastId } }: UnsubscribeEvent) => {
+    // Without an ID the data API drops the `podcastId` filter, and every episode and state would be listed and deleted.
+    if (typeof podcastId !== 'string' || podcastId.trim() === '') throw new Error('unsubscribe needs a podcast ID')
     await removeEpisodesAndStates(podcastId)
     await store.deletePodcast(podcastId)
     try {

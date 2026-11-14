@@ -94,6 +94,26 @@ describe('the unsubscribe mutation', () => {
     expect(data.podcast(podcastId)).toBeUndefined()
   })
 
+  it.each([
+    ['a missing', undefined],
+    ['an empty', ''],
+    ['a blank', '   '],
+  ])('refuses %s podcast ID before listing or deleting anything', async (_case, podcastId) => {
+    const { data, unsubscribe } = await libraryOfTwo()
+    const before = { podcasts: data.podcasts(), states: data.episodeStates() }
+    const touched = (['listEpisodeIds', 'listEpisodeStateIds', 'deleteEpisode', 'deleteEpisodeState', 'deletePodcast'] as const).map(
+      (method) => vi.spyOn(data.store, method),
+    )
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(unsubscribe(podcastId as unknown as string)).rejects.toThrow('podcast ID')
+
+    touched.forEach((spy) => expect(spy).not.toHaveBeenCalled())
+    expect(data.podcasts()).toEqual(before.podcasts)
+    expect(data.episodeStates()).toEqual(before.states)
+    before.podcasts.forEach((podcast) => expect(data.episodesOf(podcast.id).length).toBeGreaterThan(0))
+  })
+
   it('keeps the podcast in the library if it fails part-way, so trying again finishes the job', async () => {
     const { data, unsubscribe, podcastId } = await libraryOfTwo()
     const [, secondEpisode] = data.episodesOf(podcastId)

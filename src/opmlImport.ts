@@ -13,6 +13,9 @@ const IMPORT_CONCURRENCY = 4
  */
 export const FEED_DEADLINE_MS = 10 * 60_000
 
+/** Larger files are refused unread. A real export of hundreds of podcasts is well under 1 MB. */
+export const MAX_OPML_BYTES = 5 * 1024 * 1024
+
 /** How one feed of an import ended. */
 export type ImportOutcome = 'added' | 'skipped' | 'failed'
 
@@ -23,7 +26,7 @@ interface ImportResult {
 }
 
 export type ImportState =
-  | { status: 'idle' | 'reading' | 'invalid' | 'empty' }
+  | { status: 'idle' | 'reading' | 'tooLarge' | 'invalid' | 'empty' }
   | { status: 'importing' | 'finished'; results: ImportResult[] }
 
 const outcomeOf: Record<Awaited<ReturnType<typeof subscribeAndSettle>>['status'], ImportOutcome> = {
@@ -59,6 +62,7 @@ export function useOpmlImport(data: Pick<DataApi, 'subscribeToFeed' | 'observeSu
       if (running.current) return
       running.current = true
       try {
+        if (file.size > MAX_OPML_BYTES) return setState({ status: 'tooLarge' })
         setState({ status: 'reading' })
         let feeds: OpmlFeed[] | null
         try {
