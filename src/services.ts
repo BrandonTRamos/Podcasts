@@ -1,7 +1,8 @@
 /**
- * The client's boundary with the backend. The UI depends only on these
- * interfaces; `amplifyServices.ts` implements them against Cognito and the
- * data API, and tests substitute in-memory fakes.
+ * The client's boundary with the outside world: the backend and the browser's
+ * audio element. The UI depends only on these interfaces; `amplifyServices.ts`
+ * implements auth and data against Cognito and the data API, `main.tsx` passes
+ * a plain `<audio>` element, and tests substitute in-memory fakes.
  */
 
 export interface User {
@@ -30,6 +31,8 @@ export interface Episode {
   title: string
   publishedAt: string | null
   durationSeconds: number | null
+  /** The audio file on the publisher's host. Streamed from there directly. */
+  enclosureUrl: string
 }
 
 /** What the subscribe call says straight away. */
@@ -61,7 +64,27 @@ export interface DataApi {
   observeSubscribeRequest(requestId: string, observer: Observer<SubscribeRequestState>): () => void
 }
 
+/**
+ * The parts of a plain HTML audio element the player uses. Playback goes
+ * through an `<audio>` element, never the Web Audio API, which iOS suspends
+ * in the background.
+ */
+export interface AudioElement extends EventTarget {
+  src: string
+  currentTime: number
+  /** NaN until the file's metadata has loaded; Infinity for an endless stream. */
+  readonly duration: number
+  readonly paused: boolean
+  play(): Promise<void>
+  pause(): void
+  /** With `removeAttribute('src')`, unloads the file and stops fetching it. */
+  load(): void
+  removeAttribute(name: 'src'): void
+}
+
 export interface Services {
   auth: AuthService
   data: DataApi
+  /** The one audio element the app plays through, for its whole lifetime. */
+  audio: AudioElement
 }

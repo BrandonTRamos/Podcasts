@@ -4,14 +4,21 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Tapping an episode starts it streaming from the publisher's URL
-- [ ] Play and pause work, and a seek bar shows elapsed time and duration
-- [ ] Skip back moves 15 seconds and skip forward moves 30 seconds
-- [ ] A mini player with title, artwork and play/pause stays visible on every screen while something is loaded
-- [ ] A now-playing screen shows artwork and the full set of controls
-- [ ] Starting another episode replaces the current one
-- [ ] An episode that fails to load shows a clear message and leaves the app usable
-- [ ] Playback uses a plain audio element, not the Web Audio API
-- [ ] Client-seam tests cover these behaviours with a faked audio element
+- [x] Tapping an episode starts it streaming from the publisher's URL
+- [x] Play and pause work, and a seek bar shows elapsed time and duration
+- [x] Skip back moves 15 seconds and skip forward moves 30 seconds
+- [x] A mini player with title, artwork and play/pause stays visible on every screen while something is loaded
+- [x] A now-playing screen shows artwork and the full set of controls
+- [x] Starting another episode replaces the current one
+- [x] An episode that fails to load shows a clear message and leaves the app usable
+- [x] Playback uses a plain audio element, not the Web Audio API
+- [x] Client-seam tests cover these behaviours with a faked audio element
+
+## Comments
+
+- Implemented with a player engine (`src/player.ts`) over one plain `<audio>` element injected as `Services.audio`; UI in `src/NowPlaying.tsx`; client-seam tests in `src/Playback.test.tsx` with `FakeAudio` (`src/test/fakes.ts`).
+- The mini player is hidden while the now-playing screen is open, since that screen carries the same controls and more.
+- Tapping the episode already loaded carries on from where it is (or retries it, if it failed to load), rather than restarting it.
+- Not exercised against a live publisher in a real browser from this session: no sandbox here. Ticket 08 covers the iPhone check.

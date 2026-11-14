@@ -8,6 +8,15 @@ export function formatDuration(totalSeconds: number): string {
   return minutes === 0 ? `${hours} hr` : `${hours} hr ${minutes} min`
 }
 
+/** A playback clock: "0:05", "12:30", "1:02:03". */
+export function formatClock(totalSeconds: number): string {
+  const seconds = Math.floor(Math.max(totalSeconds, 0))
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = String(seconds % 60).padStart(2, '0')
+  return hours > 0 ? `${hours}:${String(minutes).padStart(2, '0')}:${secs}` : `${minutes}:${secs}`
+}
+
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
 
 /** A publish date in the listener's locale and time zone. */

@@ -151,3 +151,113 @@ button {
   opacity: 0.7;
   font-size: 0.875rem;
 }
+
+.episodes h2 button {
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.artwork-hero {
+  width: min(18rem, 70vw);
+  height: min(18rem, 70vw);
+  margin-inline: auto;
+}
+
+/* Room at the foot of each screen so the mini player hides nothing. */
+.with-mini-player main {
+  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+}
+
+.mini-player {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem max(1rem, calc((100% - 40rem) / 2 + 1rem));
+  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+  background: Canvas;
+  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.mini-player-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.mini-player-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-player .player-error {
+  flex: 1;
+  font-size: 0.875rem;
+}
+
+.player-error {
+  margin: 0;
+}
+
+.play-pause {
+  min-width: 3rem;
+}
+
+.now-playing {
+  display: grid;
+  gap: 0.75rem;
+  text-align: center;
+}
+
+.now-playing nav {
+  text-align: left;
+}
+
+.now-playing nav button {
+  background: none;
+  border: none;
+  padding-inline: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.now-playing h1 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.seek-bar {
+  width: 100%;
+}
+
+.seek-times {
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+  font-size: 0.875rem;
+}
+
+.transport {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+}

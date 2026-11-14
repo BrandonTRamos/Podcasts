@@ -52,7 +52,7 @@ export function LibraryScreen({
   )
 }
 
-export function Artwork({ url, size = 'small' }: { url: string | null; size?: 'small' | 'large' }) {
+export function Artwork({ url, size = 'small' }: { url: string | null; size?: 'small' | 'large' | 'hero' }) {
   const className = `artwork artwork-${size}`
   return url ? <img className={className} src={url} alt="" /> : <span className={className} aria-hidden="true" />
 }

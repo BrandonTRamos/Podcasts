@@ -2,12 +2,12 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
-import { fakeAuth, fakeDataApi } from './test/fakes'
+import { FakeAudio, fakeAuth, fakeDataApi } from './test/fakes'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 
 function renderApp(auth = fakeAuth(owner)) {
-  const { unmount } = render(<App services={{ auth, data: fakeDataApi() }} />)
+  const { unmount } = render(<App services={{ auth, data: fakeDataApi(), audio: new FakeAudio() }} />)
   return { unmount, user: userEvent.setup() }
 }
 

@@ -2,7 +2,7 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
-import { fakeAuth, fakeDataApi } from './test/fakes'
+import { FakeAudio, fakeAuth, fakeDataApi } from './test/fakes'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const feedUrl = 'https://feeds.example.com/show.xml'
@@ -16,7 +16,7 @@ const show = {
 async function renderSignedIn(data = fakeDataApi()) {
   const auth = fakeAuth(owner)
   await auth.signIn(owner.email, owner.password)
-  render(<App services={{ auth, data }} />)
+  render(<App services={{ auth, data, audio: new FakeAudio() }} />)
   await screen.findByRole('heading', { name: 'Library' })
   return { data, user: userEvent.setup() }
 }

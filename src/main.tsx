@@ -19,7 +19,7 @@ if (outputs) {
   Amplify.configure(outputs)
   root.render(
     <StrictMode>
-      <App services={amplifyServices()} />
+      <App services={{ ...amplifyServices(), audio: new Audio() }} />
     </StrictMode>,
   )
 } else {

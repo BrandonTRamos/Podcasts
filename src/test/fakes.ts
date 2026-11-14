@@ -1,4 +1,5 @@
 import type {
+  AudioElement,
   AuthService,
   DataApi,
   Episode,
@@ -138,12 +139,110 @@ export function fakeDataApi() {
     podcastIdFor(feedUrl: string) {
       return podcasts.find((podcast) => podcast.feedUrl === feedUrl)?.id
     },
-    /** Delivers ingested episodes, as the background step does after adding the podcast. */
-    ingest(podcastId: string, newEpisodes: Omit<Episode, 'podcastId' | 'id'>[]) {
-      for (const episode of newEpisodes) episodes.push({ id: `episode-${nextId++}`, podcastId, ...episode })
+    /**
+     * Delivers ingested episodes, as the background step does after adding the
+     * podcast. An episode given no enclosure URL gets one of its own.
+     */
+    ingest(
+      podcastId: string,
+      newEpisodes: (Omit<Episode, 'podcastId' | 'id' | 'enclosureUrl'> & Partial<Pick<Episode, 'enclosureUrl'>>)[],
+    ) {
+      for (const episode of newEpisodes) {
+        const id = `episode-${nextId++}`
+        episodes.push({ id, podcastId, enclosureUrl: `https://media.example.com/${id}.mp3`, ...episode })
+      }
       episodeListeners.get(podcastId)?.forEach((listener) => listener.next(episodesOf(podcastId)))
     },
   })
 }
 
 export type FakeDataApi = ReturnType<typeof fakeDataApi>
+
+/**
+ * Stands in for a plain `<audio>` element. Like the real one, setting `src`
+ * starts a fresh load, `play()` and `pause()` fire `play` and `pause`, and a
+ * failed load fires `error` without pausing. Tests drive what the network,
+ * decoder and browser would: `loadMetadata`, `progressTo`, `failToLoad`,
+ * `refuseNextPlay`.
+ */
+export class FakeAudio extends EventTarget implements AudioElement {
+  #src = ''
+  #currentTime = 0
+  duration = NaN
+  paused = true
+  #refuseNextPlay = false
+
+  get src() {
+    return this.#src
+  }
+
+  set src(url: string) {
+    this.#src = url
+    this.paused = true
+    this.#currentTime = 0
+    this.duration = NaN
+    this.dispatchEvent(new Event('emptied'))
+    this.dispatchEvent(new Event('durationchange'))
+    this.dispatchEvent(new Event('timeupdate'))
+  }
+
+  get currentTime() {
+    return this.#currentTime
+  }
+
+  set currentTime(seconds: number) {
+    this.#currentTime = Number.isFinite(this.duration) ? Math.min(Math.max(seconds, 0), this.duration) : Math.max(seconds, 0)
+    this.dispatchEvent(new Event('timeupdate'))
+  }
+
+  play() {
+    if (this.#refuseNextPlay) {
+      this.#refuseNextPlay = false
+      return Promise.reject(new DOMException('Not allowed', 'NotAllowedError'))
+    }
+    if (!this.#src) return Promise.reject(new DOMException('No source', 'NotSupportedError'))
+    if (this.paused) {
+      this.paused = false
+      this.dispatchEvent(new Event('play'))
+    }
+    return Promise.resolve()
+  }
+
+  pause() {
+    if (this.paused) return
+    this.paused = true
+    this.dispatchEvent(new Event('pause'))
+  }
+
+  removeAttribute(name: string) {
+    if (name === 'src') this.#src = ''
+  }
+
+  /** Restarts loading: with no `src`, this unloads and stops any download. */
+  load() {
+    this.src = this.#src
+  }
+
+  /** The browser refuses the next `play()`, as iOS does outside a user gesture. */
+  refuseNextPlay() {
+    this.#refuseNextPlay = true
+  }
+
+  /** The file's metadata arrives: its real length is now known. */
+  loadMetadata(durationSeconds: number) {
+    this.duration = durationSeconds
+    this.dispatchEvent(new Event('durationchange'))
+    this.dispatchEvent(new Event('loadedmetadata'))
+  }
+
+  /** Playback has reached this point. */
+  progressTo(seconds: number) {
+    this.#currentTime = seconds
+    this.dispatchEvent(new Event('timeupdate'))
+  }
+
+  /** The publisher's file can't be fetched or decoded. */
+  failToLoad() {
+    this.dispatchEvent(new Event('error'))
+  }
+}
