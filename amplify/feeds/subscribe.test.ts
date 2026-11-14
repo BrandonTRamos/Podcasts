@@ -60,6 +60,17 @@ describe('subscribe by feed URL', () => {
     expect(data.takeRefreshRequests()).toEqual([])
   })
 
+  it('leaves nothing in the library when the background ingest cannot be started', async () => {
+    fakeHttp({ [feedUrl]: fixture('show.xml') })
+    const { data, subscribe } = setup()
+    data.store.requestRefresh = async () => {
+      throw new Error('Throttled')
+    }
+
+    await expect(subscribe(feedUrl)).rejects.toThrow()
+    expect(data.podcasts()).toEqual([])
+  })
+
   it('says when the feed is already in the library, and creates no duplicate', async () => {
     fakeHttp({ [feedUrl]: fixture('show.xml') })
     const { data, subscribe } = setup()

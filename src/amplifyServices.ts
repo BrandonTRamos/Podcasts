@@ -43,7 +43,7 @@ export function amplifyServices(): Services {
     data: {
       observePodcasts(observer) {
         const subscription = client.models.Podcast.observeQuery({
-          selectionSet: ['id', 'title', 'author', 'artworkUrl', 'lastFetchedAt'],
+          selectionSet: ['id', 'title', 'author', 'artworkUrl', 'lastFetchedAt', 'lastFetchError'],
         }).subscribe({
           next: ({ items }) =>
             observer.next(
@@ -53,6 +53,7 @@ export function amplifyServices(): Services {
                 author: podcast.author ?? null,
                 artworkUrl: podcast.artworkUrl ?? null,
                 lastFetchedAt: podcast.lastFetchedAt ?? null,
+                lastFetchError: podcast.lastFetchError ?? null,
               })),
             ),
           error: () => observer.error(),

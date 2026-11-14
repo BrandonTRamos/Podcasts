@@ -71,7 +71,13 @@ npm run test:watch  # tests in watch mode
 Two seams, one per deployable, run as two Vitest projects (`vitest.config.ts`):
 
 - **client** (`src/**/*.test.{ts,tsx}`, jsdom): renders `<App>` and drives it as a user would with Testing Library. The UI talks to the backend only through the `Services` interface in `src/services.ts`; tests pass in-memory fakes from `src/test/fakes.ts`, and production passes `amplifyServices()`.
-- **backend** (`amplify/**/*.test.ts`, node): invokes function handlers with an event. Real network access is refused by `amplify/test/setup.ts`; a test fakes outbound HTTP with `vi.stubGlobal('fetch', ...)`.
+- **backend** (`amplify/**/*.test.ts`, node): invokes function handlers with an event. Real network access is refused by `amplify/test/setup.ts`. Tests fake outbound HTTP with `fakeHttp` and the data store with `fakeFeedStore` (both in `amplify/test/fakes.ts`), and use fixture feeds from `amplify/test/fixtures/`. Handlers are built by factories in `amplify/feeds/` that take the store; `amplify/functions/*/handler.ts` wires in the real one (`amplifyFeedStore.ts`, the AppSync data API).
+
+## Feeds
+
+- **Subscribe** (`subscribe` mutation, `amplify/feeds/subscribe.ts`): accepts only http and https URLs, checks the library for the same feed, fetches and parses it once, adds the podcast, then starts a background refresh. See `docs/adr/0001-subscribe-checks-the-feed-before-returning.md`.
+- **Refresh** (async `refreshPodcast` mutation, `amplify/feeds/refreshPodcast.ts`): fetches the feed and adds the newest `EPISODE_LIMIT` episodes (100; set in `amplify/functions/refresh-podcast/resource.ts`). Episode IDs derive from the podcast and the item's GUID (or enclosure URL), so re-ingesting creates no duplicates.
+- Feed URLs are secrets: handlers never log them, and unexpected errors are logged and rethrown with URLs redacted.
 
 `src/installable.test.ts` (client project) checks what a browser reads to install the app to a home screen: the manifest, the `<head>` tags and the icon files in `public/`.
 

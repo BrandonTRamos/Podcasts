@@ -41,6 +41,11 @@ export async function amplifyFeedStore(): Promise<FeedStore> {
       throwIfErrors(errors)
     },
 
+    async deletePodcast(id) {
+      const { errors } = await client.models.Podcast.delete({ id })
+      throwIfErrors(errors)
+    },
+
     async getEpisode(id) {
       const { data, errors } = await client.models.Episode.get({ id })
       throwIfErrors(errors)

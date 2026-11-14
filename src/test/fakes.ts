@@ -82,7 +82,7 @@ export function fakeDataApi() {
       if (notFeeds.has(feedUrl)) return { outcome: 'notAFeed' }
       const feed = feeds.get(feedUrl)
       if (!feed) return { outcome: 'unreachable' }
-      const podcast = { id: `podcast-${nextId++}`, feedUrl, ...feed, lastFetchedAt: null }
+      const podcast = { id: `podcast-${nextId++}`, feedUrl, ...feed, lastFetchedAt: null, lastFetchError: null }
       podcasts.push(podcast)
       notifyPodcasts()
       return { outcome: 'subscribed', podcastId: podcast.id }
@@ -104,6 +104,12 @@ export function fakeDataApi() {
     },
     podcastIdFor(feedUrl: string) {
       return podcasts.find((podcast) => podcast.feedUrl === feedUrl)?.id
+    },
+    /** Records a failed ingest against the podcast, as the background refresh does. */
+    failIngest(podcastId: string, message: string) {
+      const podcast = podcasts.find((p) => p.id === podcastId)
+      if (podcast) podcast.lastFetchError = message
+      notifyPodcasts()
     },
     /** Delivers ingested episodes, as the background refresh does after subscribing. */
     ingest(podcastId: string, newEpisodes: Omit<Episode, 'podcastId' | 'id'>[]) {

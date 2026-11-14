@@ -26,6 +26,9 @@ export function fakeFeedStore() {
       if (!existing) throw new Error(`No podcast ${id}`)
       podcasts.set(id, { ...existing, ...changes })
     },
+    async deletePodcast(id) {
+      podcasts.delete(id)
+    },
     async getEpisode(id) {
       return episodes.get(id) ?? null
     },
@@ -62,7 +65,7 @@ export function fakeHttp(responses: Record<string, FakeResponse | (() => FakeRes
     if (entry === undefined) throw new TypeError('fetch failed')
     const response = typeof entry === 'function' ? entry() : entry
     const { status = 200, body = '', headers = {} } = typeof response === 'string' ? { body: response } : response
-    return new Response(status === 304 ? null : body, { status, headers })
+    return new Response(body, { status, headers })
   })
   return { requested }
 }

@@ -49,7 +49,7 @@ export function PodcastScreen({
       {episodes.status === 'failed' && <p role="alert">Couldn’t load the episodes.</p>}
       {episodes.status === 'loaded' &&
         (episodes.items.length === 0 ? (
-          podcast && <p>{podcast.lastFetchedAt ? 'No episodes.' : 'Fetching episodes…'}</p>
+          podcast && <NoEpisodes podcast={podcast} />
         ) : (
           <ol className="episodes" aria-label="Episodes">
             {newestFirst(episodes.items).map((episode) => (
@@ -66,6 +66,11 @@ export function PodcastScreen({
         ))}
     </main>
   )
+}
+
+function NoEpisodes({ podcast }: { podcast: Podcast }) {
+  if (podcast.lastFetchError) return <p role="alert">Couldn’t fetch episodes. {podcast.lastFetchError}</p>
+  return <p>{podcast.lastFetchedAt ? 'No episodes.' : 'Fetching episodes…'}</p>
 }
 
 /** Dated episodes newest first; undated ones last. */

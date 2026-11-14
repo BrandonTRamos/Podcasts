@@ -26,8 +26,8 @@ async function subscribeTo(user: ReturnType<typeof userEvent.setup>, url: string
   await user.click(screen.getByRole('button', { name: 'Subscribe' }))
 }
 
-function libraryItems() {
-  return within(screen.getByRole('list', { name: 'Podcasts' })).getAllByRole('listitem')
+async function libraryItems() {
+  return within(await screen.findByRole('list', { name: 'Podcasts' })).getAllByRole('listitem')
 }
 
 function episodeItems() {
@@ -44,7 +44,7 @@ describe('subscribing by feed URL', () => {
     expect(await screen.findByRole('heading', { name: 'The Example Show' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Back to library' }))
 
-    const [item] = libraryItems()
+    const [item] = await libraryItems()
     expect(item).toHaveTextContent('The Example Show')
     expect(item).toHaveTextContent('Example Media')
     expect(item.querySelector('img')).toHaveAttribute('src', show.artworkUrl)
@@ -70,6 +70,19 @@ describe('subscribing by feed URL', () => {
     expect(screen.queryByText('Fetching episodes…')).not.toBeInTheDocument()
   })
 
+  it('says so when the first ingest fails, rather than fetching forever', async () => {
+    const data = fakeDataApi()
+    data.publishFeed(feedUrl, show)
+    const { user } = await renderSignedIn(data)
+    await subscribeTo(user, feedUrl)
+    await screen.findByText('Fetching episodes…')
+
+    act(() => data.failIngest(data.podcastIdFor(feedUrl)!, 'The feed could not be reached.'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t fetch episodes. The feed could not be reached.')
+    expect(screen.queryByText('Fetching episodes…')).not.toBeInTheDocument()
+  })
+
   it('says when the feed is already in the library, and adds no duplicate', async () => {
     const data = fakeDataApi()
     data.publishFeed(feedUrl, show)
@@ -80,7 +93,7 @@ describe('subscribing by feed URL', () => {
     await subscribeTo(user, feedUrl)
 
     expect(await screen.findByRole('status')).toHaveTextContent('You’re already subscribed to The Example Show.')
-    expect(libraryItems()).toHaveLength(1)
+    expect(await libraryItems()).toHaveLength(1)
   })
 })
 
@@ -129,7 +142,7 @@ describe('browsing a podcast', () => {
     ])
     const { user } = await renderSignedIn(data)
 
-    await user.click(within(libraryItems()[0]).getByRole('button', { name: /The Example Show/ }))
+    await user.click(within((await libraryItems())[0]).getByRole('button', { name: /The Example Show/ }))
 
     expect(await screen.findByRole('heading', { name: 'The Example Show' })).toBeInTheDocument()
     const items = episodeItems()
@@ -153,11 +166,11 @@ describe('browsing a podcast', () => {
     data.ingest(data.podcastIdFor(feedUrl)!, [])
     const { user } = await renderSignedIn(data)
 
-    await user.click(within(libraryItems()[0]).getByRole('button', { name: /The Example Show/ }))
+    await user.click(within((await libraryItems())[0]).getByRole('button', { name: /The Example Show/ }))
     expect(await screen.findByText('No episodes.')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Back to library' }))
 
     expect(await screen.findByRole('heading', { name: 'Library' })).toBeInTheDocument()
-    expect(libraryItems()).toHaveLength(1)
+    expect(await libraryItems()).toHaveLength(1)
   })
 })

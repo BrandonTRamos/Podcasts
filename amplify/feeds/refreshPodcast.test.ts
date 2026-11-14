@@ -159,17 +159,17 @@ describe('ingesting feeds as they are found in the wild', () => {
 })
 
 describe('the episode cap', () => {
-  it('ingests only the most recent 100 episodes of a long feed by default', async () => {
-    fakeHttp({ [feedUrl]: feedWithEpisodes(250) })
+  it('ingests only the most recent 100 episodes of a feed with thousands by default', async () => {
+    fakeHttp({ [feedUrl]: feedWithEpisodes(3000) })
     const { data, subscribeAndIngest } = setup()
 
     const podcastId = await subscribeAndIngest()
 
     const titles = data.episodesOf(podcastId).map((episode) => episode.title)
     expect(titles).toHaveLength(100)
-    expect(titles).toContain('Episode 250')
-    expect(titles).toContain('Episode 151')
-    expect(titles).not.toContain('Episode 150')
+    expect(titles).toContain('Episode 3000')
+    expect(titles).toContain('Episode 2901')
+    expect(titles).not.toContain('Episode 2900')
   })
 
   it('takes a configured cap', async () => {

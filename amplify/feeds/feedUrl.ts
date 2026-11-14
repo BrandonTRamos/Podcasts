@@ -14,7 +14,8 @@ export function normaliseFeedUrl(input: string): string | null {
   return url.href
 }
 
-const URL_PATTERN = /https?:(?:\\?\/){2}[^\s"'<>]*/gi
+// Plain, JSON-escaped (https:\/\/) and percent-encoded (https%3A%2F%2F) forms.
+const URL_PATTERN = /https?(?::(?:\\?\/){2}|%3A%2F%2F)[^\s"'<>]*/gi
 
 /**
  * Wraps a handler so that an unexpected failure (from the data store, say) is

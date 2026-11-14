@@ -24,6 +24,8 @@ export interface Podcast {
   artworkUrl: string | null
   /** When episodes were last ingested. Null until the first ingest after subscribing finishes. */
   lastFetchedAt: string | null
+  /** Why the last refresh failed, or null if it succeeded. */
+  lastFetchError: string | null
 }
 
 export interface Episode {

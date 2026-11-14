@@ -39,7 +39,13 @@ export function createSubscribeHandler({ store }: { store: FeedStore }) {
       lastFetchedAt: null,
       lastFetchError: null,
     })
-    await store.requestRefresh(podcast.id)
+    try {
+      await store.requestRefresh(podcast.id)
+    } catch (error) {
+      // A podcast whose episodes will never arrive is broken: take it back out.
+      await store.deletePodcast(podcast.id)
+      throw error
+    }
     return { outcome: 'subscribed', podcastId: podcast.id }
   })
 }

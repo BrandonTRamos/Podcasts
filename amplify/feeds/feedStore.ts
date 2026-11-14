@@ -40,6 +40,7 @@ export interface FeedStore {
   getPodcast(id: string): Promise<PodcastRecord | null>
   createPodcast(podcast: NewPodcast): Promise<PodcastRecord>
   updatePodcast(id: string, changes: PodcastChanges): Promise<void>
+  deletePodcast(id: string): Promise<void>
   getEpisode(id: string): Promise<EpisodeRecord | null>
   /** Fails if an episode with this ID already exists. */
   createEpisode(episode: EpisodeRecord): Promise<void>

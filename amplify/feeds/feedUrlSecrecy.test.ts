@@ -58,18 +58,18 @@ describe('feed URLs are not written to logs', () => {
 
   it('when the data store fails with the URL in its error, which is not passed on either', async () => {
     fakeHttp({ [feedUrl]: fixture('show.xml') })
-    const { data, subscribe, refresh } = setup()
-    const { podcastId } = await subscribe({ arguments: { feedUrl } })
     const leakyFailure = async (record: object): Promise<never> => {
-      throw new Error(`Write failed for input ${JSON.stringify(record)} (${feedUrl})`)
+      throw new Error(`Write failed for ${JSON.stringify(record)} (${feedUrl}, ${encodeURIComponent(feedUrl)})`)
     }
-    data.store.createPodcast = leakyFailure
-    data.store.findPodcastByFeedUrl = async () => null
-    data.store.createEpisode = leakyFailure
+    const subscribing = setup()
+    subscribing.data.store.createPodcast = leakyFailure
+    const refreshing = setup()
+    const { podcastId } = await refreshing.subscribe({ arguments: { feedUrl } })
+    refreshing.data.store.createEpisode = leakyFailure
 
     const failures = await Promise.allSettled([
-      subscribe({ arguments: { feedUrl } }),
-      refresh({ arguments: { podcastId: podcastId! } }),
+      subscribing.subscribe({ arguments: { feedUrl } }),
+      refreshing.refresh({ arguments: { podcastId: podcastId! } }),
     ])
 
     for (const failure of failures) {
