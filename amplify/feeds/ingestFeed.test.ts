@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { fakeHttp, fixture } from '../test/fakes'
-import { subscribeFlow } from '../test/subscribeFlow'
+import { fakeHttp, feedWithEpisodes, fixture } from '../test/fakes'
+import { feedHandlers } from '../test/feedHandlers'
 
 const feedUrl = 'https://feeds.example.com/show.xml'
 
 describe('the background step of subscribing', () => {
   it('adds the podcast with title, author and artwork, and marks the request subscribed', async () => {
     fakeHttp({ [feedUrl]: fixture('show.xml') })
-    const { data, subscribeAndIngest } = subscribeFlow()
+    const { data, subscribeAndIngest } = feedHandlers()
 
     const request = await subscribeAndIngest(feedUrl)
 
@@ -18,14 +18,27 @@ describe('the background step of subscribing', () => {
         title: 'The Example Show',
         author: 'Example Media',
         artworkUrl: 'https://cdn.example.com/show/artwork.jpg',
+        etag: null,
+        lastModified: null,
+        lastFetchedAt: '2026-11-14T09:00:00.000Z',
+        lastFetchError: null,
       },
     ])
     expect(request).toMatchObject({ status: 'subscribed', podcastId: data.podcasts()[0].id })
   })
 
+  it('remembers the feed’s version, so the first refresh can ask whether it changed', async () => {
+    fakeHttp({ [feedUrl]: { body: fixture('show.xml'), headers: { ETag: '"v1"', 'Last-Modified': 'Tue, 10 Nov 2026 08:00:00 GMT' } } })
+    const { data, subscribeAndIngest } = feedHandlers()
+
+    await subscribeAndIngest(feedUrl)
+
+    expect(data.podcasts()[0]).toMatchObject({ etag: '"v1"', lastModified: 'Tue, 10 Nov 2026 08:00:00 GMT' })
+  })
+
   it('stores each episode with title, date, duration, audio and show notes', async () => {
     fakeHttp({ [feedUrl]: fixture('show.xml') })
-    const { data, subscribeAndIngest } = subscribeFlow()
+    const { data, subscribeAndIngest } = feedHandlers()
 
     const { podcastId } = await subscribeAndIngest(feedUrl)
 
@@ -65,7 +78,7 @@ describe('the background step of subscribing', () => {
     ['an empty body', { [feedUrl]: '' }, 'notAFeed'],
   ] as const)('marks the request failed for %s and leaves nothing in the library', async (_case, responses, status) => {
     fakeHttp(responses)
-    const { data, subscribeAndIngest } = subscribeFlow()
+    const { data, subscribeAndIngest } = feedHandlers()
 
     expect(await subscribeAndIngest(feedUrl)).toMatchObject({ status, podcastId: null })
     expect(data.podcasts()).toEqual([])
@@ -73,7 +86,7 @@ describe('the background step of subscribing', () => {
 
   it('marks the request failed and leaves nothing in the library when the data store fails', async () => {
     fakeHttp({ [feedUrl]: fixture('show.xml') })
-    const { data, subscribe, runBackground } = subscribeFlow()
+    const { data, subscribe, runBackground } = feedHandlers()
     data.store.createPodcast = async () => {
       throw new Error('Throttled')
     }
@@ -87,7 +100,7 @@ describe('the background step of subscribing', () => {
 
   it('adds one podcast when two requests for the same feed are pending at once', async () => {
     fakeHttp({ [feedUrl]: fixture('show.xml') })
-    const { data, subscribe, runBackground } = subscribeFlow()
+    const { data, subscribe, runBackground } = feedHandlers()
     const first = await subscribe(feedUrl)
     const second = await subscribe(feedUrl)
 
@@ -105,7 +118,7 @@ describe('the background step of subscribing', () => {
 describe('ingesting the same feed twice', () => {
   it('creates no duplicates when the stream delivers a request again', async () => {
     fakeHttp({ [feedUrl]: fixture('show.xml') })
-    const { data, ingest, subscribe } = subscribeFlow()
+    const { data, ingest, subscribe } = feedHandlers()
     await subscribe(feedUrl)
     const event = data.takeStreamEvent()
 
@@ -118,7 +131,7 @@ describe('ingesting the same feed twice', () => {
 
   it('finishes the episodes, without duplicates, when retried after failing part-way', async () => {
     fakeHttp({ [feedUrl]: fixture('show.xml') })
-    const { data, ingest, subscribe } = subscribeFlow()
+    const { data, ingest, subscribe } = feedHandlers()
     await subscribe(feedUrl)
     const event = data.takeStreamEvent()
     const createEpisode = data.store.createEpisode
@@ -139,7 +152,7 @@ describe('ingesting the same feed twice', () => {
 describe('ingesting feeds as they are found in the wild', () => {
   it('ingests missing durations and GUIDs, the iTunes namespace, unknown date formats and odd markup', async () => {
     fakeHttp({ [feedUrl]: fixture('messy.xml') })
-    const { data, subscribeAndIngest } = subscribeFlow()
+    const { data, subscribeAndIngest } = feedHandlers()
 
     const { podcastId } = await subscribeAndIngest(feedUrl)
 
@@ -198,7 +211,7 @@ describe('ingesting feeds as they are found in the wild', () => {
 describe('the first-ingest cap', () => {
   it('ingests only the most recent 100 episodes of a feed with thousands by default', async () => {
     fakeHttp({ [feedUrl]: feedWithEpisodes(3000) })
-    const { data, subscribeAndIngest } = subscribeFlow()
+    const { data, subscribeAndIngest } = feedHandlers()
 
     const { podcastId } = await subscribeAndIngest(feedUrl)
 
@@ -211,7 +224,7 @@ describe('the first-ingest cap', () => {
 
   it('takes a configured cap', async () => {
     fakeHttp({ [feedUrl]: feedWithEpisodes(20) })
-    const { data, subscribeAndIngest } = subscribeFlow({ episodeLimit: 3 })
+    const { data, subscribeAndIngest } = feedHandlers({ episodeLimit: 3 })
 
     const { podcastId } = await subscribeAndIngest(feedUrl)
 
@@ -222,17 +235,6 @@ describe('the first-ingest cap', () => {
     ])
   })
 })
-
-/** A feed listing episodes 1..count oldest first (as some feeds do), one day apart. */
-function feedWithEpisodes(count: number): string {
-  const items = Array.from({ length: count }, (_, index) => {
-    const number = index + 1
-    const date = new Date(Date.UTC(2020, 0, 1) + index * 86_400_000).toUTCString()
-    return `<item><title>Episode ${number}</title><guid>long-${number}</guid><pubDate>${date}</pubDate>
-      <enclosure url="https://cdn.example.com/long/${number}.mp3" type="audio/mpeg"/></item>`
-  })
-  return `<?xml version="1.0"?><rss version="2.0"><channel><title>Long Show</title>${items.join('')}</channel></rss>`
-}
 
 function sortByTitle<T extends { title: string }>(items: T[]): T[] {
   return [...items].sort((a, b) => a.title.localeCompare(b.title))

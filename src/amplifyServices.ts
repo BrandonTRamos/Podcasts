@@ -1,10 +1,21 @@
 import { generateClient } from 'aws-amplify/data'
 import { getCurrentUser, signIn, signOut } from 'aws-amplify/auth'
+import { LATEST_LISTING } from '../amplify/data/latestEpisodes'
+import { newestFirst } from './episodes'
 import type { Schema } from '../amplify/data/resource'
-import type { Episode, SavedEpisodeState, Services, SignInResult, SubscribeStart } from './services'
+import {
+  type Episode,
+  LATEST_EPISODES_LIMIT,
+  type Podcast,
+  type SavedEpisodeState,
+  type Services,
+  type SignInResult,
+  type SubscribeStart,
+} from './services'
 
 const episodeFields = ['id', 'podcastId', 'title', 'publishedAt', 'durationSeconds', 'enclosureUrl'] as const
 const stateFields = ['id', 'podcastId', 'positionSeconds', 'played', 'queueOrder', 'updatedAt'] as const
+const podcastFields = ['id', 'title', 'author', 'artworkUrl', 'lastFetchedAt', 'lastFetchError'] as const
 
 /** Production auth and data: Cognito for auth, the AppSync data API for data. */
 export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
@@ -32,7 +43,7 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
   /** One episode's details, or null if it no longer exists. */
   async function fetchEpisode(id: string): Promise<Episode | null> {
     const { data, errors } = await client.models.Episode.get({ id }, { selectionSet: [...episodeFields] })
-    if (errors?.length) throw new Error(errors.map((e) => e.message).join('; '))
+    throwIfErrors(errors)
     return data ? toEpisode(data) : null
   }
 
@@ -71,21 +82,89 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
 
     data: {
       observePodcasts(observer) {
-        const subscription = client.models.Podcast.observeQuery({
-          selectionSet: ['id', 'title', 'author', 'artworkUrl'],
-        }).subscribe({
-          next: ({ items }) =>
-            observer.next(
-              items.map((podcast) => ({
-                id: podcast.id,
-                title: podcast.title,
-                author: podcast.author ?? null,
-                artworkUrl: podcast.artworkUrl ?? null,
-              })),
-            ),
+        const subscription = client.models.Podcast.observeQuery({ selectionSet: [...podcastFields] }).subscribe({
+          next: ({ items }) => observer.next(items.map(toPodcast)),
           error: () => observer.error(),
         })
         return () => subscription.unsubscribe()
+      },
+
+      // Not observeQuery: it can't query an index in order, or stop at a limit.
+      // Instead the newest are queried from the date index, and every new or
+      // changed episode is watched and sorted in here.
+      observeLatestEpisodes(observer) {
+        const latest = new Map<string, Episode>()
+        let synced = false
+        let closed = false
+        const fail = () => {
+          if (!closed) observer.error()
+        }
+        const deliver = () => {
+          if (closed || !synced) return
+          const dated = newestFirst([...latest.values()].filter((episode) => episode.publishedAt !== null))
+          // Those that fall off the end are forgotten, so the map stays small.
+          for (const episode of dated.slice(LATEST_EPISODES_LIMIT)) latest.delete(episode.id)
+          observer.next(dated.slice(0, LATEST_EPISODES_LIMIT))
+        }
+        const take = (record: EpisodeFields) => {
+          latest.set(record.id, toEpisode(record))
+          deliver()
+        }
+        const selectionSet = [...episodeFields]
+        const subscriptions = [
+          client.models.Episode.onCreate({ selectionSet }).subscribe({ next: take, error: fail }),
+          client.models.Episode.onUpdate({ selectionSet }).subscribe({ next: take, error: fail }),
+          client.models.Episode.onDelete({ selectionSet }).subscribe({
+            next: (record) => {
+              latest.delete(record.id)
+              deliver()
+              // Fill the gap from the index with episodes that were past the limit.
+              load()
+            },
+            error: fail,
+          }),
+        ]
+
+        /** One query at a time: deletes that arrive while one runs (an unsubscribe, say) ask for one more. */
+        let loading = false
+        let loadAgain = false
+        function load() {
+          if (loading) {
+            loadAgain = true
+            return
+          }
+          loading = true
+          client.models.Episode.listEpisodesByDate(
+            { listing: LATEST_LISTING },
+            { sortDirection: 'DESC', limit: LATEST_EPISODES_LIMIT, selectionSet },
+          )
+            .then(({ data, errors }) => {
+              throwIfErrors(errors)
+              // A live event that arrived first is newer than the query's copy.
+              for (const record of data) if (!latest.has(record.id)) latest.set(record.id, toEpisode(record))
+              synced = true
+              deliver()
+            })
+            .catch(fail)
+            .finally(() => {
+              loading = false
+              if (loadAgain && !closed) {
+                loadAgain = false
+                load()
+              }
+            })
+        }
+        load()
+
+        return () => {
+          closed = true
+          subscriptions.forEach((subscription) => subscription.unsubscribe())
+        }
+      },
+
+      async refreshPodcast(podcastId) {
+        const { errors } = await client.mutations.refreshPodcast({ podcastId })
+        throwIfErrors(errors)
       },
 
       observeEpisodes(podcastId, observer) {
@@ -259,14 +338,35 @@ interface StateRecord {
   updatedAt: string
 }
 
-function toEpisode(record: {
+/** An episode as the data API returns it, with the fields the client selects. */
+interface EpisodeFields {
   id: string
   podcastId: string
   title: string
   publishedAt?: string | null
   durationSeconds?: number | null
   enclosureUrl: string
-}): Episode {
+}
+
+function toPodcast(record: {
+  id: string
+  title: string
+  author?: string | null
+  artworkUrl?: string | null
+  lastFetchedAt?: string | null
+  lastFetchError?: Podcast['lastFetchError'] | null
+}): Podcast {
+  return {
+    id: record.id,
+    title: record.title,
+    author: record.author ?? null,
+    artworkUrl: record.artworkUrl ?? null,
+    lastFetchedAt: record.lastFetchedAt ?? null,
+    lastFetchError: record.lastFetchError ?? null,
+  }
+}
+
+function toEpisode(record: EpisodeFields): Episode {
   return {
     id: record.id,
     podcastId: record.podcastId,
@@ -280,6 +380,10 @@ function toEpisode(record: {
 function toSavedEpisodeState(record: StateRecord): SavedEpisodeState {
   const { id, podcastId, positionSeconds, played, queueOrder, updatedAt } = record
   return { episodeId: id, podcastId, positionSeconds, played, queueOrder: queueOrder ?? null, updatedAt }
+}
+
+function throwIfErrors(errors: readonly { message: string }[] | undefined) {
+  if (errors?.length) throw new Error(errors.map((e) => e.message).join('; '))
 }
 
 /** The data API refused a write because the record did, or did not, exist. */

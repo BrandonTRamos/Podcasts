@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { fakeHttp, fixture } from '../test/fakes'
-import { subscribeFlow } from '../test/subscribeFlow'
+import { feedHandlers } from '../test/feedHandlers'
 
 const feedUrl = 'https://feeds.example.com/show.xml'
 
 describe('the subscribe mutation', () => {
   it('returns a pending request at once, before the feed is fetched or anything is added', async () => {
     const http = fakeHttp({ [feedUrl]: fixture('show.xml') })
-    const { data, subscribe } = subscribeFlow()
+    const { data, subscribe } = feedHandlers()
 
     const result = await subscribe(feedUrl)
 
@@ -21,7 +21,7 @@ describe('the subscribe mutation', () => {
     'accepts only http and https URLs, refusing %j without fetching it',
     async (url) => {
       const http = fakeHttp({})
-      const { data, subscribe, runBackground } = subscribeFlow()
+      const { data, subscribe, runBackground } = feedHandlers()
 
       expect(await subscribe(url)).toEqual({ outcome: 'invalidUrl', requestId: null, podcastId: null })
       await runBackground()
@@ -32,7 +32,7 @@ describe('the subscribe mutation', () => {
 
   it('says when the feed is already in the library, and creates no duplicate', async () => {
     fakeHttp({ [feedUrl]: fixture('show.xml') })
-    const { data, subscribe, subscribeAndIngest } = subscribeFlow()
+    const { data, subscribe, subscribeAndIngest } = feedHandlers()
     const first = await subscribeAndIngest(feedUrl)
 
     const again = await subscribe(` HTTPS://Feeds.Example.com/show.xml `)

@@ -1,5 +1,6 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend'
 import { ingestFeedFunction } from '../functions/ingest-feed/resource'
+import { refreshFeedsFunction } from '../functions/refresh-feeds/resource'
 import { subscribeFunction } from '../functions/subscribe/resource'
 
 // Single-user app: every model is readable and writable by the signed-in user
@@ -14,23 +15,39 @@ const schema = a
         title: a.string().required(),
         author: a.string(),
         artworkUrl: a.string(),
+        // The feed's version as last fetched in full, sent back with each refresh
+        // to ask whether it has changed (a conditional GET).
+        etag: a.string(),
+        lastModified: a.string(),
+        // When the feed was last fetched in full. A refresh that finds it unchanged writes nothing.
+        lastFetchedAt: a.datetime(),
+        // Why the latest refresh failed; absent when it succeeded.
+        lastFetchError: a.ref('FeedError'),
         episodes: a.hasMany('Episode', 'podcastId'),
       })
       .secondaryIndexes((index) => [index('feedUrl')]),
 
-    Episode: a.model({
-      // Derived from the podcast and the item's GUID (see feeds/ingestFeed.ts).
-      id: a.id().required(),
-      podcastId: a.id().required(),
-      podcast: a.belongsTo('Podcast', 'podcastId'),
-      guid: a.string().required(),
-      title: a.string().required(),
-      publishedAt: a.datetime(),
-      durationSeconds: a.integer(),
-      enclosureUrl: a.string().required(),
-      enclosureType: a.string(),
-      showNotes: a.string(),
-    }),
+    FeedError: a.enum(['invalidUrl', 'unreachable', 'notAFeed', 'failed']),
+
+    Episode: a
+      .model({
+        // Derived from the podcast and the item's GUID (see feeds/storeEpisodes.ts).
+        id: a.id().required(),
+        podcastId: a.id().required(),
+        podcast: a.belongsTo('Podcast', 'podcastId'),
+        guid: a.string().required(),
+        title: a.string().required(),
+        // Absent, never null, when the feed gives no date: it is the latest-episodes index's sort key.
+        publishedAt: a.datetime(),
+        durationSeconds: a.integer(),
+        enclosureUrl: a.string().required(),
+        enclosureType: a.string(),
+        showNotes: a.string(),
+        // Always LATEST_LISTING (see latestEpisodes.ts): puts every episode in one index partition.
+        listing: a.string(),
+      })
+      // The latest episodes across all podcasts, by date. Undated episodes are not in it.
+      .secondaryIndexes((index) => [index('listing').sortKeys(['publishedAt']).queryField('listEpisodesByDate')]),
 
     // The listener's place in an episode, whether they have heard it, and
     // where it is in the queue, synced across devices. One per episode, created
@@ -84,11 +101,21 @@ const schema = a
       .returns(a.ref('SubscribeResult').required())
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(subscribeFunction)),
+
+    // Returns at once; the feed is refreshed in the background. The client
+    // learns the outcome through data subscriptions: new episodes, and the
+    // podcast's refresh time or error.
+    refreshPodcast: a
+      .mutation()
+      .arguments({ podcastId: a.id().required() })
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(refreshFeedsFunction).async()),
   })
   .authorization((allow) => [
     allow.authenticated(),
     allow.resource(subscribeFunction),
     allow.resource(ingestFeedFunction),
+    allow.resource(refreshFeedsFunction),
   ])
 
 export type Schema = ClientSchema<typeof schema>

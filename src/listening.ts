@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { DataApi, Episode, EpisodeState, EpisodeStateChange, SavedEpisodeState } from './services'
 
 export type ListeningStatus = 'loading' | 'loaded' | 'failed'
@@ -297,4 +297,41 @@ export function useEpisodeStates(store: ListeningStore, podcastId: string | null
   useSyncExternalStore(store.subscribe, store.getVersion)
   useEffect(() => (podcastId === null ? undefined : store.watch(podcastId)), [store, podcastId])
   return podcastId === null ? 'loading' : store.status(podcastId)
+}
+
+/**
+ * Keeps the listening state of several podcasts' episodes current, as
+ * `useEpisodeStates` does for one: failed if any failed, loading while any is.
+ * A podcast joining or leaving the list starts or stops only its own watch.
+ */
+export function useEpisodeStatesOfEach(store: ListeningStore, podcastIds: readonly string[]): ListeningStatus {
+  useSyncExternalStore(store.subscribe, store.getVersion)
+  const ids = [...new Set(podcastIds)].sort()
+  const key = ids.join('\n')
+  const watching = useRef(new Map<string, () => void>())
+
+  useEffect(() => {
+    const wanted = new Set(key ? key.split('\n') : [])
+    for (const [podcastId, stop] of watching.current) {
+      if (!wanted.has(podcastId)) {
+        stop()
+        watching.current.delete(podcastId)
+      }
+    }
+    for (const podcastId of wanted) {
+      if (!watching.current.has(podcastId)) watching.current.set(podcastId, store.watch(podcastId))
+    }
+  }, [store, key])
+
+  useEffect(() => {
+    const current = watching.current
+    return () => {
+      current.forEach((stop) => stop())
+      current.clear()
+    }
+  }, [store])
+
+  const statuses = ids.map((podcastId) => store.status(podcastId))
+  if (statuses.includes('failed')) return 'failed'
+  return statuses.includes('loading') ? 'loading' : 'loaded'
 }

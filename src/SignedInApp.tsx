@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { EpisodeActions } from './EpisodeRow'
+import { LatestScreen } from './LatestScreen'
 import { LibraryScreen } from './LibraryScreen'
 import { createListeningStore, resumePosition, useEpisodeStates } from './listening'
 import { MiniPlayer, NowPlayingScreen } from './NowPlaying'
@@ -13,7 +15,7 @@ function findPodcast(podcasts: LoadState<Podcast>, podcastId: string): Podcast |
   return podcasts.status === 'loaded' ? podcasts.items.find((p) => p.id === podcastId) : undefined
 }
 
-type Screen = { name: 'library' } | { name: 'podcast'; podcastId: string } | { name: 'queue' }
+type Screen = { name: 'library' } | { name: 'podcast'; podcastId: string } | { name: 'queue' } | { name: 'latest' }
 
 export function SignedInApp({
   data,
@@ -104,6 +106,13 @@ export function SignedInApp({
     listening.dequeue(episode.id)
   }
 
+  const episodeActions: EpisodeActions = {
+    onPlay: playEpisode,
+    onQueue: (episode, where) => listening.enqueue(episode, where),
+    onMarkPlayed: (episode, played) =>
+      listening.update(episode.id, episode.podcastId, played ? { played } : { played, positionSeconds: 0 }),
+  }
+
   function openQueue() {
     setNowPlayingOpen(false)
     setScreen({ name: 'queue' })
@@ -131,6 +140,16 @@ export function SignedInApp({
         onRemove={(episodeId) => listening.dequeue(episodeId)}
       />
     )
+  } else if (screen.name === 'latest') {
+    content = (
+      <LatestScreen
+        data={data}
+        listening={listening}
+        podcastTitleOf={(podcastId) => podcastById(podcastId)?.title}
+        onBack={() => setScreen({ name: 'library' })}
+        {...episodeActions}
+      />
+    )
   } else if (screen.name === 'podcast') {
     content = (
       <PodcastScreen
@@ -139,8 +158,7 @@ export function SignedInApp({
         podcast={podcastById(screen.podcastId)}
         listening={listening}
         onBack={() => setScreen({ name: 'library' })}
-        onPlayEpisode={playEpisode}
-        onQueueEpisode={(episode, where) => listening.enqueue(episode, where)}
+        {...episodeActions}
       />
     )
   } else {
@@ -150,6 +168,7 @@ export function SignedInApp({
         data={data}
         onOpenPodcast={openPodcast}
         onOpenQueue={openQueue}
+        onOpenLatest={() => setScreen({ name: 'latest' })}
         onSignOut={onSignOut}
       />
     )

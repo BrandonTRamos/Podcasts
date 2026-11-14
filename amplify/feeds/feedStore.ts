@@ -4,6 +4,9 @@
  * write); backend tests substitute an in-memory fake.
  */
 
+/** Why the last refresh of a feed failed: the fetch reasons from `fetchFeed`, or an unexpected error. */
+export type FeedError = 'invalidUrl' | 'unreachable' | 'notAFeed' | 'failed'
+
 export interface PodcastRecord {
   id: string
   /** Treated as a secret: private feeds carry access tokens. Never logged. */
@@ -11,6 +14,13 @@ export interface PodcastRecord {
   title: string
   author: string | null
   artworkUrl: string | null
+  /** The feed's version as last fetched in full, sent back to ask whether it has changed since. */
+  etag: string | null
+  lastModified: string | null
+  /** When the feed was last fetched in full (ISO 8601). A feed found unchanged leaves it. */
+  lastFetchedAt: string | null
+  /** Why the latest attempt to refresh the feed failed; null when it succeeded. */
+  lastFetchError: FeedError | null
 }
 
 export interface EpisodeRecord {
@@ -51,11 +61,31 @@ export interface SubscribeRequestRecord {
 
 export interface FeedStore {
   findPodcastByFeedUrl(feedUrl: string): Promise<PodcastRecord | null>
+  /** Every podcast in the library. */
+  listPodcasts(): Promise<PodcastRecord[]>
+  getPodcast(id: string): Promise<PodcastRecord | null>
   createPodcast(podcast: Omit<PodcastRecord, 'id'>): Promise<PodcastRecord>
+  /** Changes only the given fields. */
+  updatePodcast(id: string, changes: Partial<Omit<PodcastRecord, 'id' | 'feedUrl'>>): Promise<void>
+  /**
+   * The production store may write too, the first time, to bring an episode
+   * stored under an older schema up to date (see `amplifyFeedStore.ts`).
+   */
   getEpisode(id: string): Promise<EpisodeRecord | null>
   /** Fails if an episode with this ID already exists. */
   createEpisode(episode: EpisodeRecord): Promise<void>
+  /** Replaces an existing episode's fields. */
+  updateEpisode(episode: EpisodeRecord): Promise<void>
   createSubscribeRequest(feedUrl: string): Promise<SubscribeRequestRecord>
   getSubscribeRequest(id: string): Promise<SubscribeRequestRecord | null>
   settleSubscribeRequest(id: string, outcome: { status: SubscribeStatus; podcastId: string | null }): Promise<void>
+}
+
+/** What the feed handlers that store episodes are built with. */
+export interface FeedHandlerOptions {
+  store: FeedStore
+  /** Most items taken from a feed: the newest this many. */
+  episodeLimit: number
+  /** The clock, for refresh times. */
+  now?: () => Date
 }

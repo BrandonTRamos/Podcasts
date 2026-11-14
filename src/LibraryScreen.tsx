@@ -7,18 +7,23 @@ export function LibraryScreen({
   data,
   onOpenPodcast,
   onOpenQueue,
+  onOpenLatest,
   onSignOut,
 }: {
   podcasts: LoadState<Podcast>
   data: DataApi
   onOpenPodcast: (podcastId: string) => void
   onOpenQueue: () => void
+  onOpenLatest: () => void
   onSignOut: () => Promise<void>
 }) {
   return (
     <main className="library">
       <header>
         <h1>Library</h1>
+        <button type="button" onClick={onOpenLatest}>
+          Latest
+        </button>
         <button type="button" onClick={onOpenQueue}>
           Queue
         </button>

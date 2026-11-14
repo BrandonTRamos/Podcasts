@@ -1,20 +1,22 @@
-import type {
-  AudioElement,
-  AuthService,
-  DataApi,
-  Episode,
-  EpisodeState,
-  EpisodeStateChange,
-  MediaSessionControls,
-  Observer,
-  Podcast,
-  QueuedEpisode,
-  QueueSnapshot,
-  SavedEpisodeState,
-  SignInResult,
-  SubscribeRequestState,
-  SubscribeStart,
-  User,
+import {
+  type AudioElement,
+  type AuthService,
+  type DataApi,
+  type Episode,
+  type EpisodeState,
+  type EpisodeStateChange,
+  type FeedError,
+  type MediaSessionControls,
+  type Observer,
+  type Podcast,
+  type QueuedEpisode,
+  type QueueSnapshot,
+  type SavedEpisodeState,
+  type SignInResult,
+  type SubscribeRequestState,
+  type SubscribeStart,
+  type User,
+  LATEST_EPISODES_LIMIT,
 } from '../services'
 
 const SESSION_KEY = 'fake-auth-session'
@@ -71,6 +73,9 @@ export function fakeDataApi() {
   const requests = new Map<string, { feedUrl: string; state: SubscribeRequestState }>()
   const podcastListeners = new Set<Listener<Podcast[]>>()
   const episodeListeners = new Map<string, Set<Listener<Episode[]>>>()
+  const latestListeners = new Set<Listener<Episode[]>>()
+  /** The podcasts asked to be refreshed, in order. */
+  const refreshRequests: string[] = []
   const stateListeners = new Map<string, Set<Listener<SavedEpisodeState[]>>>()
   const requestListeners = new Map<string, Set<Listener<SubscribeRequestState>>>()
   const queueListeners = new Set<Listener<QueueSnapshot>>()
@@ -83,6 +88,12 @@ export function fakeDataApi() {
 
   const publicPodcasts = () => podcasts.map(({ feedUrl: _feedUrl, ...podcast }) => podcast)
   const episodesOf = (podcastId: string) => episodes.filter((episode) => episode.podcastId === podcastId)
+  /** As the backend's date index gives them: dated only, newest first. */
+  const latestEpisodes = () =>
+    episodes
+      .filter((episode) => episode.publishedAt !== null)
+      .sort((a, b) => Date.parse(b.publishedAt!) - Date.parse(a.publishedAt!))
+      .slice(0, LATEST_EPISODES_LIMIT)
   const statesOf = (podcastId: string) => [...states.values()].filter((state) => state.podcastId === podcastId)
   const queue = (): QueuedEpisode[] =>
     [...states.values()]
@@ -117,7 +128,7 @@ export function fakeDataApi() {
 
   const notifyPodcasts = () => notify(podcastListeners, publicPodcasts())
 
-  function addPodcast(feedUrl: string, feed: Pick<Podcast, 'title' | 'author' | 'artworkUrl'>) {
+  function addPodcast(feedUrl: string, feed: Omit<Podcast, 'id'>) {
     const podcast = { id: `podcast-${nextId++}`, feedUrl, ...feed }
     podcasts.push(podcast)
     notifyPodcasts()
@@ -151,6 +162,13 @@ export function fakeDataApi() {
       },
       observeEpisodes(podcastId, observer) {
         return listen(connection, listenersFor(episodeListeners, podcastId), observer, () => episodesOf(podcastId))
+      },
+      observeLatestEpisodes(observer) {
+        return listen(connection, latestListeners, observer, latestEpisodes)
+      },
+      async refreshPodcast(podcastId) {
+        reach()
+        refreshRequests.push(podcastId)
       },
       async subscribeToFeed(feedUrl): Promise<SubscribeStart> {
         reach()
@@ -228,19 +246,31 @@ export function fakeDataApi() {
         const feed = feeds.get(feedUrl)
         if (feed === undefined) settle(requestId, { status: 'unreachable' })
         else if (typeof feed === 'string') settle(requestId, { status: feed })
-        else settle(requestId, { status: 'subscribed', podcastId: addPodcast(feedUrl, feed) })
+        else {
+          const podcastId = addPodcast(feedUrl, { ...feed, lastFetchedAt: timeAt(tick), lastFetchError: null })
+          settle(requestId, { status: 'subscribed', podcastId })
+        }
       }
     },
     /** A podcast already in the library. Returns its ID. */
-    seedPodcast(feedUrl: string, podcast: Pick<Podcast, 'title'> & Partial<Pick<Podcast, 'author' | 'artworkUrl'>>) {
-      return addPodcast(feedUrl, { author: null, artworkUrl: null, ...podcast })
+    seedPodcast(feedUrl: string, podcast: Pick<Podcast, 'title'> & Partial<Omit<Podcast, 'id' | 'title'>>) {
+      return addPodcast(feedUrl, { author: null, artworkUrl: null, lastFetchedAt: null, lastFetchError: null, ...podcast })
+    },
+    /** A refresh of the podcast's feed records its outcome, as the backend does after an hourly or requested refresh. */
+    recordRefresh(podcastId: string, outcome: { lastFetchedAt?: string; lastFetchError: FeedError | null }) {
+      Object.assign(podcasts.find((podcast) => podcast.id === podcastId)!, outcome)
+      notifyPodcasts()
+    },
+    /** The podcasts asked to be refreshed on demand, oldest first. */
+    refreshRequests(): readonly string[] {
+      return refreshRequests
     },
     podcastIdFor(feedUrl: string) {
       return podcasts.find((podcast) => podcast.feedUrl === feedUrl)?.id
     },
     /**
      * Delivers ingested episodes, as the background step does after adding the
-     * podcast. An episode given no enclosure URL gets one of its own. Returns their IDs.
+     * podcast, or a refresh does on finding new ones. An episode given no enclosure URL gets one of its own. Returns their IDs.
      */
     ingest(
       podcastId: string,
@@ -252,6 +282,7 @@ export function fakeDataApi() {
         return id
       })
       notify(episodeListeners.get(podcastId), episodesOf(podcastId))
+      notify(latestListeners, latestEpisodes())
       return ids
     },
     /** Listening state saved earlier, by this device or another. */

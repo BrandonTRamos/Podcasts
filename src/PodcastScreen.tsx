@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { formatDate, formatDuration } from './format'
+import { type EpisodeActions, EpisodeRow } from './EpisodeRow'
+import { newestFirst } from './episodes'
+import { formatDateTime } from './format'
 import { Artwork } from './LibraryScreen'
-import { type ListeningStore, type QueuePlace, useEpisodeStates } from './listening'
-import type { DataApi, Episode, EpisodeState, Podcast } from './services'
+import { type ListeningStore, useEpisodeStates } from './listening'
+import type { DataApi, Episode, EpisodeState, FeedError, Podcast } from './services'
 import type { LoadState } from './SignedInApp'
 
 export function PodcastScreen({
@@ -11,8 +13,7 @@ export function PodcastScreen({
   podcast,
   listening,
   onBack,
-  onPlayEpisode,
-  onQueueEpisode,
+  ...actions
 }: {
   data: DataApi
   podcastId: string
@@ -20,9 +21,7 @@ export function PodcastScreen({
   podcast: Podcast | undefined
   listening: ListeningStore
   onBack: () => void
-  onPlayEpisode: (episode: Episode) => void
-  onQueueEpisode: (episode: Episode, where: QueuePlace) => void
-}) {
+} & EpisodeActions) {
   const [episodes, setEpisodes] = useState<LoadState<Episode>>({ status: 'loading' })
   const [unplayedOnly, setUnplayedOnly] = useState(false)
   const statesStatus = useEpisodeStates(listening, podcastId)
@@ -54,6 +53,7 @@ export function PodcastScreen({
       ) : (
         <p>Loading…</p>
       )}
+      {podcast && <FeedHealth podcast={podcast} refresh={(id) => data.refreshPodcast(id)} />}
       {/* Wait for the listening state too, so an episode tapped at once still resumes. */}
       {(episodes.status === 'loading' || statesStatus === 'loading') && podcast && <p>Loading episodes…</p>}
       {episodes.status === 'failed' && <p role="alert">Couldn’t load the episodes.</p>}
@@ -68,11 +68,7 @@ export function PodcastScreen({
             stateOf={(episodeId) => listening.get(episodeId)}
             unplayedOnly={unplayedOnly}
             onUnplayedOnlyChange={setUnplayedOnly}
-            onPlay={onPlayEpisode}
-            onQueue={onQueueEpisode}
-            onMarkPlayed={(episode, played) =>
-              listening.update(episode.id, episode.podcastId, played ? { played } : { played, positionSeconds: 0 })
-            }
+            {...actions}
           />
         ))}
     </main>
@@ -84,19 +80,13 @@ function EpisodeList({
   stateOf,
   unplayedOnly,
   onUnplayedOnlyChange,
-  onPlay,
-  onQueue,
-  onMarkPlayed,
+  ...actions
 }: {
   episodes: Episode[]
   stateOf: (episodeId: string) => EpisodeState | undefined
   unplayedOnly: boolean
   onUnplayedOnlyChange: (unplayedOnly: boolean) => void
-  onPlay: (episode: Episode) => void
-  onQueue: (episode: Episode, where: QueuePlace) => void
-  /** Marking an episode unplayed also takes it back to the start. */
-  onMarkPlayed: (episode: Episode, played: boolean) => void
-}) {
+} & EpisodeActions) {
   const shown = newestFirst(episodes).filter((episode) => !unplayedOnly || !stateOf(episode.id)?.played)
   return (
     <>
@@ -108,64 +98,76 @@ function EpisodeList({
         <p>No unplayed episodes.</p>
       ) : (
         <ol className="episodes" aria-label="Episodes">
-          {shown.map((episode) => {
-            const state = stateOf(episode.id)
-            const played = state?.played ?? false
-            return (
-              <li key={episode.id}>
-                <h2>
-                  <button type="button" onClick={() => onPlay(episode)}>
-                    {episode.title}
-                  </button>
-                </h2>
-                <p className="episode-meta">
-                  {episode.publishedAt && <time dateTime={episode.publishedAt}>{formatDate(episode.publishedAt)}</time>}
-                  {episode.publishedAt && episode.durationSeconds !== null && ' · '}
-                  {episode.durationSeconds !== null && <span>{formatDuration(episode.durationSeconds)}</span>}
-                </p>
-                <div className="episode-state">
-                  <ListeningProgress episode={episode} state={state} />
-                  {state?.queueOrder != null && <span className="episode-queued">Queued</span>}
-                  <button type="button" onClick={() => onMarkPlayed(episode, !played)}>
-                    {played ? 'Mark unplayed' : 'Mark played'}
-                  </button>
-                </div>
-                <div className="episode-queue">
-                  <button type="button" onClick={() => onQueue(episode, 'next')}>
-                    Play next
-                  </button>
-                  <button type="button" onClick={() => onQueue(episode, 'last')}>
-                    Add to queue
-                  </button>
-                </div>
-              </li>
-            )
-          })}
+          {shown.map((episode) => (
+            <EpisodeRow key={episode.id} episode={episode} state={stateOf(episode.id)} {...actions} />
+          ))}
         </ol>
       )}
     </>
   )
 }
 
-/** Played, part-played (with how far through), or new. */
-function ListeningProgress({ episode, state }: { episode: Episode; state: EpisodeState | undefined }) {
-  if (state?.played) return <span className="episode-played">Played</span>
-  if (!state || state.positionSeconds <= 0) return <span className="episode-new">New</span>
-  const duration = episode.durationSeconds
-  if (duration === null || duration <= 0) {
-    return <span>{formatDuration(state.positionSeconds)} in</span>
-  }
-  const position = Math.min(state.positionSeconds, duration)
-  return (
-    <span className="episode-progress">
-      <progress aria-label="Listened" max={duration} value={position} />
-      <span>{formatDuration(duration - position)} left</span>
-    </span>
-  )
+/** How long to show a requested refresh as under way when nothing comes of it, as for a feed found unchanged. */
+const REFRESH_CHECK_MS = 30_000
+
+const feedErrorMessages: Record<FeedError, string> = {
+  unreachable: 'The last refresh failed: couldn’t reach the feed.',
+  notAFeed: 'The last refresh failed: the URL no longer gives a podcast feed.',
+  invalidUrl: 'The last refresh failed: the feed URL isn’t valid.',
+  failed: 'The last refresh failed. It will be tried again within the hour.',
 }
 
-/** Dated episodes newest first; undated ones last. */
-function newestFirst(episodes: Episode[]): Episode[] {
-  const time = (episode: Episode) => (episode.publishedAt ? Date.parse(episode.publishedAt) : -Infinity)
-  return [...episodes].sort((a, b) => time(b) - time(a) || 0)
+/**
+ * When the feed last refreshed and whether the latest attempt failed, kept
+ * current as refreshes record results, and a button to refresh it now.
+ */
+function FeedHealth({ podcast, refresh }: { podcast: Podcast; refresh: (podcastId: string) => Promise<void> }) {
+  const { id, lastFetchedAt, lastFetchError } = podcast
+  const [request, setRequest] = useState<
+    | { status: 'idle' | 'sending' | 'failed' }
+    /** Asked, and waiting for a result other than the one recorded when asked. */
+    | { status: 'checking'; lastFetchedAt: string | null; lastFetchError: FeedError | null }
+  >({ status: 'idle' })
+  const checking =
+    request.status === 'checking' &&
+    request.lastFetchedAt === lastFetchedAt &&
+    request.lastFetchError === lastFetchError
+
+  // A feed found unchanged records nothing, so stop waiting after a while.
+  useEffect(() => {
+    if (!checking) return
+    const timer = setTimeout(() => setRequest({ status: 'idle' }), REFRESH_CHECK_MS)
+    return () => clearTimeout(timer)
+  }, [checking])
+
+  async function handleRefresh() {
+    setRequest({ status: 'sending' })
+    try {
+      await refresh(id)
+      setRequest({ status: 'checking', lastFetchedAt, lastFetchError })
+    } catch {
+      setRequest({ status: 'failed' })
+    }
+  }
+
+  return (
+    <section className="feed-health" aria-label="Feed">
+      <p>
+        {lastFetchedAt ? (
+          <>
+            Last refreshed <time dateTime={lastFetchedAt}>{formatDateTime(lastFetchedAt)}</time>
+          </>
+        ) : (
+          'Not refreshed yet'
+        )}
+        <span className="feed-schedule"> · checked hourly</span>
+      </p>
+      <button type="button" onClick={() => void handleRefresh()} disabled={request.status === 'sending' || checking}>
+        Refresh
+      </button>
+      {lastFetchError && <p role="alert">{feedErrorMessages[lastFetchError]}</p>}
+      {checking && <p role="status">Checking for new episodes…</p>}
+      {request.status === 'failed' && <p role="alert">Couldn’t refresh. Check your connection and try again.</p>}
+    </section>
+  )
 }
