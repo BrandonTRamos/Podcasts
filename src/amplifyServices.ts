@@ -1,7 +1,7 @@
 import { generateClient } from 'aws-amplify/data'
 import { getCurrentUser, signIn, signOut } from 'aws-amplify/auth'
 import type { Schema } from '../amplify/data/resource'
-import type { Services, SignInResult, SubscribeStart } from './services'
+import type { SavedEpisodeState, Services, SignInResult, SubscribeStart } from './services'
 
 /** Production auth and data: Cognito for auth, the AppSync data API for data. */
 export function amplifyServices(): Omit<Services, 'audio'> {
@@ -111,8 +111,58 @@ export function amplifyServices(): Omit<Services, 'audio'> {
         })
         return () => subscription.unsubscribe()
       },
+
+      observeEpisodeStates(podcastId, observer) {
+        const subscription = client.models.EpisodeState.observeQuery({
+          filter: { podcastId: { eq: podcastId } },
+          selectionSet: ['id', 'podcastId', 'positionSeconds', 'played', 'updatedAt'],
+        }).subscribe({
+          // The first results arrive a page at a time; wait until all of them have.
+          next: ({ items, isSynced }) => isSynced && observer.next(items.map(toSavedEpisodeState)),
+          error: () => observer.error(),
+        })
+        return () => subscription.unsubscribe()
+      },
+
+      async saveEpisodeState(episodeId, podcastId, change): Promise<SavedEpisodeState> {
+        // Most saves are to an episode already started, so try updating first. Each
+        // call fails its condition when the record is (or is not) there yet.
+        const update = () => client.models.EpisodeState.update({ id: episodeId, ...change })
+        let result = await update()
+        if (!result.data && failedCondition(result.errors)) {
+          result = await client.models.EpisodeState.create({
+            id: episodeId,
+            podcastId,
+            positionSeconds: 0,
+            played: false,
+            ...change,
+          })
+          // Another device created it in the meantime.
+          if (!result.data && failedCondition(result.errors)) result = await update()
+        }
+        if (result.errors?.length || !result.data) {
+          throw new Error(result.errors?.map((e) => e.message).join('; ') ?? 'No record saved')
+        }
+        return toSavedEpisodeState(result.data)
+      },
     },
   }
+}
+
+function toSavedEpisodeState(record: {
+  id: string
+  podcastId: string
+  positionSeconds: number
+  played: boolean
+  updatedAt: string
+}): SavedEpisodeState {
+  const { id, podcastId, positionSeconds, played, updatedAt } = record
+  return { episodeId: id, podcastId, positionSeconds, played, updatedAt }
+}
+
+/** The data API refused a write because the record did, or did not, exist. */
+function failedCondition(errors: readonly { errorType?: string }[] | undefined): boolean {
+  return errors?.some((error) => error.errorType?.includes('ConditionalCheckFailed')) ?? false
 }
 
 /** Signs in; if leftover tokens make Cognito think a session exists, drops them and retries once. */

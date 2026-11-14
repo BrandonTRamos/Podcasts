@@ -162,6 +162,45 @@ button {
   cursor: pointer;
 }
 
+.episode-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-block: 0.5rem;
+}
+
+.episode-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.episode-state button {
+  font-size: 0.875rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.episode-new {
+  font-weight: 600;
+}
+
+.episode-played {
+  opacity: 0.7;
+}
+
+.episode-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.episode-progress progress {
+  width: 6rem;
+}
+
 .artwork-hero {
   width: min(18rem, 70vw);
   height: min(18rem, 70vw);

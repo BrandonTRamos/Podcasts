@@ -3,8 +3,11 @@ import type {
   AuthService,
   DataApi,
   Episode,
+  EpisodeState,
+  EpisodeStateChange,
   Observer,
   Podcast,
+  SavedEpisodeState,
   SignInResult,
   SubscribeRequestState,
   SubscribeStart,
@@ -37,33 +40,62 @@ export function fakeAuth(account: { email: string; password: string }): AuthServ
   }
 }
 
+/** A device's connection to the fake backend. */
+interface Connection {
+  /** Its live updates are not arriving, as when iOS suspends a backgrounded app. */
+  asleep: boolean
+}
+
 /**
  * In-memory stand-in for the data API and the backend behind it. Feeds the
  * fake "internet" knows are added with `publishFeed`; a subscribe to any other
  * URL ends as unreachable. Subscribing returns a pending request, as the real
  * API does; `finishSubscribing` runs the background check, and `ingest`
  * delivers episodes, to whoever is observing.
+ *
+ * The returned API is one device's view of the backend; `anotherDevice` gives
+ * a second view of the same data, as another phone or computer would have. A
+ * device that is `asleep` misses live updates, and does not get them later.
  */
 export function fakeDataApi() {
   const podcasts: (Podcast & { feedUrl: string })[] = []
   const episodes: Episode[] = []
+  const states = new Map<string, SavedEpisodeState>()
+  /** Every listening-state change the backend received, in order. */
+  const stateWrites: EpisodeStateChange[] = []
   const feeds = new Map<string, Pick<Podcast, 'title' | 'author' | 'artworkUrl'> | 'notAFeed' | 'failed'>()
   const requests = new Map<string, { feedUrl: string; state: SubscribeRequestState }>()
-  const podcastListeners = new Set<Observer<Podcast[]>>()
-  const episodeListeners = new Map<string, Set<Observer<Episode[]>>>()
-  const requestListeners = new Map<string, Set<Observer<SubscribeRequestState>>>()
+  const podcastListeners = new Set<Listener<Podcast[]>>()
+  const episodeListeners = new Map<string, Set<Listener<Episode[]>>>()
+  const stateListeners = new Map<string, Set<Listener<SavedEpisodeState[]>>>()
+  const requestListeners = new Map<string, Set<Listener<SubscribeRequestState>>>()
   let failNext = false
   let nextId = 1
+  /** The backend's clock, for each state's updated time: a second on with every write. */
+  let tick = 0
 
   const publicPodcasts = () => podcasts.map(({ feedUrl: _feedUrl, ...podcast }) => podcast)
   const episodesOf = (podcastId: string) => episodes.filter((episode) => episode.podcastId === podcastId)
-  const notifyPodcasts = () => podcastListeners.forEach((listener) => listener.next(publicPodcasts()))
+  const statesOf = (podcastId: string) => [...states.values()].filter((state) => state.podcastId === podcastId)
 
-  function listen<T>(listeners: Set<Observer<T>>, observer: Observer<T>, current: () => T) {
-    listeners.add(observer)
-    queueMicrotask(() => listeners.has(observer) && observer.next(current()))
-    return () => void listeners.delete(observer)
+  function listenersFor<T>(map: Map<string, Set<Listener<T>>>, key: string) {
+    const listeners = map.get(key) ?? new Set()
+    map.set(key, listeners)
+    return listeners
   }
+
+  function listen<T>(connection: Connection, listeners: Set<Listener<T>>, observer: Observer<T>, current: () => T) {
+    const listener = { connection, observer }
+    listeners.add(listener)
+    queueMicrotask(() => listeners.has(listener) && observer.next(current()))
+    return () => void listeners.delete(listener)
+  }
+
+  function notify<T>(listeners: Set<Listener<T>> | undefined, value: T) {
+    listeners?.forEach(({ connection, observer }) => connection.asleep || observer.next(value))
+  }
+
+  const notifyPodcasts = () => notify(podcastListeners, publicPodcasts())
 
   function addPodcast(feedUrl: string, feed: Pick<Podcast, 'title' | 'author' | 'artworkUrl'>) {
     const podcast = { id: `podcast-${nextId++}`, feedUrl, ...feed }
@@ -74,38 +106,80 @@ export function fakeDataApi() {
 
   function settle(requestId: string, state: SubscribeRequestState) {
     requests.get(requestId)!.state = state
-    requestListeners.get(requestId)?.forEach((listener) => listener.next(state))
+    notify(requestListeners.get(requestId), state)
   }
 
-  const api: DataApi = {
-    observePodcasts(observer) {
-      return listen(podcastListeners, observer, publicPodcasts)
-    },
-    observeEpisodes(podcastId, observer) {
-      const listeners = episodeListeners.get(podcastId) ?? new Set()
-      episodeListeners.set(podcastId, listeners)
-      return listen(listeners, observer, () => episodesOf(podcastId))
-    },
-    async subscribeToFeed(feedUrl): Promise<SubscribeStart> {
-      if (failNext) {
-        failNext = false
-        throw new Error('Network error')
-      }
-      if (!/^https?:\/\//.test(feedUrl)) return { outcome: 'invalidUrl' }
-      const existing = podcasts.find((podcast) => podcast.feedUrl === feedUrl)
-      if (existing) return { outcome: 'alreadySubscribed', podcastId: existing.id }
-      const requestId = `request-${nextId++}`
-      requests.set(requestId, { feedUrl, state: { status: 'pending' } })
-      return { outcome: 'pending', requestId }
-    },
-    observeSubscribeRequest(requestId, observer) {
-      const listeners = requestListeners.get(requestId) ?? new Set()
-      requestListeners.set(requestId, listeners)
-      return listen(listeners, observer, () => requests.get(requestId)!.state)
-    },
+  function storeState(episodeId: string, podcastId: string, change: EpisodeStateChange): SavedEpisodeState {
+    const saved = {
+      episodeId,
+      podcastId,
+      positionSeconds: 0,
+      played: false,
+      ...states.get(episodeId),
+      ...change,
+      updatedAt: new Date(Date.UTC(2026, 0, 1) + ++tick * 1000).toISOString(),
+    }
+    states.set(episodeId, saved)
+    return saved
   }
 
-  return Object.assign(api, {
+  function view(connection: Connection): DataApi {
+    return {
+      observePodcasts(observer) {
+        return listen(connection, podcastListeners, observer, publicPodcasts)
+      },
+      observeEpisodes(podcastId, observer) {
+        return listen(connection, listenersFor(episodeListeners, podcastId), observer, () => episodesOf(podcastId))
+      },
+      async subscribeToFeed(feedUrl): Promise<SubscribeStart> {
+        if (failNext) {
+          failNext = false
+          throw new Error('Network error')
+        }
+        if (!/^https?:\/\//.test(feedUrl)) return { outcome: 'invalidUrl' }
+        const existing = podcasts.find((podcast) => podcast.feedUrl === feedUrl)
+        if (existing) return { outcome: 'alreadySubscribed', podcastId: existing.id }
+        const requestId = `request-${nextId++}`
+        requests.set(requestId, { feedUrl, state: { status: 'pending' } })
+        return { outcome: 'pending', requestId }
+      },
+      observeSubscribeRequest(requestId, observer) {
+        return listen(connection, listenersFor(requestListeners, requestId), observer, () => requests.get(requestId)!.state)
+      },
+      observeEpisodeStates(podcastId, observer) {
+        return listen(connection, listenersFor(stateListeners, podcastId), observer, () => statesOf(podcastId))
+      },
+      async saveEpisodeState(episodeId, podcastId, change) {
+        if (failNext) {
+          failNext = false
+          throw new Error('Network error')
+        }
+        stateWrites.push({ ...change })
+        const saved = storeState(episodeId, podcastId, change)
+        // The write's own subscription event arrives separately from its response, as with the real API.
+        queueMicrotask(() => notify(stateListeners.get(podcastId), statesOf(podcastId)))
+        return saved
+      },
+    }
+  }
+
+  function device() {
+    const connection: Connection = { asleep: false }
+    return Object.assign(view(connection), {
+      /** Live updates stop arriving, as when iOS suspends the app in the background. */
+      sleep() {
+        connection.asleep = true
+      },
+      /** Live updates arrive again. Those missed while asleep are not replayed. */
+      wake() {
+        connection.asleep = false
+      },
+    })
+  }
+
+  return Object.assign(device(), {
+    /** A second device (another phone or computer) on the same account. */
+    anotherDevice: device,
     /** Makes a feed reachable. */
     publishFeed(feedUrl: string, podcast: Pick<Podcast, 'title'> & Partial<Pick<Podcast, 'author' | 'artworkUrl'>>) {
       feeds.set(feedUrl, { author: null, artworkUrl: null, ...podcast })
@@ -141,19 +215,41 @@ export function fakeDataApi() {
     },
     /**
      * Delivers ingested episodes, as the background step does after adding the
-     * podcast. An episode given no enclosure URL gets one of its own.
+     * podcast. An episode given no enclosure URL gets one of its own. Returns their IDs.
      */
     ingest(
       podcastId: string,
       newEpisodes: (Omit<Episode, 'podcastId' | 'id' | 'enclosureUrl'> & Partial<Pick<Episode, 'enclosureUrl'>>)[],
     ) {
-      for (const episode of newEpisodes) {
+      const ids = newEpisodes.map((episode) => {
         const id = `episode-${nextId++}`
         episodes.push({ id, podcastId, enclosureUrl: `https://media.example.com/${id}.mp3`, ...episode })
-      }
-      episodeListeners.get(podcastId)?.forEach((listener) => listener.next(episodesOf(podcastId)))
+        return id
+      })
+      notify(episodeListeners.get(podcastId), episodesOf(podcastId))
+      return ids
+    },
+    /** Listening state saved earlier, by this device or another. */
+    seedEpisodeState({ episodeId, podcastId, ...state }: EpisodeState) {
+      storeState(episodeId, podcastId, state)
+    },
+    /** The listening state the backend holds for an episode. */
+    savedState(episodeId: string): EpisodeState | undefined {
+      const saved = states.get(episodeId)
+      if (!saved) return undefined
+      const { updatedAt: _updatedAt, ...state } = saved
+      return state
+    },
+    /** Every listening-state change received so far, oldest first. */
+    stateWrites(): readonly EpisodeStateChange[] {
+      return stateWrites
     },
   })
+}
+
+interface Listener<T> {
+  connection: Connection
+  observer: Observer<T>
 }
 
 export type FakeDataApi = ReturnType<typeof fakeDataApi>
@@ -161,8 +257,9 @@ export type FakeDataApi = ReturnType<typeof fakeDataApi>
 /**
  * Stands in for a plain `<audio>` element. Like the real one, setting `src`
  * starts a fresh load, `play()` and `pause()` fire `play` and `pause`, and a
- * failed load fires `error` without pausing. Tests drive what the network,
- * decoder and browser would: `loadMetadata`, `progressTo`, `failToLoad`,
+ * failed load fires `error` without pausing, and reaching the end fires
+ * `pause` then `ended`. Tests drive what the network, decoder and browser
+ * would: `loadMetadata`, `progressTo`, `playToEnd`, `failToLoad`,
  * `refuseNextPlay`.
  */
 export class FakeAudio extends EventTarget implements AudioElement {
@@ -170,7 +267,9 @@ export class FakeAudio extends EventTarget implements AudioElement {
   #currentTime = 0
   duration = NaN
   paused = true
+  ended = false
   #refuseNextPlay = false
+  #ignoresEarlySeeks = false
 
   get src() {
     return this.#src
@@ -179,6 +278,7 @@ export class FakeAudio extends EventTarget implements AudioElement {
   set src(url: string) {
     this.#src = url
     this.paused = true
+    this.ended = false
     this.#currentTime = 0
     this.duration = NaN
     this.dispatchEvent(new Event('emptied'))
@@ -191,6 +291,8 @@ export class FakeAudio extends EventTarget implements AudioElement {
   }
 
   set currentTime(seconds: number) {
+    this.ended = false
+    if (this.#ignoresEarlySeeks && !Number.isFinite(this.duration)) return
     this.#currentTime = Number.isFinite(this.duration) ? Math.min(Math.max(seconds, 0), this.duration) : Math.max(seconds, 0)
     this.dispatchEvent(new Event('timeupdate'))
   }
@@ -201,6 +303,10 @@ export class FakeAudio extends EventTarget implements AudioElement {
       return Promise.reject(new DOMException('Not allowed', 'NotAllowedError'))
     }
     if (!this.#src) return Promise.reject(new DOMException('No source', 'NotSupportedError'))
+    if (this.ended) {
+      // Playing an ended file starts it again from the beginning.
+      this.currentTime = 0
+    }
     if (this.paused) {
       this.paused = false
       this.dispatchEvent(new Event('play'))
@@ -223,6 +329,11 @@ export class FakeAudio extends EventTarget implements AudioElement {
     this.src = this.#src
   }
 
+  /** Like some browsers, ignores a seek made before the file's metadata has loaded. */
+  ignoreEarlySeeks() {
+    this.#ignoresEarlySeeks = true
+  }
+
   /** The browser refuses the next `play()`, as iOS does outside a user gesture. */
   refuseNextPlay() {
     this.#refuseNextPlay = true
@@ -239,6 +350,16 @@ export class FakeAudio extends EventTarget implements AudioElement {
   progressTo(seconds: number) {
     this.#currentTime = seconds
     this.dispatchEvent(new Event('timeupdate'))
+  }
+
+  /** Playback reaches the end of the file, whose metadata must have loaded. */
+  playToEnd() {
+    this.#currentTime = this.duration
+    this.dispatchEvent(new Event('timeupdate'))
+    this.paused = true
+    this.ended = true
+    this.dispatchEvent(new Event('pause'))
+    this.dispatchEvent(new Event('ended'))
   }
 
   /** The publisher's file can't be fetched or decoded. */
