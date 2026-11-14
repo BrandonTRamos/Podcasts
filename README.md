@@ -2,7 +2,7 @@
 
 A single-user podcast web app. React + TypeScript client (Vite), AWS Amplify Gen 2 backend (Cognito, AppSync + DynamoDB). See `.scratch/tincan-podcast-app/spec.md`.
 
-**Live:** _pending: set once the Amplify Hosting app is connected (ticket 02)._
+**Live:** https://main.d1s9jkcv1hp6j9.amplifyapp.com (production, AWS Amplify Hosting app `TinCan`, id `d1s9jkcv1hp6j9`, us-east-1)
 
 ## Prerequisites
 
@@ -96,7 +96,7 @@ No secrets live in the repo. Amplify reaches GitHub through its GitHub App, and 
 Same as for the sandbox, against the production user pool. Fetch the production outputs into a temporary folder (not the repo root, which holds the sandbox's):
 
 ```sh
-APP_ID=$(aws amplify list-apps --query "apps[?name=='TinCan'].appId" --output text)
+APP_ID=d1s9jkcv1hp6j9
 npx ampx generate outputs --app-id "$APP_ID" --branch main --out-dir /tmp/tincan-prod
 POOL=$(node -p 'require("/tmp/tincan-prod/amplify_outputs.json").auth.user_pool_id')
 ```
@@ -116,7 +116,7 @@ git push -u origin HEAD && gh pr create --fill
 **Immediate rollback:** redeploy a known-good commit while the revert is reviewed. It runs the same checks, then deploys that commit's backend and frontend. The next push to `main` deploys `main` again, so follow up with the revert above.
 
 ```sh
-APP_ID=$(aws amplify list-apps --query "apps[?name=='TinCan'].appId" --output text)
+APP_ID=d1s9jkcv1hp6j9
 aws amplify list-jobs --app-id "$APP_ID" --branch-name main --max-items 10 \
   --query 'jobSummaries[].[jobId,status,commitId,commitMessage]' --output table
 aws amplify start-job --app-id "$APP_ID" --branch-name main --job-type RELEASE \
