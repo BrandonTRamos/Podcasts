@@ -179,6 +179,14 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
         return () => subscription.unsubscribe()
       },
 
+      // Fetched apart from the episode lists, which would otherwise carry every
+      // episode's notes, often several kilobytes each, to show none of them.
+      async getShowNotes(episodeId) {
+        const { data, errors } = await client.models.Episode.get({ id: episodeId }, { selectionSet: ['id', 'showNotes'] })
+        throwIfErrors(errors)
+        return data?.showNotes ?? null
+      },
+
       async searchPodcasts(term): Promise<PodcastSearch> {
         const { data, errors } = await client.queries.searchPodcasts({ term })
         if (errors?.length || !data) throw new Error(errors?.map((e) => e.message).join('; ') ?? 'No result')

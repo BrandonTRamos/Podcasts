@@ -134,7 +134,8 @@ button {
 
 .podcast nav button,
 .queue nav button,
-.latest nav button {
+.latest nav button,
+.episode nav button {
   background: none;
   border: none;
   padding-inline: 0;
@@ -441,4 +442,41 @@ button {
   grid-column: 2 / -1;
   margin: 0;
   font-size: 0.875rem;
+}
+
+.episode header {
+  margin-block: 1rem;
+}
+
+.episode h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+}
+
+.episode-play {
+  margin-top: 0.75rem;
+}
+
+.show-notes {
+  overflow-wrap: anywhere;
+}
+
+/* Notes with no paragraphs or breaks of their own separate lines with newlines alone. */
+.show-notes-line-breaks {
+  white-space: pre-line;
+}
+
+.show-notes pre {
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.show-notes blockquote {
+  margin-inline: 1rem 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid color-mix(in srgb, currentColor 25%, transparent);
+}
+
+.show-notes-empty {
+  opacity: 0.7;
 }

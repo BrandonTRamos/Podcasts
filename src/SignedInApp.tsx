@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EpisodeActions } from './EpisodeRow'
+import { EpisodeScreen } from './EpisodeScreen'
 import { LatestScreen } from './LatestScreen'
 import { LibraryScreen } from './LibraryScreen'
 import { createListeningStore, resumePosition, useEpisodeStates } from './listening'
@@ -16,12 +17,16 @@ function findPodcast(podcasts: LoadState<Podcast>, podcastId: string): Podcast |
   return podcasts.status === 'loaded' ? podcasts.items.find((p) => p.id === podcastId) : undefined
 }
 
+/** A screen that lists episodes, from which one can be opened. */
+type ListScreen = { name: 'podcast'; podcastId: string } | { name: 'latest' }
+
 type Screen =
   | { name: 'library' }
-  | { name: 'podcast'; podcastId: string }
+  | ListScreen
   | { name: 'queue' }
-  | { name: 'latest' }
   | { name: 'search' }
+  /** One episode, opened from a list, to which going back returns. */
+  | { name: 'episode'; episode: Episode; from: ListScreen }
 
 export function SignedInApp({
   data,
@@ -114,6 +119,9 @@ export function SignedInApp({
 
   const episodeActions: EpisodeActions = {
     onPlay: playEpisode,
+    onOpen: (episode) => {
+      if (screen.name === 'podcast' || screen.name === 'latest') setScreen({ name: 'episode', episode, from: screen })
+    },
     onQueue: (episode, where) => listening.enqueue(episode, where),
     onMarkPlayed: (episode, played) =>
       listening.update(episode.id, episode.podcastId, played ? { played } : { played, positionSeconds: 0 }),
@@ -144,6 +152,20 @@ export function SignedInApp({
         onPlay={playEpisode}
         onMove={(episodeId, index) => listening.moveInQueue(episodeId, index)}
         onRemove={(episodeId) => listening.dequeue(episodeId)}
+      />
+    )
+  } else if (screen.name === 'episode') {
+    const { episode, from } = screen
+    content = (
+      <EpisodeScreen
+        key={episode.id}
+        data={data}
+        episode={episode}
+        podcastTitle={podcastById(episode.podcastId)?.title}
+        listening={listening}
+        backLabel={from.name === 'latest' ? 'Latest episodes' : (podcastById(from.podcastId)?.title ?? 'Podcast')}
+        onBack={() => setScreen(from)}
+        onPlay={playEpisode}
       />
     )
   } else if (screen.name === 'latest') {
