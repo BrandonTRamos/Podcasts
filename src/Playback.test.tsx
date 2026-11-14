@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
-import { FakeAudio, fakeAuth, fakeDataApi } from './test/fakes'
+import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeMediaSession } from './test/fakes'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = {
@@ -28,14 +28,28 @@ async function renderShow() {
   const data = fakeDataApi()
   const podcastId = data.seedPodcast('https://feeds.example.com/show.xml', show)
   data.ingest(podcastId, [first, second])
-  const audio = new FakeAudio()
   const auth = fakeAuth(owner)
   await auth.signIn(owner.email, owner.password)
-  render(<App services={{ auth, data, audio }} />)
+  return { ...(await launch(data)), data }
+}
+
+/** Opens the app, already signed in, at the show's page, as a fresh launch of it would. */
+async function launch(data: FakeDataApi) {
+  const audio = new FakeAudio()
+  const services = { auth: fakeAuth(owner), data, audio, mediaSession: new FakeMediaSession() }
+  const { unmount } = render(<App services={services} />)
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: /The Example Show/ }))
   await screen.findByRole('list', { name: 'Episodes' })
-  return { audio, user }
+  return { audio, user, unmount }
+}
+
+async function openNowPlaying(user: ReturnType<typeof userEvent.setup>, title: string) {
+  await user.click(within(miniPlayer()).getByRole('button', { name: new RegExp(title) }))
+}
+
+function speedPicker() {
+  return screen.getByRole('combobox', { name: 'Playback speed' })
 }
 
 /** The episode's button in the show's list, as opposed to the mini player's. */
@@ -146,6 +160,74 @@ describe('controlling playback', () => {
     await user.click(screen.getByRole('button', { name: 'Skip forward 30 seconds' }))
     expect(audio.currentTime).toBe(2712)
     expect(screen.getAllByText('45:12')).toHaveLength(2)
+  })
+})
+
+describe('playback speed', () => {
+  it('offers speed presets on now playing, starting at normal speed', async () => {
+    const { audio, user } = await renderShow()
+    await user.click(screen.getByRole('button', { name: first.title }))
+    await openNowPlaying(user, first.title)
+
+    const options = within(speedPicker()).getAllByRole('option')
+    expect(options.map((option) => option.textContent)).toEqual(['0.75×', '1×', '1.25×', '1.5×', '1.75×', '2×'])
+    expect(speedPicker()).toHaveDisplayValue('1×')
+    expect(audio.playbackRate).toBe(1)
+  })
+
+  it('applies the chosen speed at once, without interrupting playback', async () => {
+    const { audio, user } = await renderShow()
+    await user.click(screen.getByRole('button', { name: first.title }))
+    act(() => audio.progressTo(600))
+    await openNowPlaying(user, first.title)
+
+    await user.selectOptions(speedPicker(), '1.5×')
+
+    expect(audio.playbackRate).toBe(1.5)
+    expect(audio.paused).toBe(false)
+    expect(audio.currentTime).toBe(600)
+    expect(speedPicker()).toHaveDisplayValue('1.5×')
+  })
+
+  it('keeps the speed for the next episode played', async () => {
+    const { audio, user } = await renderShow()
+    await user.click(screen.getByRole('button', { name: first.title }))
+    await openNowPlaying(user, first.title)
+    await user.selectOptions(speedPicker(), '1.75×')
+    await user.click(screen.getByRole('button', { name: 'Close now playing' }))
+
+    await user.click(screen.getByRole('button', { name: second.title }))
+
+    expect(audio.src).toBe(second.enclosureUrl)
+    expect(audio.playbackRate).toBe(1.75)
+    await openNowPlaying(user, second.title)
+    expect(speedPicker()).toHaveDisplayValue('1.75×')
+  })
+
+  it('remembers the speed after the app is closed and opened again', async () => {
+    const { data, user, unmount } = await renderShow()
+    await user.click(screen.getByRole('button', { name: first.title }))
+    await openNowPlaying(user, first.title)
+    await user.selectOptions(speedPicker(), '1.25×')
+    unmount()
+
+    const relaunched = await launch(data)
+    await relaunched.user.click(screen.getByRole('button', { name: second.title }))
+
+    expect(relaunched.audio.playbackRate).toBe(1.25)
+    await openNowPlaying(relaunched.user, second.title)
+    expect(speedPicker()).toHaveDisplayValue('1.25×')
+  })
+
+  it('goes back to normal speed when asked to', async () => {
+    const { audio, user } = await renderShow()
+    await user.click(screen.getByRole('button', { name: first.title }))
+    await openNowPlaying(user, first.title)
+    await user.selectOptions(speedPicker(), '2×')
+
+    await user.selectOptions(speedPicker(), '1×')
+
+    expect(audio.playbackRate).toBe(1)
   })
 })
 
