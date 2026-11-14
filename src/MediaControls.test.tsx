@@ -141,11 +141,12 @@ describe('what the OS media controls show', () => {
 })
 
 describe('controlling playback from the OS media controls', () => {
-  it('offers play, pause, skip back, skip forward and scrubbing, and no track skipping', async () => {
+  it('offers play, pause, skip back, skip forward and scrubbing, and no track skipping while nothing is queued', async () => {
     const { mediaSession, user } = await renderShow()
     await user.click(screen.getByRole('button', { name: first.title }))
 
-    // On iOS, next and previous track controls would take the place of the skip buttons.
+    // On iOS, next and previous track controls would take the place of the skip
+    // buttons. Next is offered once something is queued (see Queue.test.tsx).
     expect(mediaSession.actions().sort()).toEqual(['pause', 'play', 'seekbackward', 'seekforward', 'seekto'])
   })
 

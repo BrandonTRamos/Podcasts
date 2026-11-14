@@ -37,7 +37,11 @@ button {
 .library header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.library header h1 {
+  margin-right: auto;
 }
 
 .add-podcast {
@@ -128,7 +132,8 @@ button {
   margin: 0;
 }
 
-.podcast nav button {
+.podcast nav button,
+.queue nav button {
   background: none;
   border: none;
   padding-inline: 0;
@@ -136,12 +141,14 @@ button {
   cursor: pointer;
 }
 
-.episodes li {
+.episodes li,
+.queued li {
   padding-block: 0.5rem;
   border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
 }
 
-.episodes h2 {
+.episodes h2,
+.queued h2 {
   font-size: 1rem;
   margin: 0;
 }
@@ -152,7 +159,8 @@ button {
   font-size: 0.875rem;
 }
 
-.episodes h2 button {
+.episodes h2 button,
+.queued h2 button {
   font: inherit;
   text-align: left;
   background: none;
@@ -180,6 +188,44 @@ button {
 .episode-state button {
   font-size: 0.875rem;
   padding: 0.25rem 0.5rem;
+}
+
+.episode-queue {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.episode-queue button,
+.queued-actions button {
+  font-size: 0.875rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.episode-queued {
+  font-weight: 600;
+}
+
+.queued {
+  list-style: none;
+  padding: 0;
+}
+
+.queued li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.queued-episode {
+  flex: 1;
+  min-width: 0;
+}
+
+.queued-actions {
+  display: flex;
+  gap: 0.25rem;
 }
 
 .episode-new {
@@ -266,7 +312,8 @@ button {
 }
 
 .now-playing nav {
-  text-align: left;
+  display: flex;
+  justify-content: space-between;
 }
 
 .now-playing nav button {

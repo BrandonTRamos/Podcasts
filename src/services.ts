@@ -43,14 +43,36 @@ export interface EpisodeState {
   /** Seconds from the start. */
   positionSeconds: number
   played: boolean
+  /**
+   * Where it stands in the queue: queued episodes play lowest first. Null when
+   * it is not queued. Fractional, so moving one episode is a single write.
+   */
+  queueOrder: number | null
 }
 
 /** Some fields of an episode's listening state, to change while leaving the others as they are. */
-export type EpisodeStateChange = Partial<Pick<EpisodeState, 'positionSeconds' | 'played'>>
+export type EpisodeStateChange = Partial<Pick<EpisodeState, 'positionSeconds' | 'played' | 'queueOrder'>>
 
 export interface SavedEpisodeState extends EpisodeState {
   /** When the backend stored it (ISO 8601). The later of two saves wins. */
   updatedAt: string
+}
+
+/** An episode in the queue, with the listening state that places it there. */
+export interface QueuedEpisode {
+  episode: Episode
+  state: SavedEpisodeState
+}
+
+/** The whole queue, as one delivery of it shows it. */
+export interface QueueSnapshot {
+  entries: QueuedEpisode[]
+  /**
+   * The latest save it takes account of (ISO 8601): an episode missing from it
+   * has left the queue only if it was saved as queued before then. Null for a
+   * fresh fetch, which takes account of every save so far.
+   */
+  asOf: string | null
 }
 
 /** What the subscribe call says straight away. */
@@ -91,6 +113,13 @@ export interface DataApi {
    * starts at the beginning, unplayed. Returns the whole state as saved.
    */
   saveEpisodeState(episodeId: string, podcastId: string, change: EpisodeStateChange): Promise<SavedEpisodeState>
+  /**
+   * Every queued episode, whatever its podcast, with its details and listening
+   * state: all of them once fetched, then again whenever any device changes the
+   * queue. Each delivery is the whole queue, so an episode missing from it has
+   * left (see `QueueSnapshot.asOf`).
+   */
+  observeQueue(observer: Observer<QueueSnapshot>): () => void
 }
 
 /**
