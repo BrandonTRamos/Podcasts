@@ -11,7 +11,7 @@
 - [x] Lint, typecheck and tests run on every push and every pull request, and a failure marks the check red
 - [ ] A push to `main` deploys both backend and frontend to production
 - [x] A commit that fails the checks is not deployed
-- [ ] The app is reachable at a live HTTPS URL and sign-in works there
+- [x] The app is reachable at a live HTTPS URL and sign-in works there
 - [ ] The app is installable: name and short name are "TinCan", with a tin-can-and-string icon
 - [ ] Launched from a home screen, it opens standalone without browser chrome
 - [x] No secrets or credentials are committed to the repo
@@ -36,3 +36,5 @@
   - "push to `main` deploys both": the merge of this PR is the first push-triggered build through `amplify.yml`.
   - Sign-in at the live URL: needs the owner's production account.
   - Installable and standalone: the PWA files reach production only with the merge; standalone needs an iPhone.
+
+**2026-11-14 (agent):** The owner created the production account and confirmed that sign-in works at the live URL on 2026-11-14.
