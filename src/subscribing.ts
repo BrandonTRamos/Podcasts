@@ -10,7 +10,7 @@ export type SubscribeState =
   | { status: 'lost' }
 
 /** The ways a subscribe can fail, each shown with its own message. */
-export type SubscribeFailure = 'invalidUrl' | 'unreachable' | 'notAFeed' | 'failed' | 'offline' | 'lost'
+export type SubscribeFailure = Exclude<SubscribeState['status'], 'pending' | 'subscribed' | 'alreadySubscribed'>
 
 /** The failure message for the state, if it is a failure. */
 export function failureMessage(state: SubscribeState | null, messages: Record<SubscribeFailure, string>): string | null {

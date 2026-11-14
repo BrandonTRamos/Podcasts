@@ -6,6 +6,6 @@ export const searchPodcastsFunction = defineFunction({
   entry: './handler.ts',
   // Called by, and calling, the data API: it must live in the data stack to avoid a circular dependency.
   resourceGroupName: 'data',
-  // The directory is given 8 seconds to answer.
+  // Longer than the directory is given to answer (see directory/searchPodcasts.ts).
   timeoutSeconds: 15,
 })

@@ -7,7 +7,8 @@ import { failureMessage, type SubscribeFailure, useSubscribe } from './subscribi
 type SearchState =
   | { status: 'idle' }
   | { status: 'searching' }
-  | { status: 'done'; term: string; search: PodcastSearch }
+  /** `number` counts searches, so each one's results start afresh. */
+  | { status: 'done'; term: string; search: PodcastSearch; number: number }
   /** The search call itself failed. */
   | { status: 'offline' }
 
@@ -25,14 +26,17 @@ export function SearchScreen({
 }) {
   const [term, setTerm] = useState('')
   const [state, setState] = useState<SearchState>({ status: 'idle' })
+  const [searches, setSearches] = useState(0)
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     const wanted = term.trim()
     if (!wanted) return
     setState({ status: 'searching' })
+    const number = searches + 1
+    setSearches(number)
     try {
-      setState({ status: 'done', term: wanted, search: await data.searchPodcasts(wanted) })
+      setState({ status: 'done', term: wanted, search: await data.searchPodcasts(wanted), number })
     } catch {
       setState({ status: 'offline' })
     }
@@ -67,11 +71,11 @@ export function SearchScreen({
         <p role="alert">Couldn’t reach the podcast directory. Try again later.</p>
       )}
       {found?.length === 0 && state.status === 'done' && <p role="status">No podcasts found for “{state.term}”.</p>}
-      {found && found.length > 0 && (
+      {found && found.length > 0 && state.status === 'done' && (
         <ul className="search-results" aria-label="Search results">
           {found.map((result) => (
             <SearchResult
-              key={result.feedUrl}
+              key={`${state.number} ${result.feedUrl}`}
               data={data}
               result={result}
               inLibrary={inLibrary}

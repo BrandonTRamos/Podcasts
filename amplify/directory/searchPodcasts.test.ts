@@ -65,7 +65,7 @@ describe('the searchPodcasts query', () => {
     ])
   })
 
-  it('passes the term to the directory as typed, encoded', async () => {
+  it('passes the term to the directory trimmed and encoded', async () => {
     const url = 'https://itunes.apple.com/search?media=podcast&entity=podcast&limit=25&term=hardcore+history+%26+more'
     const http = fakeHttp({ [url]: '{"resultCount":0,"results":[]}' })
     const { search } = feedHandlers()
@@ -73,6 +73,16 @@ describe('the searchPodcasts query', () => {
     await search('  hardcore history & more ')
 
     expect(http.requested).toEqual([url])
+  })
+
+  it('lists a feed the directory gives twice only once', async () => {
+    const listing = { collectionName: 'Twice', feedUrl: 'https://feeds.example.com/twice.xml' }
+    fakeHttp({ [romeSearch]: JSON.stringify({ results: [listing, { ...listing, feedUrl: 'HTTPS://feeds.example.com/twice.xml' }] }) })
+    const { search } = feedHandlers()
+
+    const result = await search('rome')
+
+    expect(result.podcasts.map((podcast) => podcast.feedUrl)).toEqual(['https://feeds.example.com/twice.xml'])
   })
 
   it('finds nothing when the directory has no matches', async () => {

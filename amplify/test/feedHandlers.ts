@@ -5,7 +5,7 @@ import { createSubscribeHandler } from '../feeds/subscribe'
 import { fakeFeedStore } from './fakes'
 
 /**
- * The feed handlers over one fake store: the `subscribe` mutation, the
+ * The backend's handlers over one fake store: the `subscribe` mutation, the
  * background ingest the request table's stream triggers, and the refresher
  * (run hourly by the scheduler, and for one podcast by the `refreshPodcast`
  * mutation), and the directory search. The clock reads `now`, which a test may move on.

@@ -16,6 +16,9 @@ export interface DirectoryPodcast {
   podcastId: string | null
 }
 
+/** A directory listing, before it is checked against the library. */
+type DirectoryListing = Omit<DirectoryPodcast, 'podcastId'>
+
 export interface SearchPodcastsResult {
   /** `directoryUnavailable`: the directory could not be reached or gave no usable answer; `podcasts` is empty. */
   outcome: 'found' | 'directoryUnavailable'
@@ -50,8 +53,11 @@ export function createSearchPodcastsHandler({ store }: { store: FeedStore }) {
   })
 }
 
-/** The directory's matches that have a usable feed, in its order; null if it gave no usable answer. */
-async function searchDirectory(term: string): Promise<Omit<DirectoryPodcast, 'podcastId'>[] | null> {
+/**
+ * The directory's matches that have a usable feed, in its order, each feed
+ * once; null if it gave no usable answer.
+ */
+async function searchDirectory(term: string): Promise<DirectoryListing[] | null> {
   const query = new URLSearchParams({ media: 'podcast', entity: 'podcast', limit: String(RESULT_LIMIT), term })
   let body: unknown
   try {
@@ -71,18 +77,25 @@ async function searchDirectory(term: string): Promise<Omit<DirectoryPodcast, 'po
     console.warn('searchPodcasts: directory answer had no results list')
     return null
   }
-  return results.flatMap((entry: unknown) => {
-    if (typeof entry !== 'object' || entry === null) return []
+  const listings = new Map<string, DirectoryListing>()
+  for (const entry of results) {
+    if (typeof entry !== 'object' || entry === null) continue
     const result = entry as Record<string, unknown>
-    const feedUrl = typeof result.feedUrl === 'string' ? normaliseFeedUrl(result.feedUrl) : null
-    const title = text(result.collectionName) ?? text(result.trackName)
-    if (!feedUrl || !title) return []
-    const artwork = text(result.artworkUrl600) ?? text(result.artworkUrl100)
+    const feedUrl = httpUrl(nonBlankString(result.feedUrl))
+    const title = nonBlankString(result.collectionName) ?? nonBlankString(result.trackName)
+    if (!feedUrl || !title || listings.has(feedUrl)) continue
     // Shown as an image's source, so it too must be http or https.
-    return [{ title, author: text(result.artistName), artworkUrl: artwork && normaliseFeedUrl(artwork), feedUrl }]
-  })
+    const artworkUrl = httpUrl(nonBlankString(result.artworkUrl600) ?? nonBlankString(result.artworkUrl100))
+    listings.set(feedUrl, { title, author: nonBlankString(result.artistName), artworkUrl, feedUrl })
+  }
+  return [...listings.values()]
 }
 
-function text(value: unknown): string | null {
+/** The URL, normalised, if it is http or https; otherwise null. */
+function httpUrl(value: string | null): string | null {
+  return value === null ? null : normaliseFeedUrl(value)
+}
+
+function nonBlankString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
