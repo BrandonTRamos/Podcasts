@@ -68,6 +68,8 @@ interface Connection {
 export function fakeDataApi() {
   const podcasts: (Podcast & { feedUrl: string })[] = []
   const episodes: Episode[] = []
+  /** Each episode's show notes, by ID, kept apart as the client fetches them apart. */
+  const showNotes = new Map<string, string | null>()
   const states = new Map<string, SavedEpisodeState>()
   /** Every listening-state change the backend received, in order. */
   const stateWrites: EpisodeStateChange[] = []
@@ -170,6 +172,10 @@ export function fakeDataApi() {
       },
       observeLatestEpisodes(observer) {
         return listen(connection, latestListeners, observer, latestEpisodes)
+      },
+      async getShowNotes(episodeId) {
+        reach()
+        return showNotes.get(episodeId) ?? null
       },
       async refreshPodcast(podcastId) {
         reach()
@@ -307,15 +313,19 @@ export function fakeDataApi() {
     },
     /**
      * Delivers ingested episodes, as the background step does after adding the
-     * podcast, or a refresh does on finding new ones. An episode given no enclosure URL gets one of its own. Returns their IDs.
+     * podcast, or a refresh does on finding new ones. An episode given no
+     * enclosure URL gets one of its own, and one given no show notes has none.
+     * Returns their IDs.
      */
     ingest(
       podcastId: string,
-      newEpisodes: (Omit<Episode, 'podcastId' | 'id' | 'enclosureUrl'> & Partial<Pick<Episode, 'enclosureUrl'>>)[],
+      newEpisodes: (Omit<Episode, 'podcastId' | 'id' | 'enclosureUrl'> &
+        Partial<Pick<Episode, 'enclosureUrl'>> & { showNotes?: string | null })[],
     ) {
-      const ids = newEpisodes.map((episode) => {
+      const ids = newEpisodes.map(({ showNotes: notes = null, ...episode }) => {
         const id = `episode-${nextId++}`
         episodes.push({ id, podcastId, enclosureUrl: `https://media.example.com/${id}.mp3`, ...episode })
+        showNotes.set(id, notes)
         return id
       })
       notify(episodeListeners.get(podcastId), episodesOf(podcastId))

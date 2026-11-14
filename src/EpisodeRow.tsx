@@ -5,6 +5,8 @@ import type { Episode, EpisodeState } from './services'
 /** What a listener can do with an episode in a list. */
 export interface EpisodeActions {
   onPlay: (episode: Episode) => void
+  /** Opens the episode's own screen, with its show notes. */
+  onOpen: (episode: Episode) => void
   onQueue: (episode: Episode, where: QueuePlace) => void
   /** Marking an episode unplayed also takes it back to the start. */
   onMarkPlayed: (episode: Episode, played: boolean) => void
@@ -20,6 +22,7 @@ export function EpisodeRow({
   state,
   podcastTitle,
   onPlay,
+  onOpen,
   onQueue,
   onMarkPlayed,
 }: {
@@ -35,19 +38,7 @@ export function EpisodeRow({
           {episode.title}
         </button>
       </h2>
-      <p className="episode-meta">
-        {[
-          podcastTitle && <span key="podcast">{podcastTitle}</span>,
-          episode.publishedAt && (
-            <time key="date" dateTime={episode.publishedAt}>
-              {formatDate(episode.publishedAt)}
-            </time>
-          ),
-          episode.durationSeconds !== null && <span key="duration">{formatDuration(episode.durationSeconds)}</span>,
-        ]
-          .filter(Boolean)
-          .flatMap((part, i) => (i === 0 ? [part] : [' · ', part]))}
-      </p>
+      <EpisodeMeta episode={episode} podcastTitle={podcastTitle} />
       <div className="episode-state">
         <ListeningProgress episode={episode} state={state} />
         {state?.queueOrder != null && <span className="episode-queued">Queued</span>}
@@ -56,6 +47,9 @@ export function EpisodeRow({
         </button>
       </div>
       <div className="episode-queue">
+        <button type="button" onClick={() => onOpen(episode)}>
+          Show notes
+        </button>
         <button type="button" onClick={() => onQueue(episode, 'next')}>
           Play next
         </button>
@@ -64,6 +58,25 @@ export function EpisodeRow({
         </button>
       </div>
     </li>
+  )
+}
+
+/** An episode's podcast (when given), date and duration, those it has, run together. */
+export function EpisodeMeta({ episode, podcastTitle }: { episode: Episode; podcastTitle?: string }) {
+  return (
+    <p className="episode-meta">
+      {[
+        podcastTitle && <span key="podcast">{podcastTitle}</span>,
+        episode.publishedAt && (
+          <time key="date" dateTime={episode.publishedAt}>
+            {formatDate(episode.publishedAt)}
+          </time>
+        ),
+        episode.durationSeconds !== null && <span key="duration">{formatDuration(episode.durationSeconds)}</span>,
+      ]
+        .filter(Boolean)
+        .flatMap((part, i) => (i === 0 ? [part] : [' · ', part]))}
+    </p>
   )
 }
 

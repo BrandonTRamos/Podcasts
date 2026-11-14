@@ -125,6 +125,12 @@ export interface DataApi {
   /** One podcast's episodes, in no particular order, kept current as they are ingested. */
   observeEpisodes(podcastId: string, observer: Observer<Episode[]>): () => void
   /**
+   * An episode's show notes as the feed gave them: untrusted HTML or plain
+   * text, to sanitise before display. Null when it has none or no longer
+   * exists. Throws when the backend can't be reached.
+   */
+  getShowNotes(episodeId: string): Promise<string | null>
+  /**
    * The newest dated episodes across every podcast, newest first, up to
    * `LATEST_EPISODES_LIMIT` of them, kept current as new ones are found.
    * Episodes without a publish date are left out.
