@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Human step:** needs AWS credentials configured on this machine, and the owner's account created in the sandbox. If either is missing, stop and say exactly what is needed.
 
@@ -15,7 +15,7 @@
 - [x] Signing out returns to the sign-in screen
 - [x] The data API rejects unauthenticated requests
 - [x] Lint, typecheck and test commands exist and pass
-- [ ] A client-seam test drives the UI through sign-in to the empty library, faking only the data API
+- [x] A client-seam test drives the UI through sign-in to the empty library, faking sign-in and the data API
 - [x] The backend test setup is in place so ticket 03 can add handler tests without further setup
 - [x] The README explains how to run the app locally, start the sandbox and run the checks
 
