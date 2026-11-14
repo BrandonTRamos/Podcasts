@@ -5,6 +5,7 @@ import { LatestScreen } from './LatestScreen'
 import { LibraryScreen } from './LibraryScreen'
 import { createListeningStore, resumePosition, useEpisodeStates } from './listening'
 import { MiniPlayer, NowPlayingScreen } from './NowPlaying'
+import { useOpmlImport } from './opmlImport'
 import { type PlayableEpisode, type SaveProgress, type TakeNext, usePlayer } from './player'
 import { PodcastScreen } from './PodcastScreen'
 import { QueueScreen } from './QueueScreen'
@@ -44,6 +45,8 @@ export function SignedInApp({
   const [nowPlayingOpen, setNowPlayingOpen] = useState(false)
   const [podcasts, setPodcasts] = useState<LoadState<Podcast>>({ status: 'loading' })
   const [listening] = useState(() => createListeningStore(data))
+  // Here rather than on the library, so an import carries on while the listener goes elsewhere.
+  const opmlImport = useOpmlImport(data)
   const saveProgress = useCallback<SaveProgress>(
     (episode, { positionSeconds, played }) =>
       listening.update(episode.id, episode.podcastId, played ? { positionSeconds, played } : { positionSeconds }),
@@ -106,6 +109,18 @@ export function SignedInApp({
       }),
     [data],
   )
+
+  /**
+   * Stops any episode of the podcast playing, so it saves no position while
+   * the backend removes it, then, once removed, forgets the listener's place
+   * in its episodes. Playback stays stopped if removing fails.
+   */
+  async function unsubscribe(podcastId: string) {
+    if (player.getState().episode?.podcastId === podcastId) player.stop()
+    await data.unsubscribe(podcastId)
+    listening.forgetPodcast(podcastId)
+    setScreen({ name: 'library' })
+  }
 
   const openPodcast = useCallback((podcastId: string) => setScreen({ name: 'podcast', podcastId }), [])
 
@@ -195,6 +210,7 @@ export function SignedInApp({
         podcast={podcastById(screen.podcastId)}
         listening={listening}
         onBack={() => setScreen({ name: 'library' })}
+        onUnsubscribe={() => unsubscribe(screen.podcastId)}
         {...episodeActions}
       />
     )
@@ -208,6 +224,8 @@ export function SignedInApp({
         onOpenLatest={() => setScreen({ name: 'latest' })}
         onOpenSearch={() => setScreen({ name: 'search' })}
         onSignOut={onSignOut}
+        opmlImport={opmlImport.state}
+        onImportOpml={(file) => void opmlImport.importFile(file)}
       />
     )
   }

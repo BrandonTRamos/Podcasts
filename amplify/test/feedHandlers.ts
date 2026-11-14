@@ -2,13 +2,14 @@ import { createSearchPodcastsHandler } from '../directory/searchPodcasts'
 import { createIngestFeedHandler } from '../feeds/ingestFeed'
 import { createRefreshFeedsHandler } from '../feeds/refreshFeeds'
 import { createSubscribeHandler } from '../feeds/subscribe'
+import { createUnsubscribeHandler } from '../feeds/unsubscribe'
 import { fakeFeedStore } from './fakes'
 
 /**
  * The backend's handlers over one fake store: the `subscribe` mutation, the
  * background ingest the request table's stream triggers, and the refresher
  * (run hourly by the scheduler, and for one podcast by the `refreshPodcast`
- * mutation), and the directory search. The clock reads `now`, which a test may move on.
+ * mutation), the `unsubscribe` mutation, and the directory search. The clock reads `now`, which a test may move on.
  */
 export function feedHandlers({ episodeLimit = 100 } = {}) {
   const data = fakeFeedStore()
@@ -18,6 +19,7 @@ export function feedHandlers({ episodeLimit = 100 } = {}) {
   const ingest = createIngestFeedHandler({ store: data.store, episodeLimit, now })
   const refresh = createRefreshFeedsHandler({ store: data.store, episodeLimit, now })
   const searchHandler = createSearchPodcastsHandler({ store: data.store })
+  const unsubscribeHandler = createUnsubscribeHandler({ store: data.store })
 
   return {
     data,
@@ -36,6 +38,8 @@ export function feedHandlers({ episodeLimit = 100 } = {}) {
     refreshAll: () => refresh({}),
     /** The `refreshPodcast` mutation, as AppSync invokes its handler asynchronously. */
     refreshPodcast: (podcastId: string) => refresh({ arguments: { podcastId } }),
+    /** The `unsubscribe` mutation. */
+    unsubscribe: (podcastId: string) => unsubscribeHandler({ arguments: { podcastId } }),
     /** The `searchPodcasts` query. */
     search: (term: string) => searchHandler({ arguments: { term } }),
   }

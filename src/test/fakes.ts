@@ -204,6 +204,17 @@ export function fakeDataApi() {
         requests.set(requestId, { feedUrl, state: { status: 'pending' } })
         return { outcome: 'pending', requestId }
       },
+      async unsubscribe(podcastId) {
+        reach()
+        removeWhere(podcasts, (podcast) => podcast.id === podcastId)
+        removeWhere(episodes, (episode) => episode.podcastId === podcastId)
+        for (const state of statesOf(podcastId)) states.delete(state.episodeId)
+        notifyPodcasts()
+        notify(episodeListeners.get(podcastId), [])
+        notify(latestListeners, latestEpisodes())
+        notify(stateListeners.get(podcastId), [])
+        notify(queueListeners, { entries: queue(), asOf: timeAt(++tick) })
+      },
       observeSubscribeRequest(requestId, observer) {
         return listen(connection, listenersFor(requestListeners, requestId), observer, () => requests.get(requestId)!.state)
       },
@@ -352,6 +363,10 @@ export function fakeDataApi() {
       return stateWrites
     },
   })
+}
+
+function removeWhere<T>(items: T[], matches: (item: T) => boolean) {
+  for (let i = items.length - 1; i >= 0; i--) if (matches(items[i])) items.splice(i, 1)
 }
 
 interface Listener<T> {

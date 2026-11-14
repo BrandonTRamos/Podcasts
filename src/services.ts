@@ -147,6 +147,12 @@ export interface DataApi {
   searchPodcasts(term: string): Promise<PodcastSearch>
   /** Returns at once; the feed is fetched and checked in the background. */
   subscribeToFeed(feedUrl: string): Promise<SubscribeStart>
+  /**
+   * Removes the podcast from the library, with its episodes and their
+   * listening state (queue places included). Resolves once they are gone;
+   * observers then see them leave. Throws when the backend can't be reached.
+   */
+  unsubscribe(podcastId: string): Promise<void>
   /** A subscribe request's state, now and as it changes. */
   observeSubscribeRequest(requestId: string, observer: Observer<SubscribeRequestState>): () => void
   /**
