@@ -41,7 +41,7 @@ export function EpisodeScreen({
   return (
     <main className="episode">
       <nav>
-        <button type="button" onClick={onBack} aria-label="Back">
+        <button type="button" onClick={onBack} aria-label={`Back to ${backLabel}`}>
           ‹ {backLabel}
         </button>
       </nav>
@@ -52,6 +52,7 @@ export function EpisodeScreen({
           Play
         </button>
       </header>
+      {statesStatus === 'failed' && <p role="alert">Couldn’t load what you’ve played.</p>}
       <ShowNotes notes={notes} />
     </main>
   )

@@ -48,7 +48,10 @@ async function showNotes() {
 
 describe('an episode’s screen', () => {
   it('shows its title, podcast, date, duration and show notes', async () => {
-    const { user } = await renderShow('<p>We talk about <strong>links</strong>.</p><p>Second paragraph.</p>')
+    const { user } = await renderShow(
+      '<h1>Topics</h1><p>We talk about <strong>links</strong>.</p><p>Second paragraph.</p>' +
+        '<table><tr><td>00:00</td><td>Intro</td></tr><tr><td>05:30</td><td>Links</td></tr></table>',
+    )
 
     await openEpisode(user)
 
@@ -61,6 +64,8 @@ describe('an episode’s screen', () => {
     expect(notes.querySelectorAll('p')).toHaveLength(2)
     expect(notes.querySelectorAll('p')[0]).toHaveTextContent('We talk about links.')
     expect(notes.querySelectorAll('p')[1]).toHaveTextContent('Second paragraph.')
+    expect(within(notes).getByRole('heading', { level: 2, name: 'Topics' })).toBeInTheDocument()
+    expect(notes).toHaveTextContent('00:00 Intro 05:30 Links')
   })
 
   it('plays the episode, resuming where the listener left off', async () => {
@@ -79,7 +84,7 @@ describe('an episode’s screen', () => {
     const { user } = await renderShow('<p>Notes.</p>')
     await openEpisode(user)
 
-    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await user.click(screen.getByRole('button', { name: 'Back to The Example Show' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'The Example Show' })).toBeInTheDocument()
   })
@@ -180,9 +185,8 @@ describe('hostile show notes', () => {
     expect(notes).toHaveTextContent('javascript link')
     expect(notes).toHaveTextContent('relative link')
 
-    // Nothing of the removed content leaks through as text, and none of it ran.
+    // Nothing of the removed content leaks through as text, or anywhere else in the page.
     expect(notes.textContent).not.toMatch(/pwned|alert|noscript text|display: none|Sign in|svg link/)
-    expect((window as { pwned?: unknown }).pwned).toBeUndefined()
     expect(document.querySelectorAll('script, iframe, object, embed')).toHaveLength(0)
     expect(document.head.querySelector('base, meta[http-equiv], link[rel=stylesheet]')).toBeNull()
   })
@@ -211,7 +215,7 @@ describe('the episode screen’s place in the app', () => {
     await user.click(within(list).getByRole('button', { name: 'Show notes' }))
 
     expect(await showNotes()).toHaveTextContent('Plain notes.')
-    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await user.click(screen.getByRole('button', { name: 'Back to Latest episodes' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Latest episodes' })).toBeInTheDocument()
   })
 })

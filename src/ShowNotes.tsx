@@ -20,7 +20,7 @@ import { createElement, Fragment, type ReactNode } from 'react'
  * become links.
  */
 export function ShowNotes({ notes }: { notes: ShowNotesState }) {
-  const rendered = notes.status === 'loaded' && notes.notes !== null ? render(notes.notes) : null
+  const rendered = notes.status === 'loaded' && notes.notes !== null ? sanitise(notes.notes) : null
   return (
     <section
       aria-label="Show notes"
@@ -37,7 +37,7 @@ export function ShowNotes({ notes }: { notes: ShowNotesState }) {
 /** Show notes as they arrive: null once loaded means the episode has none. */
 export type ShowNotesState = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; notes: string | null }
 
-function render(notes: string): Rendered {
+function sanitise(notes: string): Rendered {
   return looksLikeHtml(notes) ? fromHtml(notes) : fromPlainText(notes)
 }
 
@@ -74,8 +74,8 @@ const AS_DIV = new Set([
   'center', 'details', 'summary', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'caption',
 ])
 
-/** Under the episode's own heading, the notes' headings start a level or two down. */
-const HEADINGS: Record<string, string> = { h1: 'h3', h2: 'h3', h3: 'h4', h4: 'h5', h5: 'h6', h6: 'h6' }
+/** Under the episode's own heading, the notes' headings start a level down. */
+const HEADINGS: Record<string, string> = { h1: 'h2', h2: 'h3', h3: 'h4', h4: 'h5', h5: 'h6', h6: 'h6' }
 
 /** Elements that separate lines by themselves, so the markup's own line breaks are just layout. */
 const STRUCTURAL = new Set(['p', 'br', 'div', 'pre', 'blockquote', 'ul', 'ol', 'li', 'dl', 'hr', ...Object.keys(HEADINGS), ...AS_DIV])
@@ -110,6 +110,8 @@ function fromHtml(html: string): Rendered {
     }
     const tag = KEPT.has(name) ? name : AS_DIV.has(name) ? 'div' : HEADINGS[name]
     const content = children(element, insideLink)
+    // A table's cells, laid out as text: "00:00 Intro", not "00:00Intro".
+    if (name === 'td' || name === 'th') return [...content, ' ']
     if (!tag) return content
     return name === 'br' || name === 'hr' ? createElement(tag) : createElement(tag, null, content)
   }
@@ -149,11 +151,13 @@ function decodeEntities(text: string): string {
 /** Web addresses in running text. Punctuation that ends a sentence isn't part of one. */
 const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>"]+/gi
 
+const TRAILING_PUNCTUATION = /[.,;:!?'"\]]+$/
+
 /** Drops sentence punctuation from the end of an address, and a closing bracket it didn't open. */
 function trimTrailingPunctuation(url: string): string {
-  let trimmed = url.replace(/[.,;:!?'"\]]+$/, '')
+  let trimmed = url.replace(TRAILING_PUNCTUATION, '')
   while (trimmed.endsWith(')') && trimmed.split('(').length < trimmed.split(')').length) {
-    trimmed = trimmed.slice(0, -1).replace(/[.,;:!?'"\]]+$/, '')
+    trimmed = trimmed.slice(0, -1).replace(TRAILING_PUNCTUATION, '')
   }
   return trimmed
 }
@@ -173,7 +177,7 @@ function linkify(text: string): ReactNode {
   return parts
 }
 
-/** An absolute http, https or mailto address, or null for anything else: scripts, data, or the app's own pages. */
+/** An absolute http, https or mailto address, or null for anything else: scripts, data, or a relative address into the app. */
 function safeHref(raw: string | null): string | null {
   if (raw === null) return null
   let url: URL
