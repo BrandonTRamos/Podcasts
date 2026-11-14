@@ -74,6 +74,49 @@ export function useSubscribe(data: Pick<DataApi, 'subscribeToFeed' | 'observeSub
   return { state, busy: sending || state?.status === 'pending', subscribe }
 }
 
+/**
+ * Subscribes to the feed and waits for the background check to settle.
+ * Resolves with how it ended; never rejects. A check that has not settled
+ * after `deadlineMs` counts as `lost`: its outcome is unknown.
+ */
+export async function subscribeAndSettle(
+  data: Pick<DataApi, 'subscribeToFeed' | 'observeSubscribeRequest'>,
+  input: string,
+  { deadlineMs }: { deadlineMs: number },
+): Promise<Exclude<SubscribeState, { status: 'pending' }>> {
+  const feedUrl = input.trim()
+  if (!isHttpUrl(feedUrl)) return { status: 'invalidUrl' }
+  let result
+  try {
+    result = await data.subscribeToFeed(feedUrl)
+  } catch {
+    return { status: 'offline' }
+  }
+  if (result.outcome === 'alreadySubscribed') return { status: 'alreadySubscribed', podcastId: result.podcastId }
+  if (result.outcome === 'invalidUrl') return { status: 'invalidUrl' }
+  const { requestId } = result
+  return new Promise((resolve) => {
+    let settled = false
+    let stop: (() => void) | null = null
+    const settle = (state: Exclude<SubscribeState, { status: 'pending' }>) => {
+      if (settled) return
+      settled = true
+      clearTimeout(deadline)
+      stop?.()
+      resolve(state)
+    }
+    const deadline = setTimeout(() => settle({ status: 'lost' }), deadlineMs)
+    stop = data.observeSubscribeRequest(requestId, {
+      next: (state) => {
+        if (state.status !== 'pending') settle(state)
+      },
+      error: () => settle({ status: 'lost' }),
+    })
+    // It may have settled before the call returned.
+    if (settled) stop()
+  })
+}
+
 function isHttpUrl(value: string): boolean {
   try {
     const { protocol } = new URL(value)

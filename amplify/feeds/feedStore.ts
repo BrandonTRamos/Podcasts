@@ -1,5 +1,5 @@
 /**
- * The feed handlers' boundary with the data API. `amplifyFeedStore.ts`
+ * The backend handlers' boundary with the data API. `amplifyFeedStore.ts`
  * implements it against AppSync (so that clients' data subscriptions see every
  * write); backend tests substitute an in-memory fake.
  */
@@ -79,6 +79,16 @@ export interface FeedStore {
   createSubscribeRequest(feedUrl: string): Promise<SubscribeRequestRecord>
   getSubscribeRequest(id: string): Promise<SubscribeRequestRecord | null>
   settleSubscribeRequest(id: string, outcome: { status: SubscribeStatus; podcastId: string | null }): Promise<void>
+  /** Removes the podcast record alone. Does nothing if there is none. */
+  deletePodcast(id: string): Promise<void>
+  /** The IDs of every episode stored for the podcast. */
+  listEpisodeIds(podcastId: string): Promise<string[]>
+  /** Does nothing if there is no such episode. */
+  deleteEpisode(id: string): Promise<void>
+  /** The IDs of the listening states (each its episode's ID) kept for the podcast's episodes. */
+  listEpisodeStateIds(podcastId: string): Promise<string[]>
+  /** Does nothing if there is no such state. */
+  deleteEpisodeState(id: string): Promise<void>
 }
 
 /** What the feed handlers that store episodes are built with. */

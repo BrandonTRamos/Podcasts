@@ -103,7 +103,63 @@ export async function amplifyFeedStore(): Promise<FeedStore> {
       const { errors } = await client.models.SubscribeRequest.update({ id, status, podcastId })
       throwIfErrors(errors)
     },
+
+    async deletePodcast(id) {
+      const { errors } = await client.models.Podcast.delete({ id })
+      throwIfErrorsBesidesMissing(errors)
+    },
+
+    async listEpisodeIds(podcastId) {
+      return listAllIds((nextToken) =>
+        client.models.Episode.list({ filter: { podcastId: { eq: podcastId } }, selectionSet: ['id'], limit: 1000, nextToken }),
+      )
+    },
+
+    async deleteEpisode(id) {
+      const { errors } = await client.models.Episode.delete({ id })
+      throwIfErrorsBesidesMissing(errors)
+    },
+
+    async listEpisodeStateIds(podcastId) {
+      return listAllIds((nextToken) =>
+        client.models.EpisodeState.list({
+          filter: { podcastId: { eq: podcastId } },
+          selectionSet: ['id'],
+          limit: 1000,
+          nextToken,
+        }),
+      )
+    },
+
+    async deleteEpisodeState(id) {
+      const { errors } = await client.models.EpisodeState.delete({ id })
+      throwIfErrorsBesidesMissing(errors)
+    },
   }
+}
+
+/** Every page of a filtered list. A filter applies after each page is read, so a page can be empty with more to come. */
+async function listAllIds(
+  listPage: (nextToken: string | null | undefined) => Promise<{
+    data: { id: string }[]
+    errors?: GraphQLErrors
+    nextToken?: string | null
+  }>,
+): Promise<string[]> {
+  const ids: string[] = []
+  let nextToken: string | null | undefined = null
+  do {
+    const page = await listPage(nextToken)
+    throwIfErrors(page.errors)
+    ids.push(...page.data.map((record) => record.id))
+    nextToken = page.nextToken
+  } while (nextToken)
+  return ids
+}
+
+/** Deleting a record that is already gone fails its condition; that counts as done. */
+function throwIfErrorsBesidesMissing(errors: GraphQLErrors | undefined) {
+  throwIfErrors(errors?.filter((error) => !error.errorType?.includes('ConditionalCheckFailed')))
 }
 
 /** Requests only matter while the client waits for the outcome; DynamoDB removes them after this. */

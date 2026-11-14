@@ -4,14 +4,14 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The listener can unsubscribe from a podcast, after confirming
-- [ ] Unsubscribing removes the podcast, its episodes and their listening state, including any queue entries
-- [ ] If an episode from that podcast is playing, playback stops
-- [ ] Importing an OPML file subscribes to every feed in it
-- [ ] Feeds already in the library are skipped
-- [ ] The import ends with a summary of added, skipped and failed feeds
-- [ ] A file that is not valid OPML shows a clear error
-- [ ] A large import does not freeze the app, and podcasts appear as they are added
-- [ ] Backend-seam tests cover unsubscribe; client-seam tests cover both flows
+- [x] The listener can unsubscribe from a podcast, after confirming
+- [x] Unsubscribing removes the podcast, its episodes and their listening state, including any queue entries
+- [x] If an episode from that podcast is playing, playback stops
+- [x] Importing an OPML file subscribes to every feed in it
+- [x] Feeds already in the library are skipped
+- [x] The import ends with a summary of added, skipped and failed feeds
+- [x] A file that is not valid OPML shows a clear error
+- [x] A large import does not freeze the app, and podcasts appear as they are added
+- [x] Backend-seam tests cover unsubscribe; client-seam tests cover both flows

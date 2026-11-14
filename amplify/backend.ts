@@ -8,11 +8,13 @@ import { ingestFeedFunction } from './functions/ingest-feed/resource'
 import { refreshFeedsFunction } from './functions/refresh-feeds/resource'
 import { searchPodcastsFunction } from './functions/search-podcasts/resource'
 import { subscribeFunction } from './functions/subscribe/resource'
+import { unsubscribeFunction } from './functions/unsubscribe/resource'
 
 const backend = defineBackend({
   auth,
   data,
   subscribeFunction,
+  unsubscribeFunction,
   ingestFeedFunction,
   refreshFeedsFunction,
   searchPodcastsFunction,
@@ -27,7 +29,8 @@ cfnUserPool.adminCreateUserConfig = { allowAdminCreateUserOnly: true }
 cfnIdentityPool.allowUnauthenticatedIdentities = false
 
 // Each new subscribe request starts the background ingest, through the request
-// table's stream. Requests expire a day after they are made.
+// table's stream. Requests expire a day after they are made. A few are ingested
+// at once, so an OPML import of many feeds is not ingested one after another.
 const requestTable = backend.data.resources.tables['SubscribeRequest']
 backend.data.resources.cfnResources.amplifyDynamoDbTables['SubscribeRequest'].timeToLiveAttribute = {
   attributeName: 'expiresAt',
@@ -48,6 +51,7 @@ const streamMapping = new EventSourceMapping(Stack.of(requestTable), 'IngestFeed
   eventSourceArn: requestTable.tableStreamArn,
   startingPosition: StartingPosition.LATEST,
   batchSize: 1,
+  parallelizationFactor: 4,
   retryAttempts: 2,
   filters: [FilterCriteria.filter({ eventName: FilterRule.isEqual('INSERT') })],
 })

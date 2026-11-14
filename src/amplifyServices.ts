@@ -214,6 +214,11 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
         throw new Error(`Unexpected subscribe result: ${data.outcome}`)
       },
 
+      async unsubscribe(podcastId) {
+        const { data, errors } = await client.mutations.unsubscribe({ podcastId })
+        if (errors?.length || !data) throw new Error(errors?.map((e) => e.message).join('; ') ?? 'Not unsubscribed')
+      },
+
       observeSubscribeRequest(requestId, observer) {
         const subscription = client.models.SubscribeRequest.observeQuery({
           filter: { id: { eq: requestId } },

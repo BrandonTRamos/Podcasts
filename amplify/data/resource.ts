@@ -3,6 +3,7 @@ import { ingestFeedFunction } from '../functions/ingest-feed/resource'
 import { refreshFeedsFunction } from '../functions/refresh-feeds/resource'
 import { searchPodcastsFunction } from '../functions/search-podcasts/resource'
 import { subscribeFunction } from '../functions/subscribe/resource'
+import { unsubscribeFunction } from '../functions/unsubscribe/resource'
 
 // Single-user app: every model is readable and writable by the signed-in user
 // only, with no per-owner rules. Requests without a Cognito token are refused.
@@ -103,6 +104,15 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(subscribeFunction)),
 
+    // Removes the podcast, its episodes and their listening state (queue
+    // places included). Returns true once they are gone, or were already.
+    unsubscribe: a
+      .mutation()
+      .arguments({ podcastId: a.id().required() })
+      .returns(a.boolean().required())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(unsubscribeFunction)),
+
     // Returns at once; the feed is refreshed in the background. The client
     // learns the outcome through data subscriptions: new episodes, and the
     // podcast's refresh time or error.
@@ -142,6 +152,7 @@ const schema = a
   .authorization((allow) => [
     allow.authenticated(),
     allow.resource(subscribeFunction),
+    allow.resource(unsubscribeFunction),
     allow.resource(ingestFeedFunction),
     allow.resource(refreshFeedsFunction),
     allow.resource(searchPodcastsFunction),

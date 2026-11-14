@@ -1,4 +1,5 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react'
+import type { ImportOutcome, ImportState } from './opmlImport'
 import type { DataApi, Podcast } from './services'
 import type { LoadState } from './SignedInApp'
 import { failureMessage, type SubscribeFailure, useSubscribe } from './subscribing'
@@ -11,9 +12,13 @@ export function LibraryScreen({
   onOpenLatest,
   onOpenSearch,
   onSignOut,
+  opmlImport,
+  onImportOpml,
 }: {
   podcasts: LoadState<Podcast>
   data: DataApi
+  opmlImport: ImportState
+  onImportOpml: (file: File) => void
   onOpenPodcast: (podcastId: string) => void
   onOpenQueue: () => void
   onOpenLatest: () => void
@@ -44,6 +49,7 @@ export function LibraryScreen({
         }
         onSubscribed={onOpenPodcast}
       />
+      <OpmlImport state={opmlImport} onImport={onImportOpml} />
       {podcasts.status === 'loading' && <p>Loading…</p>}
       {podcasts.status === 'failed' && <p role="alert">Couldn’t load your library.</p>}
       {podcasts.status === 'loaded' &&
@@ -131,4 +137,73 @@ function AddPodcastForm({
       {error && <p role="alert">{error}</p>}
     </form>
   )
+}
+
+/** Brings in every subscription from another podcast app, from the OPML file it exports. */
+function OpmlImport({ state, onImport }: { state: ImportState; onImport: (file: File) => void }) {
+  const busy = state.status === 'reading' || state.status === 'importing'
+
+  function handleChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    // Cleared, so choosing the same file again imports it again.
+    event.target.value = ''
+    if (file) onImport(file)
+  }
+
+  return (
+    <section className="opml-import">
+      <label>
+        Import OPML file
+        <input
+          type="file"
+          accept=".opml,.xml,text/x-opml,text/xml,application/xml"
+          onChange={handleChange}
+          disabled={busy}
+        />
+      </label>
+      {state.status === 'invalid' && <p role="alert">That file isn’t a valid OPML file.</p>}
+      {state.status === 'empty' && <p role="alert">That OPML file lists no podcast feeds.</p>}
+      {(state.status === 'importing' || state.status === 'finished') && <ImportSummary state={state} />}
+    </section>
+  )
+}
+
+function ImportSummary({ state }: { state: Extract<ImportState, { status: 'importing' | 'finished' }> }) {
+  const count = (outcome: ImportOutcome) => state.results.filter((result) => result.outcome === outcome).length
+  const done = state.results.filter((result) => result.outcome !== null).length
+  const notAdded = state.results.filter((result) => result.outcome === 'failed').map((result) => result.feed)
+  return (
+    <div role="status" aria-label="OPML import">
+      {state.status === 'importing' ? (
+        <p>
+          Importing podcasts: {done} of {state.results.length} done…
+        </p>
+      ) : (
+        <>
+          <p>
+            Import finished: {count('added')} added, {count('skipped')} already in your library, {count('failed')} failed.
+          </p>
+          {notAdded.length > 0 && (
+            <>
+              <p>Couldn’t add these. Check their feed URLs in the other app and subscribe to them by URL:</p>
+              <ul aria-label="Feeds not added">
+                {notAdded.map((feed) => (
+                  <li key={feed.feedUrl}>{feed.title ?? feedHost(feed.feedUrl)}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+/** Names a feed with no title by its host alone: the rest of a feed URL can hold a private feed's access token. */
+function feedHost(feedUrl: string): string {
+  try {
+    return new URL(feedUrl).host || 'A feed with no name'
+  } catch {
+    return 'A feed with no name'
+  }
 }

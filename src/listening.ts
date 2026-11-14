@@ -47,6 +47,12 @@ export interface ListeningStore {
   dequeue(episodeId: string): void
   /** Takes the first episode off the queue and returns it, or null if the queue is empty. Never waits on the network. */
   takeNext(): Episode | null
+  /**
+   * Drops everything held for the podcast's episodes, queue places included,
+   * once it has been unsubscribed from. Later changes to them, and saves of
+   * them arriving from elsewhere, are ignored.
+   */
+  forgetPodcast(podcastId: string): void
   /** Calls the listener whenever anything in the store changes. Returns a function that stops it. */
   subscribe(listener: () => void): () => void
   /** Changes whenever anything in the store does. */
@@ -74,6 +80,8 @@ export function createListeningStore(
   const episodes = new Map<string, Episode>()
   const queueWatch = { watchers: 0, status: 'loading' as ListeningStatus, stop: () => {} }
   const listeners = new Set<() => void>()
+  /** Podcasts unsubscribed from: nothing more is kept or saved for their episodes. */
+  const forgotten = new Set<string>()
   let version = 0
   let writes = 0
 
@@ -84,6 +92,7 @@ export function createListeningStore(
 
   /** Keeps whichever of the two saves is later. A later one also replaces changes here whose save failed. */
   function keepLatest(state: SavedEpisodeState) {
+    if (forgotten.has(state.podcastId)) return
     const current = saved.get(state.episodeId)
     const time = Date.parse(state.updatedAt)
     if (current && Date.parse(current.updatedAt) > time) return
@@ -155,6 +164,7 @@ export function createListeningStore(
   }
 
   function update(episodeId: string, podcastId: string, change: EpisodeStateChange) {
+    if (forgotten.has(podcastId)) return
     const entry: LocalChange = { write: ++writes, podcastId, change, failed: false }
     local.set(episodeId, [...(local.get(episodeId) ?? []), entry])
     changed()
@@ -278,6 +288,14 @@ export function createListeningStore(
       const next = queued()[0]?.episode ?? null
       if (next) dequeue(next.id)
       return next
+    },
+
+    forgetPodcast(podcastId) {
+      forgotten.add(podcastId)
+      for (const [episodeId, state] of saved) if (state.podcastId === podcastId) saved.delete(episodeId)
+      for (const [episodeId, changes] of local) if (changes[0].podcastId === podcastId) local.delete(episodeId)
+      for (const [episodeId, episode] of episodes) if (episode.podcastId === podcastId) episodes.delete(episodeId)
+      changed()
     },
 
     subscribe(listener) {

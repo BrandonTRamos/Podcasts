@@ -13,6 +13,7 @@ export function PodcastScreen({
   podcast,
   listening,
   onBack,
+  onUnsubscribe,
   ...actions
 }: {
   data: DataApi
@@ -21,6 +22,8 @@ export function PodcastScreen({
   podcast: Podcast | undefined
   listening: ListeningStore
   onBack: () => void
+  /** Removes the podcast from the library. Rejects if that failed. */
+  onUnsubscribe: () => Promise<void>
 } & EpisodeActions) {
   const [episodes, setEpisodes] = useState<LoadState<Episode>>({ status: 'loading' })
   const [unplayedOnly, setUnplayedOnly] = useState(false)
@@ -54,6 +57,7 @@ export function PodcastScreen({
         <p>Loading…</p>
       )}
       {podcast && <FeedHealth podcast={podcast} refresh={(id) => data.refreshPodcast(id)} />}
+      {podcast && <Unsubscribe podcastTitle={podcast.title} onUnsubscribe={onUnsubscribe} />}
       {/* Wait for the listening state too, so an episode tapped at once still resumes. */}
       {(episodes.status === 'loading' || statesStatus === 'loading') && podcast && <p>Loading episodes…</p>}
       {episodes.status === 'failed' && <p role="alert">Couldn’t load the episodes.</p>}
@@ -168,6 +172,46 @@ function FeedHealth({ podcast, refresh }: { podcast: Podcast; refresh: (podcastI
       {lastFetchError && <p role="alert">{feedErrorMessages[lastFetchError]}</p>}
       {checking && <p role="status">Checking for new episodes…</p>}
       {request.status === 'failed' && <p role="alert">Couldn’t refresh. Check your connection and try again.</p>}
+    </section>
+  )
+}
+
+/** A button to unsubscribe, which asks first, as unsubscribing also forgets the listener's place in every episode. */
+function Unsubscribe({ podcastTitle, onUnsubscribe }: { podcastTitle: string; onUnsubscribe: () => Promise<void> }) {
+  const [step, setStep] = useState<'idle' | 'confirming' | 'sending' | 'failed'>('idle')
+
+  async function handleConfirm() {
+    setStep('sending')
+    try {
+      // Once done, this screen is gone: the app returns to the library.
+      await onUnsubscribe()
+    } catch {
+      setStep('failed')
+    }
+  }
+
+  if (step === 'confirming' || step === 'sending') {
+    return (
+      <section className="unsubscribe" role="alertdialog" aria-labelledby="unsubscribe-title" aria-describedby="unsubscribe-detail">
+        <h2 id="unsubscribe-title">Unsubscribe from {podcastTitle}?</h2>
+        <p id="unsubscribe-detail">Its episodes and your place in them will be removed from your library and queue.</p>
+        <button type="button" onClick={() => void handleConfirm()} disabled={step === 'sending'}>
+          Unsubscribe
+        </button>
+        <button type="button" onClick={() => setStep('idle')} disabled={step === 'sending'}>
+          Cancel
+        </button>
+        {step === 'sending' && <p role="status">Unsubscribing…</p>}
+      </section>
+    )
+  }
+
+  return (
+    <section className="unsubscribe">
+      <button type="button" onClick={() => setStep('confirming')}>
+        Unsubscribe
+      </button>
+      {step === 'failed' && <p role="alert">Couldn’t unsubscribe. Check your connection and try again.</p>}
     </section>
   )
 }

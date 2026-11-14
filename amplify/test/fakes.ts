@@ -3,16 +3,28 @@ import { vi } from 'vitest'
 import type { EpisodeRecord, FeedStore, PodcastRecord, SubscribeRequestRecord } from '../feeds/feedStore'
 import type { SubscribeRequestStreamEvent } from '../feeds/ingestFeed'
 
+/** Listening state as the fake holds it: what the backend handlers see of it, and its queue place. */
+interface FakeEpisodeState {
+  id: string
+  podcastId: string
+  queueOrder?: number
+}
+
 /**
  * In-memory stand-in for the data API, with the same create-fails-on-existing-ID
  * rule. Like the real subscribe-request table, it streams each new request:
  * `takeStreamEvent` returns the inserts since it was last called. `writes`
- * lists every podcast and episode write, in order.
+ * lists every podcast and episode write, in order. `failNextDelete` makes one
+ * delete fail, as a dropped call to the data API would.
  */
 export function fakeFeedStore() {
   const podcasts = new Map<string, PodcastRecord>()
   const episodes = new Map<string, EpisodeRecord>()
   const requests = new Map<string, SubscribeRequestRecord>()
+  const states = new Map<string, FakeEpisodeState>()
+  const failingDeletes = new Set<string>()
+  /** Run as the record with that ID is deleted, standing in for a write made meanwhile by something else. */
+  const afterDeletes = new Map<string, () => void>()
   let writes: string[] = []
   let unstreamed: string[] = []
   let nextId = 1
@@ -66,6 +78,30 @@ export function fakeFeedStore() {
       if (!existing) throw new Error(`No subscribe request ${id}`)
       requests.set(id, { ...existing, ...outcome })
     },
+    async deletePodcast(id) {
+      failIfAsked(id)
+      podcasts.delete(id)
+    },
+    async listEpisodeIds(podcastId) {
+      return [...episodes.values()].filter((e) => e.podcastId === podcastId).map((e) => e.id)
+    },
+    async deleteEpisode(id) {
+      failIfAsked(id)
+      episodes.delete(id)
+    },
+    async listEpisodeStateIds(podcastId) {
+      return [...states.values()].filter((state) => state.podcastId === podcastId).map((state) => state.id)
+    },
+    async deleteEpisodeState(id) {
+      failIfAsked(id)
+      states.delete(id)
+    },
+  }
+
+  function failIfAsked(id: string) {
+    afterDeletes.get(id)?.()
+    afterDeletes.delete(id)
+    if (failingDeletes.delete(id)) throw new Error(`Deleting ${id} failed`)
   }
 
   return {
@@ -74,6 +110,19 @@ export function fakeFeedStore() {
     podcast: (id: string) => podcasts.get(id),
     episodesOf: (podcastId: string) => [...episodes.values()].filter((e) => e.podcastId === podcastId),
     request: (id: string) => requests.get(id),
+    /** Listening state saved by the client, as the data API would hold it. */
+    seedEpisodeState(state: FakeEpisodeState) {
+      states.set(state.id, state)
+    },
+    episodeStates: () => [...states.values()],
+    /** Runs `meanwhile` as the record with this ID is deleted, as a write from elsewhere landing then would. */
+    whenDeleting(id: string, meanwhile: () => void) {
+      afterDeletes.set(id, meanwhile)
+    },
+    /** The next delete of the record with this ID fails. */
+    failNextDelete(id: string) {
+      failingDeletes.add(id)
+    },
     /** The podcast and episode writes since this was last called, oldest first. */
     takeWrites(): string[] {
       const taken = writes
