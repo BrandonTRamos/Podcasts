@@ -300,3 +300,9 @@ button {
   justify-content: center;
   gap: 1.5rem;
 }
+
+.speed {
+  justify-self: center;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}

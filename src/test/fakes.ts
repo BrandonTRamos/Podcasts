@@ -5,6 +5,7 @@ import type {
   Episode,
   EpisodeState,
   EpisodeStateChange,
+  MediaSessionControls,
   Observer,
   Podcast,
   SavedEpisodeState,
@@ -256,9 +257,9 @@ export type FakeDataApi = ReturnType<typeof fakeDataApi>
 
 /**
  * Stands in for a plain `<audio>` element. Like the real one, setting `src`
- * starts a fresh load, `play()` and `pause()` fire `play` and `pause`, and a
- * failed load fires `error` without pausing, and reaching the end fires
- * `pause` then `ended`. Tests drive what the network, decoder and browser
+ * starts a fresh load (back at `defaultPlaybackRate`), `play()` and
+ * `pause()` fire `play` and `pause`, a failed load fires `error` without
+ * pausing, and reaching the end fires `pause` then `ended`. Tests drive what the network, decoder and browser
  * would: `loadMetadata`, `progressTo`, `playToEnd`, `failToLoad`,
  * `refuseNextPlay`.
  */
@@ -266,6 +267,8 @@ export class FakeAudio extends EventTarget implements AudioElement {
   #src = ''
   #currentTime = 0
   duration = NaN
+  playbackRate = 1
+  defaultPlaybackRate = 1
   paused = true
   ended = false
   #refuseNextPlay = false
@@ -277,6 +280,8 @@ export class FakeAudio extends EventTarget implements AudioElement {
 
   set src(url: string) {
     this.#src = url
+    // As in a real element, a new load returns to the default rate.
+    this.playbackRate = this.defaultPlaybackRate
     this.paused = true
     this.ended = false
     this.#currentTime = 0
@@ -365,5 +370,64 @@ export class FakeAudio extends EventTarget implements AudioElement {
   /** The publisher's file can't be fetched or decoded. */
   failToLoad() {
     this.dispatchEvent(new Event('error'))
+  }
+}
+
+type ActionHandler = (details: MediaSessionActionDetails) => void
+
+/**
+ * Stands in for the OS media controls behind `navigator.mediaSession`: the
+ * lock screen, notification centre, headphone and Bluetooth buttons. Shows
+ * what the app last told it; `press` and `scrubTo` act as the listener would.
+ */
+export class FakeMediaSession implements MediaSessionControls {
+  metadata: MediaMetadataInit | null = null
+  playbackState: MediaSessionPlaybackState = 'none'
+  positionState: MediaPositionState | null = null
+  #handlers = new Map<MediaSessionAction, ActionHandler>()
+
+  setMetadata(metadata: MediaMetadataInit | null) {
+    this.metadata = metadata
+  }
+
+  setPlaybackState(state: MediaSessionPlaybackState) {
+    this.playbackState = state
+  }
+
+  setPositionState(state: MediaPositionState | null) {
+    if (state) {
+      // The real API throws on a position past the end, or a rate of zero.
+      const { duration = NaN, position = 0, playbackRate = 1 } = state
+      if (!(duration >= 0) || position < 0 || position > duration || playbackRate === 0) {
+        throw new TypeError(`Invalid position state ${JSON.stringify(state)}`)
+      }
+    }
+    this.positionState = state
+  }
+
+  setActionHandler(action: MediaSessionAction, handler: ActionHandler | null) {
+    if (handler) this.#handlers.set(action, handler)
+    else this.#handlers.delete(action)
+  }
+
+  /** The controls the OS offers: those the app handles. */
+  actions(): MediaSessionAction[] {
+    return [...this.#handlers.keys()]
+  }
+
+  /** The listener presses a control: on the lock screen, or a headphone or Bluetooth button. */
+  press(action: 'play' | 'pause' | 'seekbackward' | 'seekforward') {
+    this.#call({ action })
+  }
+
+  /** The listener drags the lock screen's scrubber here. */
+  scrubTo(seconds: number) {
+    this.#call({ action: 'seekto', seekTime: seconds })
+  }
+
+  #call(details: MediaSessionActionDetails) {
+    const handler = this.#handlers.get(details.action)
+    if (!handler) throw new Error(`No handler for media session action "${details.action}"`)
+    handler(details)
   }
 }

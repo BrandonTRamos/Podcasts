@@ -1,8 +1,9 @@
 /**
- * The client's boundary with the outside world: the backend and the browser's
- * audio element. The UI depends only on these interfaces; `amplifyServices.ts`
- * implements auth and data against Cognito and the data API, `main.tsx` passes
- * a plain `<audio>` element, and tests substitute in-memory fakes.
+ * The client's boundary with the outside world: the backend, the browser's
+ * audio element and the OS media controls. The UI depends only on these
+ * interfaces; `amplifyServices.ts` implements auth and data against Cognito
+ * and the data API, `main.tsx` passes a plain `<audio>` element and the
+ * browser's media session, and tests substitute in-memory fakes.
  */
 
 export interface User {
@@ -100,6 +101,9 @@ export interface DataApi {
 export interface AudioElement extends EventTarget {
   src: string
   currentTime: number
+  /** 1 is normal speed. A new load resets it to `defaultPlaybackRate`. */
+  playbackRate: number
+  defaultPlaybackRate: number
   /** NaN until the file's metadata has loaded; Infinity for an endless stream. */
   readonly duration: number
   readonly paused: boolean
@@ -112,9 +116,25 @@ export interface AudioElement extends EventTarget {
   removeAttribute(name: 'src'): void
 }
 
+/**
+ * The OS media controls: lock screen, notification centre, and headphone and
+ * Bluetooth buttons. A thin wrapper over `navigator.mediaSession`
+ * (`browserMediaSession` in `mediaSession.ts`), with plain data for metadata.
+ */
+export interface MediaSessionControls {
+  /** What is playing, or null for nothing. */
+  setMetadata(metadata: MediaMetadataInit | null): void
+  setPlaybackState(state: MediaSessionPlaybackState): void
+  /** Position, length and rate, from which the OS draws its progress bar; null clears it. */
+  setPositionState(state: MediaPositionState | null): void
+  /** A null handler removes the control. */
+  setActionHandler(action: MediaSessionAction, handler: ((details: MediaSessionActionDetails) => void) | null): void
+}
+
 export interface Services {
   auth: AuthService
   data: DataApi
   /** The one audio element the app plays through, for its whole lifetime. */
   audio: AudioElement
+  mediaSession: MediaSessionControls
 }

@@ -1,6 +1,6 @@
 import { formatClock } from './format'
 import { Artwork } from './LibraryScreen'
-import { type LoadedState, type Player, SKIP_BACK_SECONDS, SKIP_FORWARD_SECONDS } from './player'
+import { type LoadedState, type Player, SKIP_BACK_SECONDS, SKIP_FORWARD_SECONDS, SPEEDS } from './player'
 
 /** Stays at the foot of every screen while an episode is loaded. */
 export function MiniPlayer({ state, player, onOpen }: { state: LoadedState; player: Player; onOpen: () => void }) {
@@ -63,6 +63,18 @@ export function NowPlayingScreen({ state, player, onClose }: { state: LoadedStat
           {SKIP_FORWARD_SECONDS} ↻
         </button>
       </div>
+      <select
+        className="speed"
+        aria-label="Playback speed"
+        value={state.speed}
+        onChange={(e) => player.setSpeed(Number(e.target.value))}
+      >
+        {SPEEDS.map((speed) => (
+          <option key={speed} value={speed}>
+            {speed}×
+          </option>
+        ))}
+      </select>
     </main>
   )
 }

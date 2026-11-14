@@ -4,7 +4,7 @@ import { createListeningStore, resumePosition, useEpisodeStates } from './listen
 import { MiniPlayer, NowPlayingScreen } from './NowPlaying'
 import { type SaveProgress, usePlayer } from './player'
 import { PodcastScreen } from './PodcastScreen'
-import type { AudioElement, DataApi, Episode, Podcast } from './services'
+import type { AudioElement, DataApi, Episode, MediaSessionControls, Podcast } from './services'
 
 export type LoadState<T> = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; items: T[] }
 
@@ -13,10 +13,12 @@ type Screen = { name: 'library' } | { name: 'podcast'; podcastId: string }
 export function SignedInApp({
   data,
   audio,
+  mediaSession,
   onSignOut,
 }: {
   data: DataApi
   audio: AudioElement
+  mediaSession: MediaSessionControls
   onSignOut: () => Promise<void>
 }) {
   const [screen, setScreen] = useState<Screen>({ name: 'library' })
@@ -29,7 +31,7 @@ export function SignedInApp({
       listening.update(episode.id, episode.podcastId, played ? { positionSeconds, played } : { positionSeconds }),
     [listening],
   )
-  const { player, state: playerState } = usePlayer(audio, saveProgress)
+  const { player, state: playerState } = usePlayer(audio, mediaSession, saveProgress)
 
   // Keep the loaded episode's state current wherever the listener is, so a
   // position saved on another device reaches it.

@@ -4,7 +4,7 @@ import type { Schema } from '../amplify/data/resource'
 import type { SavedEpisodeState, Services, SignInResult, SubscribeStart } from './services'
 
 /** Production auth and data: Cognito for auth, the AppSync data API for data. */
-export function amplifyServices(): Omit<Services, 'audio'> {
+export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
   const client = generateClient<Schema>()
 
   return {

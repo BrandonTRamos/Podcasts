@@ -1,10 +1,13 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import type { AudioElement } from './services'
+import { connectMediaSession } from './mediaSession'
+import type { AudioElement, MediaSessionControls } from './services'
 
 export const SKIP_BACK_SECONDS = 15
 export const SKIP_FORWARD_SECONDS = 30
 /** While playing, the position is saved no more often than this. Each save is a write to the backend. */
 export const SAVE_INTERVAL_MS = 60_000
+/** The playback speeds the listener can pick from; 1 is normal speed. */
+export const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2] as const
 
 /** What the player needs to play an episode and show what is playing. */
 export interface PlayableEpisode {
@@ -28,9 +31,12 @@ export interface LoadedState {
   duration: number | null
   /** The publisher's file failed to load, or stopped loading part way. */
   failed: boolean
+  /** The playback rate: 1 is normal speed. */
+  speed: number
 }
 
-export type PlayerState = { episode: null } | LoadedState
+/** The speed is the listener's choice for every episode, so it stays when none is loaded. */
+export type PlayerState = { episode: null; speed: number } | LoadedState
 
 /** Where the listener has got to in an episode; `played` is set once it reaches the end. */
 export type Progress = { positionSeconds: number; played?: true }
@@ -62,6 +68,8 @@ export interface Player {
   seekTo(seconds: number): void
   skipBack(): void
   skipForward(): void
+  /** Plays this and every later episode at this speed (1 is normal), starting now. */
+  setSpeed(speed: number): void
   /** Saves the position now, if it has moved since it was last saved: the app is going to the background. */
   savePosition(): void
   /**
@@ -74,8 +82,8 @@ export interface Player {
   stop(): void
 }
 
-export function createPlayer(audio: AudioElement, saveProgress: SaveProgress): Player {
-  let state: PlayerState = { episode: null }
+export function createPlayer(audio: AudioElement, saveProgress: SaveProgress, initialSpeed = 1): Player {
+  let state: PlayerState = { episode: null, speed: initialSpeed }
   const listeners = new Set<() => void>()
   /** Bumped whenever a new file loads or the player stops, so a late answer about an earlier one is ignored. */
   let loadCount = 0
@@ -94,6 +102,15 @@ export function createPlayer(audio: AudioElement, saveProgress: SaveProgress): P
     if (state.episode) set({ ...state, ...patch })
   }
 
+  /**
+   * A new load returns the element to its default rate, and some browsers
+   * (older iOS) reset it on loading or playing too, so this is applied again then.
+   */
+  function applySpeed() {
+    audio.defaultPlaybackRate = state.speed
+    if (audio.playbackRate !== state.speed) audio.playbackRate = state.speed
+  }
+
   const fileDuration = () => (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null)
 
   /** Where the file is, or where it is about to start if the browser has not applied that seek yet. */
@@ -108,7 +125,10 @@ export function createPlayer(audio: AudioElement, saveProgress: SaveProgress): P
   }
 
   const handlers: Record<string, () => void> = {
-    play: () => update({ playing: true }),
+    play: () => {
+      applySpeed()
+      update({ playing: true })
+    },
     pause: () => {
       update({ playing: false })
       // Reaching the end pauses first; `ended` saves that.
@@ -124,6 +144,7 @@ export function createPlayer(audio: AudioElement, saveProgress: SaveProgress): P
     },
     // Some browsers ignore a seek made before the file's metadata has loaded.
     loadedmetadata: () => {
+      applySpeed()
       if (pendingStart === null) return
       const start = pendingStart
       pendingStart = null
@@ -177,10 +198,12 @@ export function createPlayer(audio: AudioElement, saveProgress: SaveProgress): P
       save()
       loadCount++
       const start = Math.max(startAt, 0)
-      set({ episode, playing: false, position: start, duration: episode.durationSeconds, failed: false })
+      const duration = episode.durationSeconds
+      set({ episode, playing: false, position: start, duration, failed: false, speed: state.speed })
       savedPosition = start
       lastSaveAt = Date.now()
       audio.src = episode.enclosureUrl
+      applySpeed()
       if (start > 0) {
         pendingStart = start
         audio.currentTime = start
@@ -208,6 +231,12 @@ export function createPlayer(audio: AudioElement, saveProgress: SaveProgress): P
       if (state.episode) seekTo(state.position + SKIP_FORWARD_SECONDS)
     },
 
+    setSpeed(speed) {
+      if (!(speed > 0) || speed === state.speed) return
+      set({ ...state, speed })
+      applySpeed()
+    },
+
     savePosition: () => save(),
 
     adoptSavedPosition(episodeId, seconds) {
@@ -223,22 +252,50 @@ export function createPlayer(audio: AudioElement, saveProgress: SaveProgress): P
       audio.pause()
       audio.removeAttribute('src')
       audio.load()
-      set({ episode: null })
+      set({ episode: null, speed: state.speed })
     },
   }
 }
 
+const SPEED_KEY = 'tincan.playbackSpeed'
+
+/** The speed last chosen on this device, or normal speed. */
+function storedSpeed(): number {
+  try {
+    const speed = Number(localStorage.getItem(SPEED_KEY))
+    return (SPEEDS as readonly number[]).includes(speed) ? speed : 1
+  } catch {
+    return 1
+  }
+}
+
+function storeSpeed(speed: number) {
+  try {
+    localStorage.setItem(SPEED_KEY, String(speed))
+  } catch {
+    // Storage can be unavailable (private browsing); the speed then lasts until the app closes.
+  }
+}
+
 /**
- * A player for this audio element, for the life of the calling component. It
- * saves the position whenever the app goes to the background. `saveProgress`
- * is taken once, when the player is made, so later values are ignored.
+ * A player for this audio element, for the life of the calling component,
+ * shown on and controlled from the OS media controls. It saves the position
+ * whenever the app goes to the background, and keeps the chosen speed on this
+ * device for the next launch. `saveProgress` is taken once, when the player
+ * is made, so later values are ignored.
  */
-export function usePlayer(audio: AudioElement, saveProgress: SaveProgress): { player: Player; state: PlayerState } {
+export function usePlayer(
+  audio: AudioElement,
+  mediaSession: MediaSessionControls,
+  saveProgress: SaveProgress,
+): { player: Player; state: PlayerState } {
   // The engine attaches to the element only while subscribed, so a discarded
   // instance (React may call the initialiser twice) leaves nothing behind.
-  const [player] = useState(() => createPlayer(audio, saveProgress))
+  const [player] = useState(() => createPlayer(audio, saveProgress, storedSpeed()))
   const state = useSyncExternalStore(player.subscribe, player.getState)
   useEffect(() => () => player.stop(), [player])
+  useEffect(() => connectMediaSession(mediaSession, player), [mediaSession, player])
+  useEffect(() => storeSpeed(state.speed), [state.speed])
   useEffect(() => {
     const saveIfHidden = () => {
       if (document.visibilityState === 'hidden') player.savePosition()
