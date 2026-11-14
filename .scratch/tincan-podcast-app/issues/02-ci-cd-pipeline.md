@@ -4,16 +4,16 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Human step:** authorising the hosting service's connection to the GitHub repo in the AWS console, and creating the owner's account in production. Stop and say exactly what is needed when you reach these.
 
 - [x] Lint, typecheck and tests run on every push and every pull request, and a failure marks the check red
-- [ ] A push to `main` deploys both backend and frontend to production
+- [x] A push to `main` deploys both backend and frontend to production
 - [x] A commit that fails the checks is not deployed
 - [x] The app is reachable at a live HTTPS URL and sign-in works there
-- [ ] The app is installable: name and short name are "TinCan", with a tin-can-and-string icon
-- [ ] Launched from a home screen, it opens standalone without browser chrome
+- [x] The app is installable: name and short name are "TinCan", with a tin-can-and-string icon
+- [x] Launched from a home screen, it opens standalone without browser chrome
 - [x] No secrets or credentials are committed to the repo
 - [x] The README records the live URL, how the pipeline works and how to roll back to a previous commit
 
@@ -38,3 +38,5 @@
   - Installable and standalone: the PWA files reach production only with the merge; standalone needs an iPhone.
 
 **2026-11-14 (agent):** The owner created the production account and confirmed that sign-in works at the live URL on 2026-11-14.
+
+**2026-11-14 (agent):** Post-merge criteria verified after PR 2 squash-merged as 86152b5: Amplify job 4 on `main` for 86152b5 succeeded and ran both the backend deploy (`pipeline-deploy`) and the frontend build and publish; the live `/manifest.webmanifest` serves name and short_name "TinCan", and its icons return 200; on 2026-11-14 the owner added the app to his iPhone home screen, where it shows as TinCan with the tin-can icon, and confirmed it opens full screen with no Safari address bar. All criteria are ticked and the status is `done`.
