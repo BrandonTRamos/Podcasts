@@ -32,6 +32,17 @@ const schema = a
       showNotes: a.string(),
     }),
 
+    // The listener's place in an episode and whether they have heard it, synced
+    // across devices. One per episode, created the first time it is saved;
+    // `updatedAt` (kept by the data API) settles which of two saves wins.
+    EpisodeState: a.model({
+      // The episode's ID.
+      id: a.id().required(),
+      podcastId: a.id().required(),
+      positionSeconds: a.float().required(),
+      played: a.boolean().required(),
+    }),
+
     SubscribeStatus: a.enum([
       'pending',
       'subscribed',

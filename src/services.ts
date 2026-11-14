@@ -35,6 +35,23 @@ export interface Episode {
   enclosureUrl: string
 }
 
+/** The listener's place in an episode and whether they have heard it. Synced across devices. */
+export interface EpisodeState {
+  episodeId: string
+  podcastId: string
+  /** Seconds from the start. */
+  positionSeconds: number
+  played: boolean
+}
+
+/** Some fields of an episode's listening state, to change while leaving the others as they are. */
+export type EpisodeStateChange = Partial<Pick<EpisodeState, 'positionSeconds' | 'played'>>
+
+export interface SavedEpisodeState extends EpisodeState {
+  /** When the backend stored it (ISO 8601). The later of two saves wins. */
+  updatedAt: string
+}
+
 /** What the subscribe call says straight away. */
 export type SubscribeStart =
   /** The feed is being checked in the background: watch the request for the outcome. */
@@ -62,6 +79,17 @@ export interface DataApi {
   subscribeToFeed(feedUrl: string): Promise<SubscribeStart>
   /** A subscribe request's state, now and as it changes. */
   observeSubscribeRequest(requestId: string, observer: Observer<SubscribeRequestState>): () => void
+  /**
+   * The listening state of one podcast's episodes, all of it once fetched and
+   * then as any device saves it. Episodes never played have none.
+   */
+  observeEpisodeStates(podcastId: string, observer: Observer<SavedEpisodeState[]>): () => void
+  /**
+   * Changes only the given fields of an episode's listening state, so a change
+   * made elsewhere to another field survives. An episode with no state yet
+   * starts at the beginning, unplayed. Returns the whole state as saved.
+   */
+  saveEpisodeState(episodeId: string, podcastId: string, change: EpisodeStateChange): Promise<SavedEpisodeState>
 }
 
 /**
@@ -75,6 +103,8 @@ export interface AudioElement extends EventTarget {
   /** NaN until the file's metadata has loaded; Infinity for an endless stream. */
   readonly duration: number
   readonly paused: boolean
+  /** True once playback has reached the end, until it is played or sought again. */
+  readonly ended: boolean
   play(): Promise<void>
   pause(): void
   /** With `removeAttribute('src')`, unloads the file and stops fetching it. */
