@@ -1,6 +1,7 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend'
 import { ingestFeedFunction } from '../functions/ingest-feed/resource'
 import { refreshFeedsFunction } from '../functions/refresh-feeds/resource'
+import { searchPodcastsFunction } from '../functions/search-podcasts/resource'
 import { subscribeFunction } from '../functions/subscribe/resource'
 
 // Single-user app: every model is readable and writable by the signed-in user
@@ -110,12 +111,40 @@ const schema = a
       .arguments({ podcastId: a.id().required() })
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(refreshFeedsFunction).async()),
+
+    // A podcast as the public directory lists it. Its feed URL is public.
+    DirectoryPodcast: a.customType({
+      title: a.string().required(),
+      author: a.string(),
+      artworkUrl: a.string(),
+      feedUrl: a.string().required(),
+      // Set when the podcast is already in the library.
+      podcastId: a.id(),
+    }),
+
+    SearchOutcome: a.enum(['found', 'directoryUnavailable']),
+
+    SearchPodcastsResult: a.customType({
+      outcome: a.ref('SearchOutcome').required(),
+      // Empty when nothing matched, or when the directory is unavailable.
+      podcasts: a.ref('DirectoryPodcast').required().array().required(),
+    }),
+
+    // Searches the public podcast directory by name. Subscribing to a result
+    // goes through `subscribe` with its feed URL.
+    searchPodcasts: a
+      .query()
+      .arguments({ term: a.string().required() })
+      .returns(a.ref('SearchPodcastsResult').required())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(searchPodcastsFunction)),
   })
   .authorization((allow) => [
     allow.authenticated(),
     allow.resource(subscribeFunction),
     allow.resource(ingestFeedFunction),
     allow.resource(refreshFeedsFunction),
+    allow.resource(searchPodcastsFunction),
   ])
 
 export type Schema = ClientSchema<typeof schema>

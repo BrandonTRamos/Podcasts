@@ -7,6 +7,7 @@ import { MiniPlayer, NowPlayingScreen } from './NowPlaying'
 import { type PlayableEpisode, type SaveProgress, type TakeNext, usePlayer } from './player'
 import { PodcastScreen } from './PodcastScreen'
 import { QueueScreen } from './QueueScreen'
+import { SearchScreen } from './SearchScreen'
 import type { AudioElement, DataApi, Episode, MediaSessionControls, Podcast } from './services'
 
 export type LoadState<T> = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; items: T[] }
@@ -15,7 +16,12 @@ function findPodcast(podcasts: LoadState<Podcast>, podcastId: string): Podcast |
   return podcasts.status === 'loaded' ? podcasts.items.find((p) => p.id === podcastId) : undefined
 }
 
-type Screen = { name: 'library' } | { name: 'podcast'; podcastId: string } | { name: 'queue' } | { name: 'latest' }
+type Screen =
+  | { name: 'library' }
+  | { name: 'podcast'; podcastId: string }
+  | { name: 'queue' }
+  | { name: 'latest' }
+  | { name: 'search' }
 
 export function SignedInApp({
   data,
@@ -150,6 +156,15 @@ export function SignedInApp({
         {...episodeActions}
       />
     )
+  } else if (screen.name === 'search') {
+    content = (
+      <SearchScreen
+        data={data}
+        podcasts={podcasts}
+        onOpenPodcast={openPodcast}
+        onBack={() => setScreen({ name: 'library' })}
+      />
+    )
   } else if (screen.name === 'podcast') {
     content = (
       <PodcastScreen
@@ -169,6 +184,7 @@ export function SignedInApp({
         onOpenPodcast={openPodcast}
         onOpenQueue={openQueue}
         onOpenLatest={() => setScreen({ name: 'latest' })}
+        onOpenSearch={() => setScreen({ name: 'search' })}
         onSignOut={onSignOut}
       />
     )

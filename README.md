@@ -71,7 +71,7 @@ npm run test:watch  # tests in watch mode
 Two seams, one per deployable, run as two Vitest projects (`vitest.config.ts`):
 
 - **client** (`src/**/*.test.{ts,tsx}`, jsdom): renders `<App>` and drives it as a user would with Testing Library. The UI talks to the backend only through the `Services` interface in `src/services.ts`; tests pass in-memory fakes from `src/test/fakes.ts`, and production passes `amplifyServices()`.
-- **backend** (`amplify/**/*.test.ts`, node): invokes function handlers with an event. Real network access is refused by `amplify/test/setup.ts`. Tests fake outbound HTTP with `fakeHttp` and the data store with `fakeFeedStore` (both in `amplify/test/fakes.ts`; the fake store also plays the request table's stream), and use fixture feeds from `amplify/test/fixtures/`. The fake HTTP answers conditional requests with 304 as a real server would. Handlers are built by factories in `amplify/feeds/` that take the store; `amplify/functions/*/handler.ts` wires in the real one (`amplifyFeedStore.ts`, the AppSync data API).
+- **backend** (`amplify/**/*.test.ts`, node): invokes function handlers with an event. Real network access is refused by `amplify/test/setup.ts`. Tests fake outbound HTTP with `fakeHttp` and the data store with `fakeFeedStore` (both in `amplify/test/fakes.ts`; the fake store also plays the request table's stream), and use fixture feeds from `amplify/test/fixtures/`. The fake HTTP answers conditional requests with 304 as a real server would. Handlers are built by factories in `amplify/feeds/` and `amplify/directory/` that take the store; `amplify/functions/*/handler.ts` wires in the real one (`amplifyFeedStore.ts`, the AppSync data API).
 
 `src/installable.test.ts` (client project) checks what a browser reads to install the app to a home screen: the manifest, the `<head>` tags and the icon files in `public/`.
 
@@ -86,6 +86,11 @@ Subscribing returns at once and finishes in the background; the client learns th
 - **Latest episodes**: every episode carries `listing: 'latest'` (`amplify/data/latestEpisodes.ts`), so one index query (`listEpisodesByDate`, sorted on `publishedAt`) gives the newest across all podcasts. Undated episodes are left out of it. Episodes stored before this index existed are added to it the first time a refresh looks at them.
 - The podcast screen shows when the feed last refreshed, whether the latest attempt failed, and a Refresh button. The library's Latest screen lists the 50 newest episodes across all subscriptions.
 - Feed URLs are secrets: handlers never log them, and unexpected errors are logged and rethrown with URLs redacted.
+
+## Search
+
+- **Search** (`searchPodcasts` query, `search-podcasts` function, `amplify/directory/searchPodcasts.ts`): asks the iTunes Search API (no key needed) for up to 25 podcasts matching the term, and returns each one's title, author, artwork and feed URL, in the directory's order. Results with no http or https feed are left out. A result whose feed URL is already in the library carries that podcast's ID. If the directory can't be reached or gives no usable answer, the query returns `directoryUnavailable` rather than failing.
+- The client's Search screen (`src/SearchScreen.tsx`, from the library's Search button) lists the results. Subscribing to one goes through the same `subscribe` mutation as a pasted URL, with the result's feed URL, which the listener never sees. Results in the library show "Subscribed" and open the podcast.
 
 ## Pipeline
 

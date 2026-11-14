@@ -95,6 +95,23 @@ export type SubscribeRequestState =
   | { status: 'subscribed' | 'alreadySubscribed'; podcastId: string }
   | { status: 'invalidUrl' | 'unreachable' | 'notAFeed' | 'failed' }
 
+/** A podcast as the public directory lists it. */
+export interface DirectoryPodcast {
+  title: string
+  author: string | null
+  artworkUrl: string | null
+  /** Public, from the directory. What subscribing to the result subscribes to; never shown. */
+  feedUrl: string
+  /** Its ID in the library, if it was already there when searched; null if not. */
+  podcastId: string | null
+}
+
+export type PodcastSearch =
+  /** The directory's matches, best first; empty when nothing matched. */
+  | { outcome: 'found'; podcasts: DirectoryPodcast[] }
+  /** The directory couldn't be reached, or gave no usable answer. */
+  | { outcome: 'directoryUnavailable' }
+
 export const LATEST_EPISODES_LIMIT = 50
 
 export interface Observer<T> {
@@ -120,6 +137,8 @@ export interface DataApi {
    * found unchanged changes nothing, so nothing arrives.
    */
   refreshPodcast(podcastId: string): Promise<void>
+  /** Searches the public podcast directory by name. Throws when the backend can't be reached. */
+  searchPodcasts(term: string): Promise<PodcastSearch>
   /** Returns at once; the feed is fetched and checked in the background. */
   subscribeToFeed(feedUrl: string): Promise<SubscribeStart>
   /** A subscribe request's state, now and as it changes. */

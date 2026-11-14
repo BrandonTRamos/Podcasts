@@ -2,6 +2,7 @@ import {
   type AudioElement,
   type AuthService,
   type DataApi,
+  type DirectoryPodcast,
   type Episode,
   type EpisodeState,
   type EpisodeStateChange,
@@ -9,6 +10,7 @@ import {
   type MediaSessionControls,
   type Observer,
   type Podcast,
+  type PodcastSearch,
   type QueuedEpisode,
   type QueueSnapshot,
   type SavedEpisodeState,
@@ -71,6 +73,9 @@ export function fakeDataApi() {
   const stateWrites: EpisodeStateChange[] = []
   const feeds = new Map<string, Pick<Podcast, 'title' | 'author' | 'artworkUrl'> | 'notAFeed' | 'failed'>()
   const requests = new Map<string, { feedUrl: string; state: SubscribeRequestState }>()
+  /** The public podcast directory's listings. */
+  const directory: Omit<DirectoryPodcast, 'podcastId'>[] = []
+  let directoryBroken = false
   const podcastListeners = new Set<Listener<Podcast[]>>()
   const episodeListeners = new Map<string, Set<Listener<Episode[]>>>()
   const latestListeners = new Set<Listener<Episode[]>>()
@@ -170,6 +175,20 @@ export function fakeDataApi() {
         reach()
         refreshRequests.push(podcastId)
       },
+      async searchPodcasts(term): Promise<PodcastSearch> {
+        reach()
+        if (directoryBroken) return { outcome: 'directoryUnavailable' }
+        const wanted = term.trim().toLowerCase()
+        return {
+          outcome: 'found',
+          podcasts: directory
+            .filter((listing) => wanted && listing.title.toLowerCase().includes(wanted))
+            .map((listing) => ({
+              ...listing,
+              podcastId: podcasts.find((podcast) => podcast.feedUrl === listing.feedUrl)?.id ?? null,
+            })),
+        }
+      },
       async subscribeToFeed(feedUrl): Promise<SubscribeStart> {
         reach()
         if (!/^https?:\/\//.test(feedUrl)) return { outcome: 'invalidUrl' }
@@ -222,6 +241,24 @@ export function fakeDataApi() {
     /** Makes a feed reachable. */
     publishFeed(feedUrl: string, podcast: Pick<Podcast, 'title'> & Partial<Pick<Podcast, 'author' | 'artworkUrl'>>) {
       feeds.set(feedUrl, { author: null, artworkUrl: null, ...podcast })
+    },
+    /**
+     * Lists a show in the public directory, which a search for part of its
+     * title finds. Its feed is published too, unless it is to be `unreachable`.
+     */
+    listInDirectory(listing: Omit<DirectoryPodcast, 'podcastId'>, { feed = 'published' }: { feed?: 'published' | 'unreachable' } = {}) {
+      directory.push(listing)
+      if (feed === 'published') {
+        const { title, author, artworkUrl } = listing
+        feeds.set(listing.feedUrl, { title, author, artworkUrl })
+      }
+    },
+    /** The directory stops answering searches usefully, as when it is down or rate-limiting. */
+    breakDirectory() {
+      directoryBroken = true
+    },
+    repairDirectory() {
+      directoryBroken = false
     },
     /** Makes a URL reachable but not a podcast feed (a web page, say). */
     publishWebPage(url: string) {
