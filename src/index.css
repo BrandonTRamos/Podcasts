@@ -24,7 +24,11 @@ main {
   gap: 0.25rem;
 }
 
-.sign-in input,
+.sign-in input {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+}
+
 button {
   font: inherit;
   padding: 0.5rem 0.75rem;

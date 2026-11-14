@@ -1,25 +1,27 @@
 import type { AuthService, DataApi, SignInResult, User } from '../services'
 
+const SESSION_KEY = 'fake-auth-session'
+
 /**
- * In-memory stand-in for Cognito. The session lives on the fake itself, so a
- * second `<App>` rendered with the same fake behaves like a page reload with
- * tokens still in browser storage.
+ * In-memory stand-in for Cognito. Like Amplify, it keeps the session in
+ * `localStorage`, so rendering a fresh `<App>` behaves like a page reload.
  */
 export function fakeAuth(account: { email: string; password: string }): AuthService {
-  let session: User | null = null
   return {
     async currentUser() {
-      return session
+      const stored = localStorage.getItem(SESSION_KEY)
+      return stored ? (JSON.parse(stored) as User) : null
     },
     async signIn(email, password): Promise<SignInResult> {
       if (email !== account.email || password !== account.password) {
         return { ok: false, message: 'Incorrect email or password.' }
       }
-      session = { email }
-      return { ok: true, user: session }
+      const user = { email }
+      localStorage.setItem(SESSION_KEY, JSON.stringify(user))
+      return { ok: true, user }
     },
     async signOut() {
-      session = null
+      localStorage.removeItem(SESSION_KEY)
     },
   }
 }

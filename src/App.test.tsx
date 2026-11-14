@@ -8,7 +8,7 @@ const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 
 function renderApp(auth = fakeAuth(owner)) {
   const { unmount } = render(<App services={{ auth, data: fakeDataApi() }} />)
-  return { auth, unmount, user: userEvent.setup() }
+  return { unmount, user: userEvent.setup() }
 }
 
 async function signIn(user: ReturnType<typeof userEvent.setup>, email: string, password: string) {
@@ -44,12 +44,12 @@ describe('access', () => {
   })
 
   it('keeps the owner signed in across a page reload', async () => {
-    const { auth, unmount, user } = renderApp()
+    const { unmount, user } = renderApp()
     await signIn(user, owner.email, owner.password)
     await screen.findByRole('heading', { name: 'Library' })
 
     unmount()
-    renderApp(auth)
+    renderApp()
 
     expect(await screen.findByRole('heading', { name: 'Library' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Password')).not.toBeInTheDocument()

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { DataApi, Podcast } from './services'
 
-type Library = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; podcasts: Podcast[] }
+type LibraryState = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; podcasts: Podcast[] }
 
-export function LibraryScreen({ data, onSignOut }: { data: DataApi; onSignOut: () => void }) {
-  const [library, setLibrary] = useState<Library>({ status: 'loading' })
+export function LibraryScreen({ data, onSignOut }: { data: DataApi; onSignOut: () => Promise<void> }) {
+  const [library, setLibrary] = useState<LibraryState>({ status: 'loading' })
 
   useEffect(() => {
     let cancelled = false
@@ -21,7 +21,7 @@ export function LibraryScreen({ data, onSignOut }: { data: DataApi; onSignOut: (
     <main className="library">
       <header>
         <h1>Library</h1>
-        <button type="button" onClick={onSignOut}>
+        <button type="button" onClick={() => void onSignOut()}>
           Sign out
         </button>
       </header>

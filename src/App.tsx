@@ -36,8 +36,11 @@ export function App({ services }: { services: Services }) {
     <LibraryScreen
       data={services.data}
       onSignOut={async () => {
-        await services.auth.signOut()
-        setSession({ status: 'signedOut' })
+        try {
+          await services.auth.signOut()
+        } finally {
+          setSession({ status: 'signedOut' })
+        }
       }}
     />
   )

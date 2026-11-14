@@ -20,7 +20,7 @@ export function amplifyServices(): Services {
 
       async signIn(email, password): Promise<SignInResult> {
         try {
-          const result = await signIn({ username: email, password })
+          const result = await signInClearingStaleSession(email, password)
           if (result.isSignedIn) return { ok: true, user: { email } }
           return {
             ok: false,
@@ -47,5 +47,16 @@ export function amplifyServices(): Services {
         return data.map((podcast) => ({ id: podcast.id, title: podcast.title ?? podcast.feedUrl }))
       },
     },
+  }
+}
+
+/** Signs in; if leftover tokens make Cognito think a session exists, drops them and retries once. */
+async function signInClearingStaleSession(email: string, password: string) {
+  try {
+    return await signIn({ username: email, password })
+  } catch (error) {
+    if (!(error instanceof Error && error.name === 'UserAlreadyAuthenticatedException')) throw error
+    await signOut()
+    return signIn({ username: email, password })
   }
 }

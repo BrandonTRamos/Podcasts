@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 
-// Backend tests invoke function handlers directly. Only outbound HTTP and the
-// data store are faked; real network access is refused so a test can never
-// reach a live feed by accident.
+// Backend tests invoke function handlers directly, faking only outbound HTTP
+// and the data store (spec, Testing Decisions). Real network access is refused
+// so a test can never reach a live feed by accident. The data store fake comes
+// with the first handler that reads or writes records.
 describe('backend test setup', () => {
   it('refuses outbound HTTP that a test has not faked', async () => {
     await expect(fetch('https://feeds.example.com/show.xml')).rejects.toThrow(

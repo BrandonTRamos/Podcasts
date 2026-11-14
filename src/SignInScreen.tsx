@@ -17,10 +17,13 @@ export function SignInScreen({
     event.preventDefault()
     setBusy(true)
     setError(null)
-    const result = await signIn(email, password)
-    setBusy(false)
-    if (result.ok) onSignedIn(result.user)
-    else setError(result.message)
+    try {
+      const result = await signIn(email, password)
+      if (result.ok) onSignedIn(result.user)
+      else setError(result.message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (

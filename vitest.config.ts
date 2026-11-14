@@ -1,4 +1,5 @@
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
 // Two test seams, one per deployable (see spec "Testing Decisions").
@@ -15,6 +16,11 @@ export default defineConfig({
         },
       },
       {
+        resolve: {
+          // Mirrors the `$amplify/*` path in amplify/tsconfig.json, used by function
+          // handlers to import their generated env (`$amplify/env/<function>`).
+          alias: { $amplify: fileURLToPath(new URL('./.amplify/generated', import.meta.url)) },
+        },
         test: {
           name: 'backend',
           environment: 'node',
