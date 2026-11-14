@@ -1,9 +1,9 @@
 # Amplify Hosting build for the `main` branch (production); Node version from
-# .nvmrc. Amplify runs the backend phase, then the frontend phase; any failing
-# command stops the build,
-# and nothing is deployed. `npm run check` and a trial `npm run build` run before
-# the backend deploys, so a commit that fails lint, typecheck, tests or the build
-# never reaches production, not even its backend half (spec, "Delivery").
+# .nvmrc. Amplify runs the backend phase, then the frontend phase. Any failing
+# command stops the build, and nothing is deployed. `npm run check` and a trial
+# `npm run build` run before the backend deploys, so a commit that fails lint,
+# typecheck, tests or the build never reaches production, not even its backend
+# half (spec, "Delivery").
 version: 1
 backend:
   phases:
