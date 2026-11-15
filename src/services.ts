@@ -122,6 +122,22 @@ export type PodcastSearch =
   /** The directory couldn't be reached, or gave no usable answer. */
   | { outcome: 'directoryUnavailable' }
 
+/**
+ * How a temporary copy of an episode's file stands, prepared by the backend
+ * for a publisher whose host doesn't let the app download it directly.
+ */
+export type StagingState =
+  | { status: 'preparing' }
+  /** The copy is ready at `url`, a private link that stops working at `expiresAt` (ISO 8601). */
+  | { status: 'ready'; url: string; expiresAt: string }
+  /** The publisher's host didn't send the file. */
+  | { status: 'unavailable' }
+  /** The copy couldn't be made. */
+  | { status: 'failed' }
+
+/** How preparing a copy ended. */
+export type SettledStaging = Exclude<StagingState, { status: 'preparing' }>
+
 export const LATEST_EPISODES_LIMIT = 50
 
 export interface Observer<T> {
@@ -193,6 +209,14 @@ export interface DataApi {
    * left (see `QueueSnapshot.asOf`).
    */
   observeQueue(observer: Observer<QueueSnapshot>): () => void
+  /**
+   * Asks the backend to prepare a temporary copy of the episode's file, for
+   * when its host blocks direct download. Returns at once; the copy is made
+   * in the background, and the observer hears how it stands as that changes.
+   * The observer's `error` is called when the backend can't be reached.
+   * Returns a function that stops observing.
+   */
+  stageDownload(episodeId: string, observer: Observer<StagingState>): () => void
 }
 
 /**
