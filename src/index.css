@@ -1206,8 +1206,7 @@ button.mini-player-open {
 }
 
 .tab-bar {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  display: flex;
   gap: 0.125rem;
   box-sizing: border-box;
   height: var(--tabbar-h);
@@ -1232,11 +1231,14 @@ button.mini-player-open {
 }
 
 .tab-bar button {
+  /* Equal shares, but a long label (Downloads) widens its tab so the pill keeps even room on both sides. */
+  flex: 1 1 0;
+  min-width: max-content;
   flex-direction: column;
   gap: 0.1875rem;
   min-height: 0;
   height: 3.125rem;
-  padding: 0;
+  padding: 0 0.625rem;
   border-radius: 999px;
   background: none;
   color: var(--muted);
