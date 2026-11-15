@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { readJson, writeJson } from './localCopy'
-import type { DataApi, Device, Episode, ScreenHold, StagingState } from './services'
+import type { DataApi, Device, Episode, ScreenHold, SettledStaging } from './services'
 
 /** Why a download stopped short, other than being interrupted. */
 export type DownloadFailure =
@@ -384,11 +384,19 @@ export function createDownloadManager(device: Device, stager: DownloadStager): D
     const stored = existing ? ((await device.files.size(existing.name)) ?? 0) : 0
     const knownTotal = existing?.total ?? null
     if (signal.aborted) return { status: 'none' }
-    let source = enclosureUrl
+    // A copy prepared earlier is resumed from while its link works: the host blocks direct download.
+    let source = usableLink(id) ?? enclosureUrl
     let response = await request(source, stored, signal)
-    if (response === 'blocked') {
+    if (source !== enclosureUrl && typeof response !== 'string' && response.status === 403) {
+      // The link stopped working sooner than it said: prepare a fresh copy.
+      void response.body?.cancel().catch(() => {})
+      links.delete(id)
+      source = enclosureUrl
+      response = 'blocked'
+    }
+    if (response === 'blocked' && source === enclosureUrl) {
       // Download a copy the backend prepares instead.
-      const copy = await preparedCopy(id, { bytes: stored, total: knownTotal }, signal)
+      const copy = await prepareCopy(id, { bytes: stored, total: knownTotal }, signal)
       if (typeof copy !== 'string') return copy
       source = copy
       response = await request(source, stored, signal)
@@ -407,9 +415,10 @@ export function createDownloadManager(device: Device, stager: DownloadStager): D
     if (response === 'unreachable') return { status: 'interrupted', bytes: stored, total: knownTotal }
     if (!response.ok) {
       void response.body?.cancel().catch(() => {})
-      // A link that has stopped working: a fresh copy is prepared next time.
-      if (source !== enclosureUrl) links.delete(id)
-      return { status: 'failed', reason: 'unavailable' }
+      if (source === enclosureUrl) return { status: 'failed', reason: 'unavailable' }
+      // The prepared copy can't be read: a fresh one is prepared next time.
+      links.delete(id)
+      return { status: 'failed', reason: 'notPrepared' }
     }
 
     // A host that can't send part of a file sends all of it.
@@ -467,25 +476,28 @@ export function createDownloadManager(device: Device, stager: DownloadStager): D
     return (await adoptStoredCopy(id)) ?? { status: 'failed', reason: 'other' }
   }
 
+  /** The link to the copy of the episode's file prepared earlier, if it will work for a while yet. */
+  function usableLink(episodeId: string): string | null {
+    const link = links.get(episodeId)
+    return link && link.expiresAt - Date.now() > LINK_MARGIN_MS ? link.url : null
+  }
+
   /**
-   * A link to a copy of the episode's file that the backend has prepared:
-   * the one prepared earlier if it still works, or else a fresh one, waited
-   * for while the listener is told it is being prepared. When there is none,
-   * says how the download stands instead.
+   * Has the backend prepare a copy of the episode's file, and waits for it
+   * while the listener is told it is being prepared. Returns a link to the
+   * copy, or, when there is none, how the download stands instead.
    */
-  async function preparedCopy(
+  async function prepareCopy(
     episodeId: string,
     stored: { bytes: number; total: number | null },
     signal: AbortSignal,
   ): Promise<string | DownloadState> {
-    const known = links.get(episodeId)
-    if (known && known.expiresAt - Date.now() > LINK_MARGIN_MS) return known.url
     links.delete(episodeId)
     set(episodeId, { status: 'downloading', ...stored, preparing: true })
-    const outcome = await new Promise<Exclude<StagingState, { status: 'preparing' }> | 'cut'>((resolve) => {
+    const outcome = await new Promise<SettledStaging | 'cut'>((resolve) => {
       let settled = false
       let stop: (() => void) | undefined
-      const finish = (result: Exclude<StagingState, { status: 'preparing' }> | 'cut') => {
+      const finish = (result: SettledStaging | 'cut') => {
         if (settled) return
         settled = true
         clearTimeout(timer)

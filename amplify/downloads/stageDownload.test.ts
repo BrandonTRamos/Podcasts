@@ -4,17 +4,22 @@ import { createStageDownloadHandler, LINK_LIFETIME_SECONDS } from './stageDownlo
 
 const enclosureUrl = 'https://media.example.com/show/ep1.mp3'
 const now = new Date('2026-11-14T09:00:00.000Z')
+const HOUR = 60 * 60 * 1000
 
 function setUp({ keepBytes = true } = {}) {
   const data = fakeStagingStore()
   data.seedEpisode('episode-1', enclosureUrl)
-  const storage = fakeStagingBucket({ keepBytes })
-  const stage = createStageDownloadHandler({ store: data.store, bucket: storage.bucket, now: () => now })
+  const clock = { now }
+  const storage = fakeStagingBucket({ keepBytes, now: () => clock.now })
+  const stage = createStageDownloadHandler({ store: data.store, bucket: storage.bucket, now: () => clock.now })
   return {
     data,
     storage,
+    clock,
     /** The `stageDownload` mutation, as AppSync invokes its handler asynchronously. */
     stage: (requestId: string, episodeId = 'episode-1') => stage({ arguments: { requestId, episodeId } }),
+    /** The hourly run, as EventBridge Scheduler invokes it. */
+    sweep: () => stage({}),
   }
 }
 
@@ -147,12 +152,34 @@ describe('staging a download', () => {
     const host = fakeAudioHost()
     host.serve(enclosureUrl, 300_000)
     const { storage, stage } = setUp()
-    storage.bucket.put = async () => {
-      throw new Error(`Could not copy ${enclosureUrl}?token=secret`)
-    }
+    storage.break(new Error(`Could not copy ${enclosureUrl}?token=secret`))
 
     const error = await stage('request-1').catch((caught: unknown) => caught)
 
     expect(String(error)).not.toContain('media.example.com')
+  })
+})
+
+describe('deleting temporary copies', () => {
+  it('deletes every copy within a day of its making, on the hourly run', async () => {
+    const host = fakeAudioHost()
+    host.serve(enclosureUrl, 1000)
+    const { storage, clock, stage, sweep } = setUp()
+    await stage('request-1')
+    clock.now = new Date(now.getTime() + 12 * HOUR)
+    await stage('request-2')
+
+    for (let hour = 1; hour <= 24; hour++) {
+      clock.now = new Date(now.getTime() + hour * HOUR)
+      await sweep()
+    }
+
+    // Made 24 hours ago: gone. Made 12 hours ago: kept, for downloads still running or to resume.
+    expect(storage.keys()).toEqual(['staged/request-2'])
+    expect(host.requested).toEqual([enclosureUrl, enclosureUrl])
+
+    clock.now = new Date(now.getTime() + 36 * HOUR)
+    await sweep()
+    expect(storage.keys()).toEqual([])
   })
 })

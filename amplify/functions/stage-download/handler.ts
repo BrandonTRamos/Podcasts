@@ -7,5 +7,5 @@ if (!bucketName) throw new Error('STAGING_BUCKET must name the staging bucket (s
 
 const stage = createStageDownloadHandler({ store: await amplifyStagingStore(), bucket: s3StagingBucket(bucketName) })
 
-/** Invoked asynchronously by the `stageDownload` mutation. */
-export const handler = (event: StageDownloadEvent) => stage(event)
+/** Invoked asynchronously by the `stageDownload` mutation, and by the hourly schedule. */
+export const handler = (event: StageDownloadEvent | null) => stage(event)

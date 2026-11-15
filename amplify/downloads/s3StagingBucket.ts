@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream'
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
-import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { DeleteObjectsCommand, GetObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3'
 import { Upload } from '@aws-sdk/lib-storage'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import type { StagingBucket } from './stagingStore'
@@ -35,6 +35,30 @@ export function s3StagingBucket(bucketName: string): StagingBucket {
 
     linkTo(key, seconds) {
       return getSignedUrl(s3, new GetObjectCommand({ Bucket: bucketName, Key: key }), { expiresIn: seconds })
+    },
+
+    async list() {
+      const objects: { key: string; storedAt: Date }[] = []
+      let ContinuationToken: string | undefined
+      do {
+        const page = await s3.send(new ListObjectsV2Command({ Bucket: bucketName, ContinuationToken }))
+        for (const { Key, LastModified } of page.Contents ?? []) {
+          if (Key && LastModified) objects.push({ key: Key, storedAt: LastModified })
+        }
+        ContinuationToken = page.NextContinuationToken
+      } while (ContinuationToken)
+      return objects
+    },
+
+    async remove(keys) {
+      // At most 1000 keys a request.
+      for (let at = 0; at < keys.length; at += 1000) {
+        const batch = keys.slice(at, at + 1000)
+        const { Errors } = await s3.send(
+          new DeleteObjectsCommand({ Bucket: bucketName, Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: true } }),
+        )
+        if (Errors?.length) throw new Error(`Could not delete ${Errors.length} staged copies: ${Errors[0].Code}`)
+      }
     },
   }
 }

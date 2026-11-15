@@ -135,6 +135,9 @@ export type StagingState =
   /** The copy couldn't be made. */
   | { status: 'failed' }
 
+/** How preparing a copy ended. */
+export type SettledStaging = Exclude<StagingState, { status: 'preparing' }>
+
 export const LATEST_EPISODES_LIMIT = 50
 
 export interface Observer<T> {

@@ -52,9 +52,9 @@ export function fakeStagingStore() {
  * bytes, or, for very large files, as their size alone; a put whose stream
  * errors stores nothing. `onChunk` is called with each piece as it is read.
  */
-export function fakeStagingBucket({ keepBytes = true }: { keepBytes?: boolean } = {}) {
-  const objects = new Map<string, { bytes: Uint8Array | null; size: number; contentType: string | null }>()
-  let broken = false
+export function fakeStagingBucket({ keepBytes = true, now = () => new Date() }: { keepBytes?: boolean; now?: () => Date } = {}) {
+  const objects = new Map<string, { bytes: Uint8Array | null; size: number; contentType: string | null; storedAt: Date }>()
+  let broken: Error | null = null
   const chunkListeners: ((length: number) => void)[] = []
 
   const bucket: StagingBucket = {
@@ -67,7 +67,7 @@ export function fakeStagingBucket({ keepBytes = true }: { keepBytes?: boolean } 
         if (done) break
         if (broken) {
           void reader.cancel()
-          throw new Error('S3 is unavailable')
+          throw broken
         }
         size += value.length
         chunkListeners.forEach((listener) => listener(value.length))
@@ -81,21 +81,32 @@ export function fakeStagingBucket({ keepBytes = true }: { keepBytes?: boolean } 
           at += piece.length
         }
       }
-      objects.set(key, { bytes, size, contentType })
+      objects.set(key, { bytes, size, contentType, storedAt: now() })
     },
     async linkTo(key, seconds) {
       if (!objects.has(key)) throw new Error(`No object ${key}`)
       return `https://staging.s3.example.com/${key}?expires-in=${seconds}`
     },
+    async list() {
+      return [...objects].map(([key, { storedAt }]) => ({ key, storedAt }))
+    },
+    async remove(keys) {
+      for (const key of keys) objects.delete(key)
+    },
   }
 
   return {
     bucket,
-    object: (key: string) => objects.get(key),
+    object: (key: string) => {
+      const object = objects.get(key)
+      if (!object) return undefined
+      const { storedAt: _storedAt, ...rest } = object
+      return rest
+    },
     keys: () => [...objects.keys()],
-    /** Storing fails from now on. */
-    break() {
-      broken = true
+    /** Storing fails from now on, with this error. */
+    break(error = new Error('S3 is unavailable')) {
+      broken = error
     },
     onChunk(listener: (length: number) => void) {
       chunkListeners.push(listener)

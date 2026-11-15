@@ -66,7 +66,7 @@ backend.refreshFeedsFunction.resources.lambda.configureAsyncInvoke({ retryAttemp
 
 // Download fallback: a private bucket for temporary copies of episodes whose
 // hosts block direct download. Reachable only through the presigned links the
-// stager makes; every copy is deleted a day after it was made.
+// stager makes; every copy is deleted within a day of its making.
 const stageDownloadLambda = backend.stageDownloadFunction.resources.lambda
 const stagingBucket = new Bucket(Stack.of(stageDownloadLambda), 'DownloadStagingBucket', {
   blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
@@ -87,6 +87,8 @@ const stagingBucket = new Bucket(Stack.of(stageDownloadLambda), 'DownloadStaging
   autoDeleteObjects: true,
 })
 stagingBucket.grantPut(stageDownloadLambda)
+// The hourly run deletes copies older than a day (stageDownload.ts); the lifecycle rule is the backstop.
+stagingBucket.grantDelete(stageDownloadLambda)
 // Presigned links act as the function's role, so it must be able to read the copies.
 stagingBucket.grantRead(stageDownloadLambda)
 backend.stageDownloadFunction.addEnvironment('STAGING_BUCKET', stagingBucket.bucketName)

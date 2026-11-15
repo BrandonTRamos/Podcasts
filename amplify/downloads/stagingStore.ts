@@ -44,4 +44,8 @@ export interface StagingBucket {
   put(key: string, body: ReadableStream<Uint8Array>, options: { contentType: string | null }): Promise<void>
   /** A link to read the object by, which works for this many seconds. */
   linkTo(key: string, seconds: number): Promise<string>
+  /** Every object stored, with when it was stored. */
+  list(): Promise<{ key: string; storedAt: Date }[]>
+  /** Deletes the objects; any already gone are skipped. */
+  remove(keys: string[]): Promise<void>
 }

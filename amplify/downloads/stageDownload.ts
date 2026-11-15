@@ -1,14 +1,26 @@
-import { normaliseFeedUrl, withUrlsRedactedFromErrors } from '../feeds/feedUrl'
+import { isHttpUrl, withUrlsRedactedFromErrors } from '../feeds/feedUrl'
 import type { StagingBucket, StagingStore } from './stagingStore'
 
-/** The `stageDownload` mutation's event. AppSync invokes the handler asynchronously, so the mutation returns at once. */
+/**
+ * What the stager is invoked with: the `stageDownload` mutation's event, with
+ * its arguments (AppSync invokes it asynchronously, so the mutation returns at
+ * once), to copy one episode's file; or the hourly schedule's event, with
+ * none, to delete old copies. `requestId` is chosen by the client, which
+ * watches the staging record of that ID for the outcome.
+ */
 export interface StageDownloadEvent {
-  /** `requestId` is chosen by the client, which watches the staging record of that ID for the outcome. */
-  arguments: { requestId: string; episodeId: string }
+  arguments?: { requestId: string; episodeId: string }
 }
 
 /** How long the link to a temporary copy works: long enough to download it, and to resume soon after an interruption. */
 export const LINK_LIFETIME_SECONDS = 60 * 60
+
+/**
+ * A copy older than this is deleted on the hourly run, so none is kept more
+ * than a day. The bucket's 1-day lifecycle rule (backend.ts) is the backstop:
+ * S3 rounds it to the following midnight, which can take nearly two.
+ */
+export const COPY_LIFETIME_MS = 23 * 60 * 60 * 1000
 
 /** Longest the host may take to send the whole file: inside the function's own timeout (stage-download/resource.ts). */
 const FETCH_TIMEOUT_MS = 14 * 60 * 1000
@@ -19,7 +31,8 @@ const FETCH_TIMEOUT_MS = 14 * 60 * 1000
  * temporary bucket as it arrives, never holding it whole, and records a
  * short-lived link to the copy on the staging request, which the client
  * watches. Only the episode's own file is fetched, and only over http or
- * https. A copy cut short by the host is not kept.
+ * https. A copy cut short by the host is not kept. Run hourly, it deletes
+ * every copy made more than `COPY_LIFETIME_MS` ago.
  */
 export function createStageDownloadHandler({
   store,
@@ -30,12 +43,20 @@ export function createStageDownloadHandler({
   bucket: StagingBucket
   now?: () => Date
 }) {
-  return withUrlsRedactedFromErrors('stageDownload', async ({ arguments: { requestId, episodeId } }: StageDownloadEvent) => {
+  async function deleteOldCopies() {
+    const cutoff = now().getTime() - COPY_LIFETIME_MS
+    const old = (await bucket.list()).filter(({ storedAt }) => storedAt.getTime() <= cutoff)
+    if (old.length > 0) await bucket.remove(old.map(({ key }) => key))
+  }
+
+  return withUrlsRedactedFromErrors('stageDownload', async (event: StageDownloadEvent | null) => {
+    if (!event?.arguments) return deleteOldCopies()
+    const { requestId, episodeId } = event.arguments
     await store.createStaging({ id: requestId, episodeId })
     try {
       const enclosureUrl = await store.getEnclosureUrl(episodeId)
       // Server-side fetches accept only http and https.
-      if (enclosureUrl === null || normaliseFeedUrl(enclosureUrl) === null) {
+      if (enclosureUrl === null || !isHttpUrl(enclosureUrl)) {
         await store.settleStaging(requestId, { status: 'unavailable' })
         return
       }

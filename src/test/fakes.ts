@@ -20,6 +20,7 @@ import {
   type QueueSnapshot,
   type SavedEpisodeState,
   type ScreenHold,
+  type SettledStaging,
   type SignInResult,
   type StagingState,
   type StoredSession,
@@ -430,7 +431,7 @@ export function fakeDataApi() {
      * Settles every temporary copy being prepared, as the backend's stager
      * does once it has copied the file or failed to.
      */
-    finishStaging(outcome: Exclude<StagingState, { status: 'preparing' }>) {
+    finishStaging(outcome: SettledStaging) {
       for (const { listener } of stagings.splice(0)) {
         const { connection, observer } = listener
         if (!offline && !connection.offline && !connection.asleep) observer.next(outcome)
@@ -842,6 +843,7 @@ interface HostedFile {
 export class FakeNetwork {
   chunkSize = 100
   #files = new Map<string, HostedFile>()
+  #refused = new Set<string>()
   #offline = false
   #throttled = false
   /** Bytes that may yet be sent while throttled. */
@@ -856,6 +858,11 @@ export class FakeNetwork {
   /** Puts an audio file on a host. */
   host(url: string, bytes: Uint8Array, { cors = true, ranges = true }: { cors?: boolean; ranges?: boolean } = {}) {
     this.#files.set(url, { bytes, cors, ranges, endsAt: null })
+  }
+
+  /** The host refuses every later request for the file, as S3 does once a link has stopped working. */
+  refuse(url: string) {
+    this.#refused.add(url)
   }
 
   /** The host stops part way through the file the next time it sends it, closing the response as if it had all been sent. */
@@ -907,6 +914,7 @@ export class FakeNetwork {
     if (mode === 'no-cors') return new Response(null)
     if (!file) return new Response(null, { status: 404 })
     if (!file.cors) throw new TypeError('Failed to fetch')
+    if (this.#refused.has(url)) return new Response(null, { status: 403 })
     const from = range && file.ranges ? Number(/^bytes=(\d+)-$/.exec(range)![1]) : 0
     if (from >= file.bytes.length && from > 0) return new Response(null, { status: 416 })
     const end = file.endsAt ?? file.bytes.length

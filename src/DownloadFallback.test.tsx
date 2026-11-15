@@ -95,12 +95,40 @@ describe('downloading an episode whose host blocks direct download', () => {
     await within(row()).findByRole('button', { name: 'Resume download' })
     device.network.reconnect()
     device.network.unthrottle()
+    const before = device.network.requests.length
     await user.click(within(row()).getByRole('button', { name: 'Resume download' }))
 
     expect(await within(row()).findByText('Downloaded', {}, { timeout: 3000 })).toBeInTheDocument()
+    // Straight to the copy: the host blocking direct download isn't asked again.
+    expect(device.network.requests.slice(before).map((request) => request.url)).toEqual([stagedUrl])
     expect(device.files.onlyFile()).toEqual(file)
     expect(data.stagingRequests()).toHaveLength(1)
     expect(device.network.requests.filter((request) => request.url === stagedUrl).at(-1)!.range).toBe('bytes=400-')
+  })
+
+  it('quietly prepares a fresh copy when the link to the last one stops working early', async () => {
+    const { data, device, user } = await setUp()
+    const freshUrl = 'https://tincan-staging.s3.amazonaws.com/staged/request-2?X-Amz-Signature=def'
+    device.network.host(freshUrl, file)
+    device.network.throttle()
+    await user.click(within(row()).getByRole('button', { name: 'Download' }))
+    await preparing()
+    act(() => data.finishStaging({ status: 'ready', url: stagedUrl, expiresAt: later }))
+    device.network.deliver(400)
+    await within(row()).findByText('40%')
+    device.network.dropConnection()
+    await within(row()).findByRole('button', { name: 'Resume download' })
+    device.network.reconnect()
+    device.network.unthrottle()
+    device.network.refuse(stagedUrl)
+
+    await user.click(within(row()).getByRole('button', { name: 'Resume download' }))
+    await preparing()
+    act(() => data.finishStaging({ status: 'ready', url: freshUrl, expiresAt: later }))
+
+    expect(await within(row()).findByText('Downloaded', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(device.files.onlyFile()).toEqual(file)
+    expect(device.network.requests.filter((request) => request.url === freshUrl).at(-1)!.range).toBe('bytes=400-')
   })
 
   it('prepares a fresh copy to resume from once the link to the last one has expired', async () => {
