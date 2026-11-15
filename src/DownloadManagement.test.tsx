@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseAction, openActions } from './test/ui'
+import { chooseAction, chooseLibraryAction, openActions } from './test/ui'
 
 // Managing downloads: what is stored on this device, how much room it takes,
 // and freeing it; and badges that stay true when the OS clears a download.
@@ -150,7 +150,7 @@ describe('the downloads screen', () => {
     await download(user, show.title, first.title)
     await user.click(screen.getByRole('button', { name: 'Library' }))
 
-    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+    await chooseLibraryAction(user, 'Sign out')
     await user.type(await screen.findByLabelText('Email'), owner.email)
     await user.type(screen.getByLabelText('Password'), owner.password)
     await user.click(screen.getByRole('button', { name: 'Sign in' }))

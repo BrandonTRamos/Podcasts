@@ -29,6 +29,12 @@ export const RefreshIcon = (props: IconProps) => (
   </Icon>
 )
 
+export const PlusIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M12 5v14M5 12h14" />
+  </Icon>
+)
+
 export const SearchIcon = (props: IconProps) => (
   <Icon {...props}>
     <circle cx="11" cy="11" r="7" />

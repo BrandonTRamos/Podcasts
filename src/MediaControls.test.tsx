@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { chooseLibraryAction } from './test/ui'
 
 // The OS media controls: the lock screen, notification centre, and headphone
 // and Bluetooth buttons, all of which reach the app through the media session.
@@ -130,7 +131,7 @@ describe('what the OS media controls show', () => {
     await user.click(screen.getByRole('button', { name: first.title }))
     await user.click(screen.getByRole('button', { name: 'Back to library' }))
 
-    await user.click(await screen.findByRole('button', { name: 'Sign out' }))
+    await chooseLibraryAction(user, 'Sign out')
 
     await screen.findByRole('heading', { name: 'Sign in to TinCan' })
     expect(mediaSession.metadata).toBeNull()

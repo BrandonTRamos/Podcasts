@@ -1,6 +1,6 @@
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 
@@ -22,6 +22,7 @@ async function renderSignedIn(data = fakeDataApi()) {
 }
 
 async function subscribeTo(user: ReturnType<typeof userEvent.setup>, url: string) {
+  if (!screen.queryByLabelText('Feed URL')) await user.click(screen.getByRole('button', { name: 'Add podcast' }))
   await user.type(screen.getByLabelText('Feed URL'), url)
   await user.click(screen.getByRole('button', { name: 'Subscribe' }))
 }
@@ -200,5 +201,54 @@ describe('an episode’s other actions', () => {
 
     expect(row).toHaveTextContent('Queued')
     expect(within(row).queryByRole('button', { name: 'Add to queue' })).not.toBeInTheDocument()
+  })
+})
+
+describe('the top of the library', () => {
+  it('counts the podcasts under the title, once there are any', async () => {
+    const data = fakeDataApi()
+    await renderSignedIn(data)
+    expect(screen.queryByText(/\d+ podcasts?$/)).not.toBeInTheDocument()
+
+    act(() => void data.seedPodcast(feedUrl, show))
+    expect(await screen.findByText('1 podcast')).toBeInTheDocument()
+
+    act(() => void data.seedPodcast('https://feeds.example.com/other.xml', { title: 'The Other Show' }))
+    expect(await screen.findByText('2 podcasts')).toBeInTheDocument()
+  })
+
+  it('asks for a feed URL in a dialog, which Cancel and Escape close', async () => {
+    const { user } = await renderSignedIn()
+    expect(screen.queryByLabelText('Feed URL')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Add podcast' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Add podcast' })
+    expect(within(dialog).getByLabelText('Feed URL')).toHaveFocus()
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Add podcast' }))
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('keeps importing, reloading and signing out behind More actions, and opens the file picker from there', async () => {
+    const { user } = await renderSignedIn()
+    for (const name of ['Import OPML file', 'Reload app', 'Sign out']) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    }
+    const picker = vi.spyOn(HTMLInputElement.prototype, 'click')
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    for (const name of ['Import OPML file', 'Reload app', 'Sign out']) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument()
+    }
+    await user.click(screen.getByRole('button', { name: 'Import OPML file' }))
+
+    expect(picker).toHaveBeenCalledTimes(1)
+    expect(picker.mock.instances[0]).toBe(screen.getByLabelText('Import OPML file'))
+    expect(screen.queryByRole('button', { name: 'Reload app' })).not.toBeInTheDocument()
+    picker.mockRestore()
   })
 })
