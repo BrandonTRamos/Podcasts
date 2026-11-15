@@ -3,7 +3,7 @@ import { CategoryPicker } from './CategoryPicker'
 import { type EpisodeActions, EpisodeRow } from './EpisodeRow'
 import { newestFirst } from './episodes'
 import { formatDateTime } from './format'
-import { ChevronLeftIcon } from './Icons'
+import { ChevronLeftIcon, StarIcon } from './Icons'
 import { Artwork } from './LibraryScreen'
 import { type ListeningStore, useEpisodeStates } from './listening'
 import type { Category, DataApi, Episode, EpisodeState, FeedError, Podcast } from './services'
@@ -60,6 +60,7 @@ export function PodcastScreen({
             {categories && <CategoryPicker podcast={podcast} categories={categories} data={data} />}
             <Unsubscribe podcastTitle={podcast.title} onUnsubscribe={onUnsubscribe} />
           </div>
+          <FavoriteToggle podcast={podcast} data={data} />
         </header>
       ) : (
         <p>Loading…</p>
@@ -123,6 +124,46 @@ function EpisodeList({
         </ol>
       )}
     </>
+  )
+}
+
+/**
+ * A star that makes the podcast a favorite, shown in Favorites at the
+ * library's top as well as in its category, or no longer one. It shows the
+ * choice while it is saved. A new favorite goes last: its place is the time
+ * it was starred.
+ */
+function FavoriteToggle({ podcast, data }: { podcast: Podcast; data: Pick<DataApi, 'placeFavorite'> }) {
+  const favorite = podcast.favoriteOrder !== null
+  // The choice being saved, shown until the library brings the podcast changed from how it was when chosen.
+  const [saving, setSaving] = useState<{ favorite: boolean; from: boolean } | null>(null)
+  const [failed, setFailed] = useState(false)
+  const shown = saving !== null && saving.from === favorite ? saving.favorite : favorite
+
+  async function toggle() {
+    setSaving({ favorite: !shown, from: favorite })
+    setFailed(false)
+    try {
+      await data.placeFavorite(podcast.id, shown ? null : Date.now())
+    } catch {
+      setSaving(null)
+      setFailed(true)
+    }
+  }
+
+  return (
+    <div className="favorite-toggle">
+      <button
+        type="button"
+        className={shown ? 'icon-button starred' : 'icon-button'}
+        aria-pressed={shown}
+        aria-label="Favorite"
+        onClick={() => void toggle()}
+      >
+        <StarIcon size={24} filled={shown} />
+      </button>
+      {failed && <p role="alert">Couldn’t change your favorites. Check your connection and try again.</p>}
+    </div>
   )
 }
 

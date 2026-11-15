@@ -1,7 +1,7 @@
 import { type ChangeEvent, type FormEvent, Fragment, type RefObject, useEffect, useRef, useState } from 'react'
 import { CategoryDialog } from './CategoryDialog'
-import { inListOrder, type LibrarySection, librarySections, OTHER, type Placement, placementsFor } from './categories'
-import { ChevronDownIcon, PlusIcon } from './Icons'
+import { favoritesOf, FAVORITES, inListOrder, type LibrarySection, librarySections, OTHER, type Placement, placementsFor } from './categories'
+import { ChevronDownIcon, PlusIcon, StarIcon } from './Icons'
 import { type LibraryDrag, LIFTED_INSET, useLibraryDrag } from './libraryDrag'
 import type { ListeningStore } from './listening'
 import { MoreActions } from './MoreActions'
@@ -11,10 +11,14 @@ import type { Category, DataApi, Podcast } from './services'
 import type { LoadState } from './SignedInApp'
 import { failureMessage, type SubscribeFailure, useSubscribe } from './subscribing'
 
-/** What the library's sections are open: each category's ID, and `OTHER_SECTION` for Other. */
+/** What the library's sections are open: each category's ID, `OTHER_SECTION` for Other and `FAVORITES_SECTION` for Favorites. */
 export type OpenSections = ReadonlySet<string>
 
 export const OTHER_SECTION = 'other'
+export const FAVORITES_SECTION = 'favorites'
+
+/** A row's key in the library (its drag and `data-flip` key): a favorite's copy in Favorites has its own. */
+const rowKey = (section: string, podcastId: string) => (section === FAVORITES_SECTION ? `${FAVORITES_SECTION}:${podcastId}` : podcastId)
 
 export function LibraryScreen({
   podcasts,
@@ -31,7 +35,7 @@ export function LibraryScreen({
 }: {
   podcasts: LoadState<Podcast>
   categories: LoadState<Category>
-  /** Every section starts closed. */
+  /** Every section starts closed, but Favorites. */
   openSections: OpenSections
   onToggleSection: (section: string) => void
   data: DataApi
@@ -59,12 +63,14 @@ export function LibraryScreen({
   const main = useRef<HTMLElement>(null)
   const { drag, bind, ghost } = useLibraryDrag({
     container: main,
-    podcastOf(podcastId) {
+    podcastOf(row) {
       for (const section of sections) {
-        const podcast = section.podcasts.find((p) => p.id === podcastId)
+        const podcast = section.podcasts.find((p) => rowKey(section.key, p.id) === row)
         if (podcast) return { podcast, section: section.key }
       }
     },
+    // Favorites are reordered among themselves; a podcast changes category elsewhere.
+    accepts: (from, to) => (from === FAVORITES_SECTION) === (to === FAVORITES_SECTION),
     isOpen: (section) => openSections.has(section),
     onOpenSection: (section) => {
       if (!openSections.has(section)) onToggleSection(section)
@@ -73,6 +79,15 @@ export function LibraryScreen({
       const section = sections.find((s) => s.key === target.section)
       if (!section) return
       const others = section.podcasts.filter((p) => p.id !== podcast.id)
+      if (section.key === FAVORITES_SECTION) {
+        move(
+          placementsFor(others, podcast.id, target.index, (p) => p.favoriteOrder).map(({ podcastId, libraryOrder }) => ({
+            podcastId,
+            favoriteOrder: libraryOrder,
+          })),
+        )
+        return
+      }
       move(
         placementsFor(others, podcast.id, target.index).map((placement) => ({
           ...placement,
@@ -147,18 +162,20 @@ export function LibraryScreen({
       {podcasts.status === 'loaded' && categories.status !== 'loading' && (
         <>
           {podcasts.items.length === 0 && <p>No podcasts yet.</p>}
-          {categoryList.length === 0
-            ? podcasts.items.length > 0 && (
+          {(categoryList.length > 0 || podcasts.items.length > 0) &&
+            sections.map((section) =>
+              // With no categories, every podcast shows as one list, under no heading.
+              categoryList.length === 0 && section.key !== FAVORITES_SECTION ? (
                 <PodcastList
+                  key={section.key}
                   label="Podcasts"
-                  section={sections[0]}
+                  section={section}
                   newCounts={newCounts}
                   drag={drag}
                   bind={bind}
                   onOpen={onOpenPodcast}
                 />
-              )
-            : sections.map((section) => (
+              ) : (
                 <CategorySection
                   key={section.key}
                   section={section}
@@ -171,7 +188,8 @@ export function LibraryScreen({
                   onRename={(category) => setEditing({ action: 'rename', category })}
                   onDelete={setDeleting}
                 />
-              ))}
+              ),
+            )}
         </>
       )}
       {drag && <DraggedPodcast drag={drag} card={ghost} newCount={newCounts.get(drag.podcast.id) ?? 0} />}
@@ -179,32 +197,44 @@ export function LibraryScreen({
   )
 }
 
-/** A section of the library as shown, keyed by its category's ID, or `OTHER_SECTION`. */
+/** A section of the library as shown, keyed by its category's ID, `OTHER_SECTION` or `FAVORITES_SECTION`. */
 interface ShownSection extends LibrarySection {
   key: string
 }
 
-/** The library's sections, or with no categories, one holding every podcast. */
+const sectionName = (section: ShownSection) =>
+  section.key === FAVORITES_SECTION ? FAVORITES : (section.category?.name ?? OTHER)
+
+/**
+ * The library's sections, or with no categories, one holding every podcast.
+ * Favorites, when there are any, come first, each a copy of one shown below too.
+ */
 function shownSections(podcasts: LoadState<Podcast>, categories: Category[]): ShownSection[] {
   if (podcasts.status !== 'loaded') return []
-  if (categories.length === 0) return [{ key: OTHER_SECTION, category: null, podcasts: inListOrder(podcasts.items) }]
-  return librarySections(podcasts.items, categories).map((section) => ({
-    ...section,
-    key: section.category?.id ?? OTHER_SECTION,
-  }))
+  const favorites = favoritesOf(podcasts.items)
+  const pinned: ShownSection[] = favorites.length > 0 ? [{ key: FAVORITES_SECTION, category: null, podcasts: favorites }] : []
+  if (categories.length === 0) return [...pinned, { key: OTHER_SECTION, category: null, podcasts: inListOrder(podcasts.items) }]
+  return [
+    ...pinned,
+    ...librarySections(podcasts.items, categories).map((section) => ({
+      ...section,
+      key: section.category?.id ?? OTHER_SECTION,
+    })),
+  ]
 }
 
-/** A podcast's place as a move left it, until the library shows it there. */
-interface Move extends Placement {
-  categoryId: string | null
-}
+/** A podcast's place as a move left it, until the library shows it there: in a category's list, or among favorites. */
+type Move = (Placement & { categoryId: string | null }) | { podcastId: string; favoriteOrder: number | null }
+
+/** A move's key among those pending: a podcast can be moving in its category and among favorites at once. */
+const moveKey = (move: Move) => ('favoriteOrder' in move ? `${FAVORITES_SECTION}:${move.podcastId}` : move.podcastId)
 
 /**
  * Moves podcasts, showing them moved at once. Each stays shown where it was
  * put while it is saved and a few seconds after, time for the library to bring
  * it there. A move that fails puts it back, and says so.
  */
-function useMoves(podcasts: LoadState<Podcast>, data: Pick<DataApi, 'placePodcast'>) {
+function useMoves(podcasts: LoadState<Podcast>, data: Pick<DataApi, 'placePodcast' | 'placeFavorite'>) {
   const [moves, setMoves] = useState<ReadonlyMap<string, Move>>(new Map())
   const [moveFailed, setMoveFailed] = useState(false)
 
@@ -213,8 +243,9 @@ function useMoves(podcasts: LoadState<Podcast>, data: Pick<DataApi, 'placePodcas
       ? {
           ...podcasts,
           items: podcasts.items.map((podcast) => {
-            const move = moves.get(podcast.id)
-            return move ? { ...podcast, categoryId: move.categoryId, libraryOrder: move.libraryOrder } : podcast
+            const placed = moves.get(podcast.id)
+            const favorite = moves.get(`${FAVORITES_SECTION}:${podcast.id}`)
+            return placed || favorite ? { ...podcast, ...changesOf(placed), ...changesOf(favorite) } : podcast
           }),
         }
       : podcasts
@@ -222,16 +253,22 @@ function useMoves(podcasts: LoadState<Podcast>, data: Pick<DataApi, 'placePodcas
   function forget(made: Move[]) {
     setMoves((pending) => {
       const left = new Map(pending)
-      for (const move of made) if (left.get(move.podcastId) === move) left.delete(move.podcastId)
+      for (const move of made) if (left.get(moveKey(move)) === move) left.delete(moveKey(move))
       return left
     })
   }
 
   async function move(made: Move[]) {
     setMoveFailed(false)
-    setMoves((pending) => new Map([...pending, ...made.map((m) => [m.podcastId, m] as const)]))
+    setMoves((pending) => new Map([...pending, ...made.map((m) => [moveKey(m), m] as const)]))
     try {
-      await Promise.all(made.map((m) => data.placePodcast(m.podcastId, m.categoryId, m.libraryOrder)))
+      await Promise.all(
+        made.map((m) =>
+          'favoriteOrder' in m
+            ? data.placeFavorite(m.podcastId, m.favoriteOrder)
+            : data.placePodcast(m.podcastId, m.categoryId, m.libraryOrder),
+        ),
+      )
       // By then the library has it as saved, or changed again elsewhere, which it should show.
       window.setTimeout(() => forget(made), 5000)
     } catch {
@@ -241,6 +278,13 @@ function useMoves(podcasts: LoadState<Podcast>, data: Pick<DataApi, 'placePodcas
   }
 
   return { moved, moveFailed, move: (made: Move[]) => void move(made) }
+}
+
+/** What a pending move changes of its podcast. */
+function changesOf(move: Move | undefined): Partial<Podcast> {
+  if (!move) return {}
+  if ('favoriteOrder' in move) return { favoriteOrder: move.favoriteOrder }
+  return { categoryId: move.categoryId, libraryOrder: move.libraryOrder }
 }
 
 type BindRow = ReturnType<typeof useLibraryDrag>['bind']
@@ -271,7 +315,7 @@ function CategorySection({
   onDelete: (category: Category) => void
 }) {
   const { category, podcasts, key } = section
-  const name = category?.name ?? OTHER
+  const name = sectionName(section)
   const targeted = drag?.target.section === key
   return (
     <section className="category" aria-label={name}>
@@ -291,6 +335,11 @@ function CategorySection({
           >
             <ChevronDownIcon size={20} />
             <span className="category-name">{name}</span>
+            {key === FAVORITES_SECTION && (
+              <span className="favorites-star">
+                <StarIcon size={16} filled />
+              </span>
+            )}
             <span className="category-count">{podcasts.length}</span>
           </button>
         </h2>
@@ -355,12 +404,14 @@ function PodcastList({
       aria-hidden="true"
     />
   )
-  const others = podcasts.filter((podcast) => podcast.id !== drag?.podcast.id)
+  // The podcast held leaves the list it was picked up from, not a copy of it in another.
+  const others = podcasts.filter((podcast) => drag?.origin.section !== key || podcast.id !== drag.podcast.id)
   const indexOf = new Map(others.map((podcast, index) => [podcast.id, index]))
   return (
     <ul className="podcasts" aria-label={label}>
       {podcasts.map((podcast) => {
-        const held = drag?.podcast.id === podcast.id
+        const row = rowKey(key, podcast.id)
+        const held = drag?.row === row
         const at = indexOf.get(podcast.id) ?? null
         return (
           <Fragment key={podcast.id}>
@@ -370,8 +421,8 @@ function PodcastList({
               data-drop={held ? undefined : 'row'}
               data-section={key}
               data-index={at ?? undefined}
-              data-flip={podcast.id}
-              {...bind(podcast.id)}
+              data-flip={row}
+              {...bind(row)}
             >
               <PodcastRow podcast={podcast} newCount={newCounts.get(podcast.id) ?? 0} onOpen={onOpen} />
             </li>

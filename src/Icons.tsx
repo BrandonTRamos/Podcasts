@@ -80,6 +80,16 @@ export const ChevronDownIcon = (props: IconProps) => (
   </Icon>
 )
 
+/** A star, filled when `filled`: a favorite. */
+export const StarIcon = ({ filled = false, ...props }: IconProps & { filled?: boolean }) => (
+  <Icon {...props}>
+    <path
+      d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"
+      fill={filled ? 'currentColor' : 'none'}
+    />
+  </Icon>
+)
+
 export const ArrowUpIcon = (props: IconProps) => (
   <Icon {...props}>
     <path d="M12 19V5M6 11l6-6 6 6" />

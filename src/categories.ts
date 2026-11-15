@@ -3,6 +3,16 @@ import type { Category, Podcast } from './services'
 /** The name of the group that holds every podcast in no category, or in one since deleted. */
 export const OTHER = 'Other'
 
+/** The name of the group, pinned to the library's top, that shows a copy of each favorite. */
+export const FAVORITES = 'Favorites'
+
+/** The listener's favorites, lowest `favoriteOrder` first (ties by title). */
+export function favoritesOf(podcasts: Podcast[]): Podcast[] {
+  return podcasts
+    .filter((podcast) => podcast.favoriteOrder !== null)
+    .sort((a, b) => a.favoriteOrder! - b.favoriteOrder! || a.title.localeCompare(b.title))
+}
+
 /** One group of the library as shown: a category, or Other (`category` null). */
 export interface LibrarySection {
   category: Category | null
@@ -37,11 +47,16 @@ export function inListOrder(podcasts: Podcast[]): Podcast[] {
   })
 }
 
-/** A podcast's new place in the library. */
+/** A podcast's new place in a list of the library. */
 export interface Placement {
   podcastId: string
   libraryOrder: number
 }
+
+/** Where a podcast is in a list: its `libraryOrder` in a category, its `favoriteOrder` in Favorites. */
+export type OrderOf = (podcast: Podcast) => number | null
+
+const byLibraryOrder: OrderOf = (podcast) => podcast.libraryOrder
 
 /**
  * The places to write so that `podcastId` shows at `index` of a list now
@@ -49,22 +64,23 @@ export interface Placement {
  * coming from another list). Usually one, the podcast's own, between its new
  * neighbours. When a podcast before it has no place yet, those up to it are
  * numbered afresh, as are all when the neighbours' places are too close to
- * split.
+ * split. `orderOf` reads the order the list is in, its `libraryOrder` unless
+ * said; the places returned are in that order, named `libraryOrder` regardless.
  */
-export function placementsFor(list: Podcast[], podcastId: string, index: number): Placement[] {
+export function placementsFor(list: Podcast[], podcastId: string, index: number, orderOf = byLibraryOrder): Placement[] {
   const others = list.filter((podcast) => podcast.id !== podcastId)
   const at = Math.max(0, Math.min(index, others.length))
   const before = others.slice(0, at)
   const after = others[at]
-  if (before.every((podcast) => podcast.libraryOrder !== null)) {
-    const low = before.at(-1)?.libraryOrder ?? null
-    const high = after?.libraryOrder ?? null
+  if (before.every((podcast) => orderOf(podcast) !== null)) {
+    const low = before.at(-1) ? orderOf(before.at(-1)!) : null
+    const high = after ? orderOf(after) : null
     const order = low === null ? (high === null ? 1 : high - 1) : high === null ? low + 1 : (low + high) / 2
     if (order !== low && order !== high) return [{ podcastId, libraryOrder: order }]
   }
   // Numbered afresh, from 1: those before it, it, then those after it that have a place.
-  const renumbered = [...before.map((podcast) => podcast.id), podcastId, ...others.slice(at).filter((p) => p.libraryOrder !== null).map((p) => p.id)]
-  const current = new Map(others.map((podcast) => [podcast.id, podcast.libraryOrder]))
+  const renumbered = [...before.map((podcast) => podcast.id), podcastId, ...others.slice(at).filter((p) => orderOf(p) !== null).map((p) => p.id)]
+  const current = new Map(others.map((podcast) => [podcast.id, orderOf(podcast)]))
   return renumbered
     .map((id, i) => ({ podcastId: id, libraryOrder: i + 1 }))
     .filter(({ podcastId: id, libraryOrder }) => id === podcastId || current.get(id) !== libraryOrder)
@@ -83,6 +99,7 @@ export function categoryNameProblem(name: string, categories: Category[], renami
   const wanted = name.trim().toLocaleLowerCase()
   if (!wanted) return 'Enter a name for the category.'
   if (wanted === OTHER.toLocaleLowerCase()) return `${OTHER} is kept for podcasts in no category.`
+  if (wanted === FAVORITES.toLocaleLowerCase()) return `${FAVORITES} is kept for your starred podcasts.`
   const taken = categories.find((category) => category.id !== renaming && category.name.trim().toLocaleLowerCase() === wanted)
   return taken ? `You already have a category called ${taken.name}.` : null
 }

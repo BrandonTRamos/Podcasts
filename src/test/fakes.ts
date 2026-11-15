@@ -289,6 +289,13 @@ export function fakeDataApi() {
         podcast.libraryOrder = libraryOrder
         queueMicrotask(notifyPodcasts)
       },
+      async placeFavorite(podcastId, favoriteOrder) {
+        reach(connection)
+        const podcast = podcasts.find((p) => p.id === podcastId)
+        if (!podcast) throw new Error('No such podcast')
+        podcast.favoriteOrder = favoriteOrder
+        queueMicrotask(notifyPodcasts)
+      },
       observeEpisodes(podcastId, observer) {
         return listen(connection, listenersFor(episodeListeners, podcastId), observer, () => episodesOf(podcastId))
       },
@@ -492,7 +499,7 @@ export function fakeDataApi() {
         if (feed === undefined) settle(requestId, { status: 'unreachable' })
         else if (typeof feed === 'string') settle(requestId, { status: feed })
         else {
-          const podcastId = addPodcast(feedUrl, { ...feed, lastFetchedAt: timeAt(tick), lastFetchError: null, categoryId: null, libraryOrder: null })
+          const podcastId = addPodcast(feedUrl, { ...feed, lastFetchedAt: timeAt(tick), lastFetchError: null, categoryId: null, libraryOrder: null, favoriteOrder: null })
           settle(requestId, { status: 'subscribed', podcastId })
         }
       }
@@ -506,6 +513,7 @@ export function fakeDataApi() {
         lastFetchError: null,
         categoryId: null,
         libraryOrder: null,
+        favoriteOrder: null,
         ...podcast,
       })
     },
