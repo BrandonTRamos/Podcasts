@@ -286,8 +286,12 @@ describe('the latest episodes', () => {
   it('says when the list cannot be loaded', async () => {
     const data = fakeDataApi()
     data.seedPodcast(showUrl, show)
+    // Never delivered, so the device has no copy of it to fall back on.
+    data.observeLatestEpisodes = (observer) => {
+      queueMicrotask(() => observer.error())
+      return () => {}
+    }
     const { user } = await renderSignedIn(data)
-    data.goOffline()
 
     await openLatest(user)
 

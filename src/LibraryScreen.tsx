@@ -3,7 +3,9 @@ import { CategoryDialog } from './CategoryDialog'
 import { inListOrder, type LibrarySection, librarySections, OTHER, type Placement, placementsFor } from './categories'
 import { ChevronDownIcon, PlusIcon } from './Icons'
 import { type LibraryDrag, LIFTED_INSET, useLibraryDrag } from './libraryDrag'
+import type { ListeningStore } from './listening'
 import { MoreActions } from './MoreActions'
+import { useNewEpisodeCounts } from './newEpisodes'
 import type { ImportOutcome, ImportState } from './opmlImport'
 import type { Category, DataApi, Podcast } from './services'
 import type { LoadState } from './SignedInApp'
@@ -20,6 +22,7 @@ export function LibraryScreen({
   openSections,
   onToggleSection,
   data,
+  listening,
   onOpenPodcast,
   onReload,
   onSignOut,
@@ -32,6 +35,8 @@ export function LibraryScreen({
   openSections: OpenSections
   onToggleSection: (section: string) => void
   data: DataApi
+  /** Whose episodes are played, to tell which podcasts have new ones. */
+  listening: ListeningStore
   opmlImport: ImportState
   onImportOpml: (file: File) => void
   onOpenPodcast: (podcastId: string) => void
@@ -49,6 +54,7 @@ export function LibraryScreen({
   const importing = opmlImport.status === 'reading' || opmlImport.status === 'importing'
   const { moved, moveFailed, move } = useMoves(podcasts, data)
   const sections = shownSections(moved, categoryList)
+  const newCounts = useNewEpisodeCounts(data, listening)
 
   const main = useRef<HTMLElement>(null)
   const { drag, bind, ghost } = useLibraryDrag({
@@ -143,13 +149,21 @@ export function LibraryScreen({
           {podcasts.items.length === 0 && <p>No podcasts yet.</p>}
           {categoryList.length === 0
             ? podcasts.items.length > 0 && (
-                <PodcastList label="Podcasts" section={sections[0]} drag={drag} bind={bind} onOpen={onOpenPodcast} />
+                <PodcastList
+                  label="Podcasts"
+                  section={sections[0]}
+                  newCounts={newCounts}
+                  drag={drag}
+                  bind={bind}
+                  onOpen={onOpenPodcast}
+                />
               )
             : sections.map((section) => (
                 <CategorySection
                   key={section.key}
                   section={section}
                   open={openSections.has(section.key)}
+                  newCounts={newCounts}
                   drag={drag}
                   bind={bind}
                   onToggle={() => onToggleSection(section.key)}
@@ -160,7 +174,7 @@ export function LibraryScreen({
               ))}
         </>
       )}
-      {drag && <DraggedPodcast drag={drag} card={ghost} />}
+      {drag && <DraggedPodcast drag={drag} card={ghost} newCount={newCounts.get(drag.podcast.id) ?? 0} />}
     </main>
   )
 }
@@ -231,10 +245,14 @@ function useMoves(podcasts: LoadState<Podcast>, data: Pick<DataApi, 'placePodcas
 
 type BindRow = ReturnType<typeof useLibraryDrag>['bind']
 
+/** How many new episodes each podcast has; those with none are absent. */
+type NewCounts = ReadonlyMap<string, number>
+
 /** A category's podcasts, or Other's, under a heading that opens and closes it. */
 function CategorySection({
   section,
   open,
+  newCounts,
   drag,
   bind,
   onToggle,
@@ -244,6 +262,7 @@ function CategorySection({
 }: {
   section: ShownSection
   open: boolean
+  newCounts: NewCounts
   drag: LibraryDrag | null
   bind: BindRow
   onToggle: () => void
@@ -292,7 +311,14 @@ function CategorySection({
             No podcasts here yet. Open a podcast to choose its category, or hold one to drag it here.
           </p>
         ) : (
-          <PodcastList label={name} section={section} drag={drag} bind={bind} onOpen={onOpenPodcast} />
+          <PodcastList
+            label={name}
+            section={section}
+            newCounts={newCounts}
+            drag={drag}
+            bind={bind}
+            onOpen={onOpenPodcast}
+          />
         ))}
     </section>
   )
@@ -305,12 +331,14 @@ function CategorySection({
 function PodcastList({
   label,
   section: { key, podcasts },
+  newCounts,
   drag,
   bind,
   onOpen,
 }: {
   label: string
   section: ShownSection
+  newCounts: NewCounts
   drag: LibraryDrag | null
   bind: BindRow
   onOpen: (podcastId: string) => void
@@ -345,7 +373,7 @@ function PodcastList({
               data-flip={podcast.id}
               {...bind(podcast.id)}
             >
-              <PodcastRow podcast={podcast} onOpen={onOpen} />
+              <PodcastRow podcast={podcast} newCount={newCounts.get(podcast.id) ?? 0} onOpen={onOpen} />
             </li>
           </Fragment>
         )
@@ -355,12 +383,31 @@ function PodcastList({
   )
 }
 
-function PodcastRow({ podcast, onOpen }: { podcast: Podcast; onOpen?: (podcastId: string) => void }) {
+/** A podcast in the library, with how many new episodes it has on its artwork's corner. */
+function PodcastRow({
+  podcast,
+  newCount,
+  onOpen,
+}: {
+  podcast: Podcast
+  newCount: number
+  onOpen?: (podcastId: string) => void
+}) {
   return (
     <button type="button" className="plain" onClick={onOpen && (() => onOpen(podcast.id))} tabIndex={onOpen ? undefined : -1}>
-      <Artwork url={podcast.artworkUrl} />
+      <span className="podcast-artwork">
+        <Artwork url={podcast.artworkUrl} />
+        {newCount > 0 && (
+          <span className="new-count" aria-hidden="true">
+            {newCount}
+          </span>
+        )}
+      </span>
       <span className="podcast-title">{podcast.title}</span>
       {podcast.author && <span className="podcast-author">{podcast.author}</span>}
+      {newCount > 0 && (
+        <span className="visually-hidden">{newCount === 1 ? ', 1 new episode' : `, ${newCount} new episodes`}</span>
+      )}
     </button>
   )
 }
@@ -369,11 +416,19 @@ function PodcastRow({ podcast, onOpen }: { podcast: Podcast; onOpen?: (podcastId
  * The podcast being dragged, lifted, under the finger. It is placed by the
  * drag, outside rendering, through `card`.
  */
-function DraggedPodcast({ drag, card }: { drag: LibraryDrag; card: RefObject<HTMLDivElement | null> }) {
+function DraggedPodcast({
+  drag,
+  card,
+  newCount,
+}: {
+  drag: LibraryDrag
+  card: RefObject<HTMLDivElement | null>
+  newCount: number
+}) {
   return (
     <div ref={card} className="dragged-podcast" aria-hidden="true" style={{ width: drag.width + 2 * LIFTED_INSET }}>
       <div className="podcasts dragged-card">
-        <PodcastRow podcast={drag.podcast} />
+        <PodcastRow podcast={drag.podcast} newCount={newCount} />
       </div>
     </div>
   )

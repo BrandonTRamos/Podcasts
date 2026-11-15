@@ -1,6 +1,6 @@
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 
@@ -250,5 +250,45 @@ describe('the top of the library', () => {
     expect(picker.mock.instances[0]).toBe(screen.getByLabelText('Import OPML file'))
     expect(screen.queryByRole('button', { name: 'Reload app' })).not.toBeInTheDocument()
     picker.mockRestore()
+  })
+})
+
+describe('new episodes in the library', () => {
+  afterEach(() => vi.useRealTimers())
+
+  const episode = (title: string, publishedAt: string | null) => ({ title, publishedAt, durationSeconds: 1800 })
+
+  it('shows each podcast’s count of new episodes, and none for a podcast without any', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(Date.parse('2026-11-14T09:00:00.000Z'))
+    const data = fakeDataApi()
+    const busy = data.seedPodcast('https://feeds.example.com/busy.xml', { title: 'Busy Show' })
+    const quiet = data.seedPodcast('https://feeds.example.com/quiet.xml', { title: 'Quiet Show' })
+    const [startedId] = data.ingest(busy, [
+      episode('Started', '2026-11-13T08:00:00.000Z'),
+      episode('Fresh', '2026-11-12T08:00:00.000Z'),
+      episode('Also fresh', '2026-11-11T08:00:00.000Z'),
+      episode('Old', '2026-11-01T08:00:00.000Z'),
+      episode('Undated', null),
+    ])
+    data.ingest(quiet, [episode('Old', '2026-10-01T08:00:00.000Z')])
+    data.seedEpisodeState({ episodeId: startedId, podcastId: busy, positionSeconds: 60, played: false })
+    await renderSignedIn(data)
+
+    expect(await screen.findByRole('button', { name: /Busy Show, 2 new episodes/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Quiet Show' })).toBeInTheDocument()
+  })
+
+  it('updates the count as a refresh finds a new episode', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(Date.parse('2026-11-14T09:00:00.000Z'))
+    const data = fakeDataApi()
+    const show = data.seedPodcast(feedUrl, { title: 'The Example Show' })
+    await renderSignedIn(data)
+    expect(await screen.findByRole('button', { name: 'The Example Show' })).toBeInTheDocument()
+
+    act(() => void data.ingest(show, [episode('Just out', '2026-11-14T08:00:00.000Z')]))
+
+    expect(await screen.findByRole('button', { name: /The Example Show, 1 new episode$/ })).toBeInTheDocument()
   })
 })
