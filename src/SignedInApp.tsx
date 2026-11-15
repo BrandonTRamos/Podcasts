@@ -285,7 +285,7 @@ export function SignedInApp({
       <LatestScreen
         data={data}
         listening={listening}
-        podcastTitleOf={(podcastId) => podcastById(podcastId)?.title}
+        podcastOf={podcastById}
         {...episodeActions}
       />
     )

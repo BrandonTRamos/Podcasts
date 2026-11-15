@@ -220,6 +220,18 @@ describe('the latest episodes', () => {
     expect(items[1]).toHaveTextContent('The Other Show')
   })
 
+  it('shows each episode’s podcast artwork beside it, or a blank tile when the podcast has none', async () => {
+    const { data } = backendWithTwoShows()
+    const { user } = await renderSignedIn(data)
+
+    await openLatest(user)
+
+    const [showNewest, otherMiddle] = await latestItems()
+    expect(showNewest.querySelector('img.artwork')).toHaveAttribute('src', show.artworkUrl)
+    expect(otherMiddle.querySelector('img')).not.toBeInTheDocument()
+    expect(otherMiddle.querySelector('.artwork')).toBeInTheDocument()
+  })
+
   it('shows new episodes as they are found, without a reload', async () => {
     const { data, otherId } = backendWithTwoShows()
     const { user } = await renderSignedIn(data)

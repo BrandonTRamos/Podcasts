@@ -3,6 +3,7 @@ import type { DownloadState } from './downloads'
 import { isNew } from './episodes'
 import { formatDate, formatDuration } from './format'
 import { PauseIcon, PlayIcon } from './Icons'
+import { Artwork } from './LibraryScreen'
 import type { QueuePlace } from './listening'
 import { MoreActions } from './MoreActions'
 import type { Episode, EpisodeState } from './services'
@@ -32,12 +33,13 @@ export interface EpisodeActions {
  * beside its length does), how far through it is, and whether it is queued or
  * downloaded. While it plays, that button pauses it instead. Everything else a listener can do with it (mark it played, read
  * its show notes, queue it, download it) is behind its "More actions" button.
- * Shows its podcast's title too when the list mixes podcasts.
+ * Shows its podcast's title and artwork too when the list mixes podcasts.
  */
 export function EpisodeRow({
   episode,
   state,
   podcastTitle,
+  artworkUrl,
   onPlay,
   onPause,
   isPlaying,
@@ -51,12 +53,19 @@ export function EpisodeRow({
   episode: Episode
   state: EpisodeState | undefined
   podcastTitle?: string
+  /** Its podcast's artwork, shown at the start of the row; left out, the row has none. */
+  artworkUrl?: string | null
 } & EpisodeActions) {
   const played = state?.played ?? false
   const unavailable = unavailableNow(episode.id)
   const download = downloadOf(episode.id)
+  const withArtwork = artworkUrl !== undefined
+  const className = ['episode-row', withArtwork && 'episode-row-with-artwork', played && 'episode-row-played']
+    .filter(Boolean)
+    .join(' ')
   return (
-    <li className={played ? 'episode-row episode-row-played' : 'episode-row'}>
+    <li className={className}>
+      {withArtwork && <Artwork url={artworkUrl} />}
       <div className="episode-row-main">
         <EpisodeMeta episode={episode} podcastTitle={podcastTitle} withDuration={false} />
         <h2>
