@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { STALL_MS } from './downloads'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { chooseAction, openActions } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = { title: 'The Example Show', artworkUrl: 'https://cdn.example.com/show/artwork.jpg' }
@@ -65,7 +66,7 @@ function tap(user: ReturnType<typeof userEvent.setup>, title: string) {
 }
 
 async function startDownload(user: ReturnType<typeof userEvent.setup>, title: string) {
-  await user.click(within(row(title)).getByRole('button', { name: 'Download' }))
+  await chooseAction(user, row(title), 'Download')
 }
 
 /** Waits for the episode to show as downloaded. */
@@ -345,9 +346,10 @@ describe('downloading an episode', () => {
     await downloaded(first.title)
     unmount()
 
-    await launch(data, device)
+    const relaunched = await launch(data, device)
 
     expect(await downloaded(first.title)).toBeInTheDocument()
+    await openActions(relaunched.user, row(second.title))
     expect(within(row(second.title)).getByRole('button', { name: 'Download' })).toBeInTheDocument()
   })
 
@@ -368,8 +370,8 @@ describe('downloading an episode', () => {
     const { user } = await setUp()
     await startDownload(user, first.title)
     await downloaded(first.title)
-    await user.click(within(row(first.title)).getByRole('button', { name: 'Add to queue' }))
-    await user.click(within(row(second.title)).getByRole('button', { name: 'Add to queue' }))
+    await chooseAction(user, row(first.title), 'Add to queue')
+    await chooseAction(user, row(second.title), 'Add to queue')
 
     await user.click(screen.getByRole('button', { name: 'Back to library' }))
     await user.click(screen.getByRole('button', { name: 'Queue' }))
@@ -381,7 +383,7 @@ describe('downloading an episode', () => {
 
   it('downloads from the episode’s own screen', async () => {
     const { device, user } = await setUp()
-    await user.click(within(row(first.title)).getByRole('button', { name: 'Show notes' }))
+    await chooseAction(user, row(first.title), 'Show notes')
     await screen.findByRole('heading', { level: 1, name: first.title })
 
     await user.click(screen.getByRole('button', { name: 'Download' }))
@@ -466,7 +468,7 @@ describe('playing a downloaded episode', () => {
     const { audio, device, user } = await setUp()
     await startDownload(user, first.title)
     await downloaded(first.title)
-    await user.click(within(row(first.title)).getByRole('button', { name: 'Add to queue' }))
+    await chooseAction(user, row(first.title), 'Add to queue')
     await tap(user, second.title)
     act(() => audio.loadMetadata(3723))
 

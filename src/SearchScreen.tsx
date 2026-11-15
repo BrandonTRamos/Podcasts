@@ -17,12 +17,10 @@ export function SearchScreen({
   data,
   podcasts,
   onOpenPodcast,
-  onBack,
 }: {
   data: DataApi
   podcasts: LoadState<Podcast>
   onOpenPodcast: (podcastId: string) => void
-  onBack: () => void
 }) {
   const [term, setTerm] = useState('')
   const [state, setState] = useState<SearchState>({ status: 'idle' })
@@ -50,18 +48,13 @@ export function SearchScreen({
 
   return (
     <main className="search">
-      <nav>
-        <button type="button" onClick={onBack}>
-          Back to library
-        </button>
-      </nav>
       <h1>Search</h1>
-      <form className="search-form" onSubmit={handleSubmit}>
+      <form className="search-form" role="search" onSubmit={handleSubmit}>
         <label>
           Podcast name
           <input type="search" autoComplete="off" value={term} onChange={(e) => setTerm(e.target.value)} />
         </label>
-        <button type="submit" disabled={state.status === 'searching'}>
+        <button type="submit" className="primary" disabled={state.status === 'searching'}>
           Search
         </button>
       </form>
@@ -129,7 +122,7 @@ function SearchResult({
         ) : busy ? (
           <span role="status">Subscribing…</span>
         ) : (
-          <button type="button" onClick={() => void subscribe(result.feedUrl)}>
+          <button type="button" className="primary" onClick={() => void subscribe(result.feedUrl)}>
             Subscribe
           </button>
         )}

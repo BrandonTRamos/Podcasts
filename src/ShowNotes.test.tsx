@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 import hostileShowNotes from './test/fixtures/hostile-show-notes.html?raw'
+import { chooseAction } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = { title: 'The Example Show', author: 'Example Media' }
@@ -38,7 +39,7 @@ async function renderShow(
 /** Opens the episode's screen from the show's list. */
 async function openEpisode(user: ReturnType<typeof userEvent.setup>) {
   const [item] = within(screen.getByRole('list', { name: 'Episodes' })).getAllByRole('listitem')
-  await user.click(within(item).getByRole('button', { name: 'Show notes' }))
+  await chooseAction(user, item, 'Show notes')
   await screen.findByRole('heading', { level: 1, name: episode.title })
 }
 
@@ -55,7 +56,8 @@ describe('an episode’s screen', () => {
 
     await openEpisode(user)
 
-    expect(screen.getByText('The Example Show')).toBeInTheDocument()
+    // Its podcast, as the episode names it: the back button names it too.
+    expect(screen.getByText('The Example Show', { ignore: 'button' })).toBeInTheDocument()
     expect(screen.getByText('1 hr 2 min')).toBeInTheDocument()
     expect(screen.getByText(new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(episode.publishedAt))))
       .toHaveAttribute('dateTime', episode.publishedAt)
@@ -212,7 +214,7 @@ describe('the episode screen’s place in the app', () => {
     await user.click(await screen.findByRole('button', { name: 'Latest' }))
     const list = await screen.findByRole('list', { name: 'Latest episodes' })
 
-    await user.click(within(list).getByRole('button', { name: 'Show notes' }))
+    await chooseAction(user, list, 'Show notes')
 
     expect(await showNotes()).toHaveTextContent('Plain notes.')
     await user.click(screen.getByRole('button', { name: 'Back to Latest episodes' }))

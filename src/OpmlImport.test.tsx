@@ -197,7 +197,7 @@ describe('importing an OPML file', () => {
     await user.click(screen.getByRole('button', { name: 'Queue' }))
     expect(await screen.findByRole('heading', { name: 'Queue' })).toBeInTheDocument()
     act(() => data.finishSubscribing())
-    await user.click(screen.getByRole('button', { name: 'Back to library' }))
+    await user.click(screen.getByRole('button', { name: 'Library' }))
 
     await finishImport(data)
     expect(libraryTitles()).toHaveLength(60)

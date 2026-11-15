@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { chooseAction, openActions } from './test/ui'
 
 // Managing downloads: what is stored on this device, how much room it takes,
 // and freeing it; and badges that stay true when the OS clears a download.
@@ -67,16 +68,13 @@ type User = ReturnType<typeof userEvent.setup>
 /** Opens the show's page, from wherever the listener is. */
 async function openShow(user: User, title: string) {
   if (screen.queryByRole('heading', { level: 1, name: title })) return
-  const back = screen.queryByRole('button', { name: 'Back to library' })
-  if (back) await user.click(back)
+  await user.click(screen.getByRole('button', { name: 'Library' }))
   await user.click(await screen.findByRole('button', { name: new RegExp(title) }))
   await screen.findByRole('list', { name: 'Episodes' })
 }
 
 async function openDownloads(user: User) {
-  const back = screen.queryByRole('button', { name: 'Back to library' })
-  if (back) await user.click(back)
-  await user.click(await screen.findByRole('button', { name: 'Downloads' }))
+  await user.click(screen.getByRole('button', { name: 'Downloads' }))
   await screen.findByRole('heading', { level: 1, name: 'Downloads' })
 }
 
@@ -96,7 +94,7 @@ function titlesIn(name: string) {
 /** Downloads the episode from its show's page, and waits for it to finish. */
 async function download(user: User, showTitle: string, title: string) {
   await openShow(user, showTitle)
-  await user.click(within(row(title)).getByRole('button', { name: 'Download' }))
+  await chooseAction(user, row(title), 'Download')
   await within(row(title)).findByText('Downloaded', {}, { timeout: 3000 })
 }
 
@@ -150,7 +148,7 @@ describe('the downloads screen', () => {
   it('still lists downloads after signing out and back in', async () => {
     const { user } = await setUp()
     await download(user, show.title, first.title)
-    await user.click(screen.getByRole('button', { name: 'Back to library' }))
+    await user.click(screen.getByRole('button', { name: 'Library' }))
 
     await user.click(screen.getByRole('button', { name: 'Sign out' }))
     await user.type(await screen.findByLabelText('Email'), owner.email)
@@ -174,9 +172,10 @@ describe('deleting a download', () => {
     await waitFor(() => expect(titlesIn('Downloaded episodes')).toEqual([second.title]))
     expect(screen.getByText('2.5 KB used on this device')).toBeInTheDocument()
     expect(device.files.count()).toBe(1)
-    await user.click(screen.getByRole('button', { name: 'Back to library' }))
+    await user.click(screen.getByRole('button', { name: 'Library' }))
     await openShow(user, show.title)
     expect(within(row(first.title)).queryByText('Downloaded')).not.toBeInTheDocument()
+    await openActions(user, row(first.title))
     expect(within(row(first.title)).getByRole('button', { name: 'Download' })).toBeInTheDocument()
     expect(within(row(second.title)).getByText('Downloaded')).toBeInTheDocument()
   })
@@ -188,7 +187,7 @@ describe('deleting a download', () => {
     await user.click(within(row(first.title)).getByRole('button', { name: 'Delete download' }))
     await waitFor(() => expect(screen.getByText('Nothing is downloaded to this device.')).toBeInTheDocument())
 
-    await user.click(screen.getByRole('button', { name: 'Back to library' }))
+    await user.click(screen.getByRole('button', { name: 'Library' }))
     await openShow(user, show.title)
     await user.click(within(row(first.title)).getByRole('button', { name: first.title }))
 
@@ -228,7 +227,7 @@ describe('downloads in progress', () => {
     const { device, user } = await setUp()
     device.network.throttle()
     await openShow(user, show.title)
-    await user.click(within(row(first.title)).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(first.title), 'Download')
     device.network.deliver(400)
     await within(row(first.title)).findByText('40%')
 
@@ -243,7 +242,7 @@ describe('downloads in progress', () => {
     const { device, user } = await setUp()
     device.network.throttle()
     await openShow(user, show.title)
-    await user.click(within(row(first.title)).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(first.title), 'Download')
     device.network.deliver(400)
     await within(row(first.title)).findByText('40%')
     await openDownloads(user)
@@ -254,8 +253,9 @@ describe('downloads in progress', () => {
     expect(device.files.count()).toBe(0)
     await waitFor(() => expect(device.screenKeptOn()).toBe(false))
     device.network.unthrottle()
-    await user.click(screen.getByRole('button', { name: 'Back to library' }))
+    await user.click(screen.getByRole('button', { name: 'Library' }))
     await openShow(user, show.title)
+    await openActions(user, row(first.title))
     expect(within(row(first.title)).getByRole('button', { name: 'Download' })).toBeInTheDocument()
     expect(within(row(first.title)).queryByText('Downloaded')).not.toBeInTheDocument()
   })
@@ -264,7 +264,7 @@ describe('downloads in progress', () => {
     const { data, device, user, unmount } = await setUp()
     device.network.throttle()
     await openShow(user, show.title)
-    await user.click(within(row(first.title)).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(first.title), 'Download')
     device.network.deliver(400)
     await within(row(first.title)).findByText('40%')
     device.network.dropConnection()
@@ -286,7 +286,7 @@ describe('downloads in progress', () => {
     const { audio, device, user } = await setUp()
     device.network.throttle()
     await openShow(user, show.title)
-    await user.click(within(row(first.title)).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(first.title), 'Download')
     device.network.deliver(400)
     await within(row(first.title)).findByText('40%')
     device.network.dropConnection()
@@ -311,7 +311,7 @@ describe('downloads in progress', () => {
     const { device, user } = await setUp()
     await download(user, show.title, second.title)
     device.network.throttle()
-    await user.click(within(row(first.title)).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(first.title), 'Download')
     device.network.deliver(400)
     await within(row(first.title)).findByText('40%')
 
@@ -387,8 +387,9 @@ describe('a download the device cleared between launches', () => {
     const relaunched = await launch(data, device)
     await openDownloads(relaunched.user)
     await waitFor(() => expect(titlesIn('Lost downloads')).toEqual([second.title]))
-    await relaunched.user.click(screen.getByRole('button', { name: 'Back to library' }))
+    await relaunched.user.click(screen.getByRole('button', { name: 'Library' }))
     await openShow(relaunched.user, show.title)
+    await openActions(relaunched.user, row(first.title))
     expect(within(row(first.title)).getByRole('button', { name: 'Download' })).toBeInTheDocument()
   })
 
@@ -410,10 +411,10 @@ describe('unsubscribing', () => {
     const { device, user } = await setUp()
     await download(user, show.title, first.title)
     await download(user, show.title, second.title)
-    await user.click(screen.getByRole('button', { name: 'Back to library' }))
+    await user.click(screen.getByRole('button', { name: 'Library' }))
     await download(user, other.title, elsewhere.title)
 
-    await user.click(screen.getByRole('button', { name: 'Back to library' }))
+    await user.click(screen.getByRole('button', { name: 'Library' }))
     await openShow(user, show.title)
     await user.click(screen.getByRole('button', { name: 'Unsubscribe' }))
     const dialog = screen.getByRole('alertdialog', { name: `Unsubscribe from ${show.title}?` })
@@ -429,7 +430,7 @@ describe('unsubscribing', () => {
     const { device, user } = await setUp()
     device.network.throttle()
     await openShow(user, show.title)
-    await user.click(within(row(first.title)).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(first.title), 'Download')
     device.network.deliver(400)
     await within(row(first.title)).findByText('40%')
 

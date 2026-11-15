@@ -38,7 +38,7 @@ async function search(user: ReturnType<typeof userEvent.setup>, term: string) {
   const input = screen.getByLabelText('Podcast name')
   await user.clear(input)
   await user.type(input, term)
-  await user.click(screen.getByRole('button', { name: 'Search' }))
+  await user.click(within(screen.getByRole('search')).getByRole('button', { name: 'Search' }))
 }
 
 async function results() {
@@ -126,7 +126,7 @@ describe('subscribing from a search result', () => {
 
     expect(await within(result('The History of Rome')).findByText('Subscribed')).toBeInTheDocument()
     expect(within(result('Rome Daily')).getByRole('button', { name: 'Subscribe' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Back to library' }))
+    await user.click(screen.getByRole('button', { name: 'Library' }))
     const [item] = within(await screen.findByRole('list', { name: 'Podcasts' })).getAllByRole('listitem')
     expect(item).toHaveTextContent('The History of Rome')
     expect(item).toHaveTextContent('Mike Duncan')
@@ -194,7 +194,7 @@ describe('when search fails', () => {
     expect(await results()).toHaveLength(1)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Back to library' }))
+    await user.click(screen.getByRole('button', { name: 'Library' }))
     expect(await screen.findByRole('button', { name: /My Show/ })).toBeInTheDocument()
   })
 

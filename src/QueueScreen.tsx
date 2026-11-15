@@ -1,6 +1,7 @@
 import { DownloadedBadge } from './DownloadControl'
 import { UnavailableOffline } from './EpisodeRow'
 import { formatDuration } from './format'
+import { ArrowDownIcon, ArrowUpIcon } from './Icons'
 import type { ListeningStatus } from './listening'
 import type { Episode } from './services'
 
@@ -9,7 +10,6 @@ export function QueueScreen({
   queue,
   status,
   podcastTitleOf,
-  onBack,
   onPlay,
   onMove,
   onRemove,
@@ -19,7 +19,6 @@ export function QueueScreen({
   queue: Episode[]
   status: ListeningStatus
   podcastTitleOf: (podcastId: string) => string | undefined
-  onBack: () => void
   onPlay: (episode: Episode) => void
   /** Moves the episode to this place in the queue, counting from 0. */
   onMove: (episodeId: string, index: number) => void
@@ -31,11 +30,6 @@ export function QueueScreen({
 }) {
   return (
     <main className="queue">
-      <nav>
-        <button type="button" onClick={onBack} aria-label="Back to library">
-          ‹ Library
-        </button>
-      </nav>
       <h1>Queue</h1>
       {status === 'failed' && <p role="alert">Couldn’t load the queue.</p>}
       {queue.length === 0 ? (
@@ -48,7 +42,7 @@ export function QueueScreen({
               <li key={episode.id}>
                 <div className="queued-episode">
                   <h2>
-                    <button type="button" onClick={() => onPlay(episode)} disabled={unavailable(episode.id)}>
+                    <button type="button" className="plain" onClick={() => onPlay(episode)} disabled={unavailable(episode.id)}>
                       {episode.title}
                     </button>
                   </h2>
@@ -63,19 +57,21 @@ export function QueueScreen({
                 <div className="queued-actions">
                   <button
                     type="button"
+                    className="icon-button"
                     onClick={() => onMove(episode.id, index - 1)}
                     disabled={index === 0}
                     aria-label="Move up"
                   >
-                    ↑
+                    <ArrowUpIcon />
                   </button>
                   <button
                     type="button"
+                    className="icon-button"
                     onClick={() => onMove(episode.id, index + 1)}
                     disabled={index === queue.length - 1}
                     aria-label="Move down"
                   >
-                    ↓
+                    <ArrowDownIcon />
                   </button>
                   <button type="button" onClick={() => onRemove(episode.id)}>
                     Remove

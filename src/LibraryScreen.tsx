@@ -1,4 +1,5 @@
 import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react'
+import { RefreshIcon } from './Icons'
 import type { ImportOutcome, ImportState } from './opmlImport'
 import type { DataApi, Podcast } from './services'
 import type { LoadState } from './SignedInApp'
@@ -8,10 +9,7 @@ export function LibraryScreen({
   podcasts,
   data,
   onOpenPodcast,
-  onOpenQueue,
-  onOpenLatest,
-  onOpenSearch,
-  onOpenDownloads,
+  onReload,
   onSignOut,
   opmlImport,
   onImportOpml,
@@ -21,29 +19,18 @@ export function LibraryScreen({
   opmlImport: ImportState
   onImportOpml: (file: File) => void
   onOpenPodcast: (podcastId: string) => void
-  onOpenQueue: () => void
-  onOpenLatest: () => void
-  onOpenSearch: () => void
-  onOpenDownloads: () => void
+  /** Loads the app afresh, which shows a version deployed since it opened. */
+  onReload: () => void
   onSignOut: () => Promise<void>
 }) {
   return (
     <main className="library">
       <header>
         <h1>Library</h1>
-        <button type="button" onClick={onOpenSearch}>
-          Search
+        <button type="button" className="icon-button" onClick={onReload} aria-label="Reload app" title="Reload app">
+          <RefreshIcon size={22} />
         </button>
-        <button type="button" onClick={onOpenLatest}>
-          Latest
-        </button>
-        <button type="button" onClick={onOpenQueue}>
-          Queue
-        </button>
-        <button type="button" onClick={onOpenDownloads}>
-          Downloads
-        </button>
-        <button type="button" onClick={() => void onSignOut()}>
+        <button type="button" className="text-button" onClick={() => void onSignOut()}>
           Sign out
         </button>
       </header>
@@ -66,7 +53,7 @@ export function LibraryScreen({
               .sort((a, b) => a.title.localeCompare(b.title))
               .map((podcast) => (
                 <li key={podcast.id}>
-                  <button type="button" onClick={() => onOpenPodcast(podcast.id)}>
+                  <button type="button" className="plain" onClick={() => onOpenPodcast(podcast.id)}>
                     <Artwork url={podcast.artworkUrl} />
                     <span className="podcast-title">{podcast.title}</span>
                     {podcast.author && <span className="podcast-author">{podcast.author}</span>}
@@ -79,7 +66,7 @@ export function LibraryScreen({
   )
 }
 
-export function Artwork({ url, size = 'small' }: { url: string | null; size?: 'small' | 'large' | 'hero' }) {
+export function Artwork({ url, size = 'small' }: { url: string | null; size?: 'mini' | 'small' | 'large' | 'hero' }) {
   const className = `artwork artwork-${size}`
   return url ? <img className={className} src={url} alt="" /> : <span className={className} aria-hidden="true" />
 }
@@ -128,7 +115,7 @@ function AddPodcastForm({
           onChange={(e) => setFeedUrl(e.target.value)}
         />
       </label>
-      <button type="submit" disabled={busy}>
+      <button type="submit" className="primary" disabled={busy}>
         Subscribe
       </button>
       {state?.status === 'pending' && <p role="status">Checking the feed…</p>}

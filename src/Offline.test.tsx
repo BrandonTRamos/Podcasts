@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { chooseAction } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const feedUrl = 'https://feeds.example.com/show.xml'
@@ -89,7 +90,7 @@ async function prepareForFlight(data: Data, device: FakeDevice) {
   device.network.host(first.enclosureUrl, firstFile)
   const app = launch(data, device)
   await app.openShow()
-  await app.user.click(within(app.row(first.title)).getByRole('button', { name: 'Download' }))
+  await chooseAction(app.user, app.row(first.title), 'Download')
   await within(app.row(first.title)).findByText('Downloaded')
   return app
 }
@@ -183,7 +184,7 @@ describe('opening TinCan with no network', () => {
     goOffline(data, device)
     const app = launch(data, device)
     await app.openShow()
-    await app.user.click(within(app.row(first.title)).getByRole('button', { name: 'Mark played' }))
+    await chooseAction(app.user, app.row(first.title), 'Mark played')
 
     goOnline(data, device)
 
@@ -200,7 +201,7 @@ describe('opening TinCan with no network', () => {
     goOffline(data, device)
     const app = launch(data, device)
     await app.openShow()
-    await app.user.click(within(app.row(first.title)).getByRole('button', { name: 'Mark played' }))
+    await chooseAction(app.user, app.row(first.title), 'Mark played')
 
     goOnline(data, device)
 
@@ -270,8 +271,8 @@ describe('syncing what was played offline', () => {
     await app.tap(first.title)
     act(() => app.audio.progressTo(600))
     await app.user.click(within(app.miniPlayer()).getByRole('button', { name: 'Pause' }))
-    await app.user.click(within(app.row(second.title)).getByRole('button', { name: 'Mark played' }))
-    await app.user.click(within(app.row(third.title)).getByRole('button', { name: 'Add to queue' }))
+    await chooseAction(app.user, app.row(second.title), 'Mark played')
+    await chooseAction(app.user, app.row(third.title), 'Add to queue')
     await act(async () => {})
     expect(data.savedState(firstId)).toBeUndefined()
 
@@ -300,7 +301,7 @@ describe('syncing what was played offline', () => {
     const app = await prepareForFlight(data, device)
     goOffline(data, device)
     at('10:00')
-    await app.user.click(within(app.row(first.title)).getByRole('button', { name: 'Mark played' }))
+    await chooseAction(app.user, app.row(first.title), 'Mark played')
     at('10:05')
     await app.tap(first.title)
     act(() => app.audio.progressTo(600))
@@ -361,7 +362,7 @@ describe('the same episode changed on two devices', () => {
     const phone = await prepareForFlight(phoneData, phoneDevice)
     goOffline(phoneData, phoneDevice)
     at('10:00')
-    await phone.user.click(within(phone.row(first.title)).getByRole('button', { name: 'Mark played' }))
+    await chooseAction(phone.user, phone.row(first.title), 'Mark played')
 
     at('12:00')
     const desktop = launch(data, new FakeDevice())
@@ -393,7 +394,7 @@ describe('the same episode changed on two devices', () => {
 
     goOffline(phoneData, phoneDevice)
     at('12:00')
-    await phone.user.click(within(phone.row(first.title)).getByRole('button', { name: 'Mark played' }))
+    await chooseAction(phone.user, phone.row(first.title), 'Mark played')
     at('14:00')
     goOnline(phoneData, phoneDevice)
 

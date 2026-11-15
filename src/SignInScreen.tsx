@@ -51,7 +51,7 @@ export function SignInScreen({
           />
         </label>
         {error && <p role="alert">{error}</p>}
-        <button type="submit" disabled={busy}>
+        <button type="submit" className="primary" disabled={busy}>
           Sign in
         </button>
       </form>

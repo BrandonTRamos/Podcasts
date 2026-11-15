@@ -1,20 +1,20 @@
 import { formatClock } from './format'
+import { ChevronDownIcon, PauseIcon, PlayIcon, QueueIcon, SkipBackIcon, SkipForwardIcon } from './Icons'
 import { Artwork } from './LibraryScreen'
 import { type LoadedState, type Player, SKIP_BACK_SECONDS, SKIP_FORWARD_SECONDS, SPEEDS } from './player'
 
-/** Stays at the foot of every screen while an episode is loaded. */
+/** Stays at the foot of every screen but now playing while an episode is loaded. */
 export function MiniPlayer({ state, player, onOpen }: { state: LoadedState; player: Player; onOpen: () => void }) {
   return (
     <section className="mini-player" aria-label="Mini player">
       <button type="button" className="mini-player-open" onClick={onOpen} aria-description="Opens now playing">
-        <Artwork url={state.episode.artworkUrl} />
-        <span className="mini-player-title">{state.episode.title}</span>
+        <Artwork url={state.episode.artworkUrl} size="mini" />
+        <span className="mini-player-text">
+          <span className="mini-player-title">{state.episode.title}</span>
+          {state.episode.podcastTitle && <span className="mini-player-podcast">{state.episode.podcastTitle}</span>}
+        </span>
       </button>
-      {state.failed ? (
-        <FailedMessage />
-      ) : (
-        <PlayPauseButton state={state} player={player} />
-      )}
+      {state.failed ? <FailedMessage /> : <PlayPauseButton state={state} player={player} iconSize={24} />}
     </section>
   )
 }
@@ -35,59 +35,73 @@ export function NowPlayingScreen({
   return (
     <main className="now-playing">
       <nav>
-        <button type="button" onClick={onClose} aria-label="Close now playing">
-          ‹ Back
-        </button>
-        <button type="button" onClick={onOpenQueue}>
-          Queue
+        <button type="button" className="icon-button" onClick={onClose} aria-label="Close now playing">
+          <ChevronDownIcon size={26} />
         </button>
       </nav>
       <Artwork url={episode.artworkUrl} size="hero" />
-      <h1>{episode.title}</h1>
-      {episode.podcastTitle && <p className="podcast-author">{episode.podcastTitle}</p>}
+      <div className="now-playing-titles">
+        {episode.podcastTitle && <p className="podcast-author">{episode.podcastTitle}</p>}
+        <h1>{episode.title}</h1>
+      </div>
       {failed && <FailedMessage />}
-      <input
-        type="range"
-        className="seek-bar"
-        aria-label="Seek"
-        aria-valuetext={`${formatClock(position)} of ${duration === null ? 'unknown length' : formatClock(duration)}`}
-        min={0}
-        max={duration ?? 0}
-        step={1}
-        value={Math.min(position, duration ?? 0)}
-        disabled={failed || duration === null}
-        onChange={(e) => player.seekTo(Number(e.target.value))}
-      />
-      <p className="seek-times">
-        <span>{formatClock(position)}</span>
-        <span>{duration === null ? '--:--' : formatClock(duration)}</span>
-      </p>
+      <div className="seek">
+        <input
+          type="range"
+          className="seek-bar"
+          aria-label="Seek"
+          aria-valuetext={`${formatClock(position)} of ${duration === null ? 'unknown length' : formatClock(duration)}`}
+          min={0}
+          max={duration ?? 0}
+          step={1}
+          value={Math.min(position, duration ?? 0)}
+          disabled={failed || duration === null}
+          onChange={(e) => player.seekTo(Number(e.target.value))}
+        />
+        <p className="seek-times">
+          <span>{formatClock(position)}</span>
+          <span>{duration === null ? '--:--' : formatClock(duration)}</span>
+        </p>
+      </div>
       <div className="transport">
-        <button type="button" onClick={player.skipBack} disabled={failed} aria-label={`Skip back ${SKIP_BACK_SECONDS} seconds`}>
-          ↺ {SKIP_BACK_SECONDS}
-        </button>
-        <PlayPauseButton state={state} player={player} />
         <button
           type="button"
+          className="icon-button"
+          onClick={player.skipBack}
+          disabled={failed}
+          aria-label={`Skip back ${SKIP_BACK_SECONDS} seconds`}
+        >
+          <SkipBackIcon size={34} seconds={SKIP_BACK_SECONDS} />
+        </button>
+        <PlayPauseButton state={state} player={player} iconSize={32} />
+        <button
+          type="button"
+          className="icon-button"
           onClick={player.skipForward}
           disabled={failed}
           aria-label={`Skip forward ${SKIP_FORWARD_SECONDS} seconds`}
         >
-          {SKIP_FORWARD_SECONDS} ↻
+          <SkipForwardIcon size={34} seconds={SKIP_FORWARD_SECONDS} />
         </button>
       </div>
-      <select
-        className="speed"
-        aria-label="Playback speed"
-        value={state.speed}
-        onChange={(e) => player.setSpeed(Number(e.target.value))}
-      >
-        {SPEEDS.map((speed) => (
-          <option key={speed} value={speed}>
-            {speed}×
-          </option>
-        ))}
-      </select>
+      <div className="now-playing-extras">
+        <select
+          className="speed"
+          aria-label="Playback speed"
+          value={state.speed}
+          onChange={(e) => player.setSpeed(Number(e.target.value))}
+        >
+          {SPEEDS.map((speed) => (
+            <option key={speed} value={speed}>
+              {speed}×
+            </option>
+          ))}
+        </select>
+        <button type="button" className="text-button" onClick={onOpenQueue}>
+          <QueueIcon size={22} />
+          Queue
+        </button>
+      </div>
     </main>
   )
 }
@@ -100,14 +114,14 @@ function FailedMessage() {
   )
 }
 
-function PlayPauseButton({ state, player }: { state: LoadedState; player: Player }) {
+function PlayPauseButton({ state, player, iconSize }: { state: LoadedState; player: Player; iconSize: number }) {
   return state.playing ? (
     <button type="button" className="play-pause" onClick={player.pause} aria-label="Pause">
-      ❚❚
+      <PauseIcon size={iconSize} />
     </button>
   ) : (
     <button type="button" className="play-pause" onClick={player.resume} disabled={state.failed} aria-label="Play">
-      ▶
+      <PlayIcon size={iconSize} />
     </button>
   )
 }

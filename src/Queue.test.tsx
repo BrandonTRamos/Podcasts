@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { App } from './App'
 import type { DataApi } from './services'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { chooseAction } from './test/ui'
 
 // The queue: episodes lined up to play one after another, the same on every device.
 
@@ -70,15 +71,14 @@ async function openShowOn(data: DataApi) {
       await user.click(within(ui.getByRole('list', { name: 'Episodes' })).getByRole('button', { name: title }))
     },
     async addToQueue(title: string) {
-      await user.click(within(device.row(title)).getByRole('button', { name: 'Add to queue' }))
+      await chooseAction(user, device.row(title), 'Add to queue')
     },
     async playNext(title: string) {
-      await user.click(within(device.row(title)).getByRole('button', { name: 'Play next' }))
+      await chooseAction(user, device.row(title), 'Play next')
     },
     /** Goes from the show's page to the queue. */
     async openQueue() {
-      await user.click(ui.getByRole('button', { name: 'Back to library' }))
-      await user.click(await ui.findByRole('button', { name: 'Queue' }))
+      await user.click(ui.getByRole('button', { name: 'Queue' }))
       await ui.findByRole('heading', { name: 'Queue' })
     },
     /** The titles in the queue, in order, as the queue screen shows them. */
@@ -403,7 +403,7 @@ describe('the same queue on every device', () => {
     const desktop = await openShowOn(data.anotherDevice())
     await desktop.openQueue()
     await desktop.user.click(within(desktop.queueEntry(first.title)).getByRole('button', { name: 'Remove' }))
-    await desktop.user.click(desktop.ui.getByRole('button', { name: 'Back to library' }))
+    await desktop.user.click(desktop.ui.getByRole('button', { name: 'Library' }))
     await desktop.user.click(await desktop.ui.findByRole('button', { name: /The Example Show/ }))
     await desktop.ui.findByRole('list', { name: 'Episodes' })
     await desktop.addToQueue(third.title)

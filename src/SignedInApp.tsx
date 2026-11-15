@@ -13,9 +13,19 @@ import { type PlayableEpisode, type SaveProgress, type TakeNext, usePlayer } fro
 import { PodcastScreen } from './PodcastScreen'
 import { QueueScreen } from './QueueScreen'
 import { SearchScreen } from './SearchScreen'
+import { type Tab, TabBar } from './TabBar'
 import type { AudioElement, DataApi, Device, Episode, MediaSessionControls, Podcast } from './services'
 
 export type LoadState<T> = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; items: T[] }
+
+/** The screen each tab opens. */
+const tabScreens: Record<Tab, Screen> = {
+  library: { name: 'library' },
+  latest: { name: 'latest' },
+  queue: { name: 'queue' },
+  downloads: { name: 'downloads' },
+  search: { name: 'search' },
+}
 
 function findPodcast(podcasts: LoadState<Podcast>, podcastId: string): Podcast | undefined {
   return podcasts.status === 'loaded' ? podcasts.items.find((p) => p.id === podcastId) : undefined
@@ -189,6 +199,12 @@ export function SignedInApp({
     setScreen({ name: 'queue' })
   }
 
+  /** The tab the current screen belongs to: a podcast is in the library, and an episode is where it was opened from. */
+  const tab: Tab =
+    screen.name === 'podcast' ? 'library' : screen.name === 'episode' ? (screen.from.name === 'latest' ? 'latest' : 'library') : screen.name
+
+  const showingNowPlaying = nowPlayingOpen && playerState.episode !== null
+
   let content
   if (nowPlayingOpen && playerState.episode) {
     content = (
@@ -205,7 +221,6 @@ export function SignedInApp({
         queue={queue}
         status={listening.queueStatus()}
         podcastTitleOf={(podcastId) => podcastById(podcastId)?.title}
-        onBack={() => setScreen({ name: 'library' })}
         onPlay={playEpisode}
         onMove={(episodeId, index) => listening.moveInQueue(episodeId, index)}
         onRemove={(episodeId) => listening.dequeue(episodeId)}
@@ -236,7 +251,6 @@ export function SignedInApp({
         data={data}
         listening={listening}
         podcastTitleOf={(podcastId) => podcastById(podcastId)?.title}
-        onBack={() => setScreen({ name: 'library' })}
         {...episodeActions}
       />
     )
@@ -245,7 +259,6 @@ export function SignedInApp({
       <DownloadsScreen
         downloads={downloads.list()}
         podcastTitleOf={(podcastId) => podcastById(podcastId)?.title}
-        onBack={() => setScreen({ name: 'library' })}
         onPlay={playEpisode}
         onDownload={downloads.download}
         onRemove={removeDownload}
@@ -257,7 +270,6 @@ export function SignedInApp({
         data={data}
         podcasts={podcasts}
         onOpenPodcast={openPodcast}
-        onBack={() => setScreen({ name: 'library' })}
       />
     )
   } else if (screen.name === 'podcast') {
@@ -278,10 +290,7 @@ export function SignedInApp({
         podcasts={podcasts}
         data={data}
         onOpenPodcast={openPodcast}
-        onOpenQueue={openQueue}
-        onOpenLatest={() => setScreen({ name: 'latest' })}
-        onOpenSearch={() => setScreen({ name: 'search' })}
-        onOpenDownloads={() => setScreen({ name: 'downloads' })}
+        onReload={device.reload}
         onSignOut={onSignOut}
         opmlImport={opmlImport.state}
         onImportOpml={(file) => void opmlImport.importFile(file)}
@@ -290,7 +299,7 @@ export function SignedInApp({
   }
 
   return (
-    <div className={playerState.episode ? 'with-mini-player' : undefined}>
+    <div className={showingNowPlaying ? undefined : playerState.episode ? 'with-tab-bar with-mini-player' : 'with-tab-bar'}>
       {!online && (
         <p className="connection-notice" role="status">
           You’re offline. Downloaded episodes still play, and what you play syncs when you’re back online.
@@ -305,9 +314,12 @@ export function SignedInApp({
         </section>
       )}
       {content}
-      {/* On every screen, now playing included, where tapping it to open now playing changes nothing. */}
-      {playerState.episode && (
-        <MiniPlayer state={playerState} player={player} onOpen={() => setNowPlayingOpen(true)} />
+      {/* At the foot of every screen but now playing, which has the full controls and a way out of its own. */}
+      {!showingNowPlaying && (
+        <div className="bottom-bars">
+          {playerState.episode && <MiniPlayer state={playerState} player={player} onOpen={() => setNowPlayingOpen(true)} />}
+          <TabBar current={tab} onSelect={(name) => setScreen(tabScreens[name])} />
+        </div>
       )}
     </div>
   )
