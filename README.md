@@ -94,6 +94,14 @@ Subscribing returns at once and finishes in the background; the client learns th
 - **Search** (`searchPodcasts` query, `search-podcasts` function, `amplify/directory/searchPodcasts.ts`): asks the iTunes Search API (no key needed) for up to 25 podcasts matching the term, and returns each one's title, author, artwork and feed URL, in the directory's order. Results with no http or https feed are left out. A result whose feed URL is already in the library carries that podcast's ID. If the directory can't be reached or gives no usable answer, the query returns `directoryUnavailable` rather than failing.
 - The client's Search screen (`src/SearchScreen.tsx`, from the library's Search button) lists the results. Subscribing to one goes through the same `subscribe` mutation as a pasted URL, with the result's feed URL, which the listener never sees. Results in the library show "Subscribed" and open the podcast.
 
+## Offline
+
+- **App shell** (`src/appShell.ts`, built to `/sw.js` from `src/serviceWorker.ts` by the plugin in `vite.config.ts`): a service worker, registered in production builds only, stores the page, every built script and style, and the files in `public/` when it installs. Pages come from the network while it answers and from the stored shell when it doesn't; the other shell files always come from the store. Each build's shell has its own version, and a new worker drops the old one's files. `src/appShell.test.ts` drives the worker's events with a fake cache and network.
+- **Local copy** (`src/localCopy.ts`): the data API as the UI sees it keeps the last podcasts, latest episodes, and each opened podcast's episodes and listening state, plus the queue, in device storage (`localStorage`, under `tincan.device.`). Each list shows the copy at once, then the backend's answer. With no network the copy stands, and the list starts observing again once the browser says it is online. Signing out clears it.
+- **Unsynced changes** (`src/listening.ts`): a position, played state or queue change that can't be saved waits on the device, through relaunches, and is sent again when the network comes back. Each save carries when the change was made (`changedAt` on `EpisodeState`); the update is conditional, so the backend keeps it only if it holds no change made later. The most recent change wins, by the devices' clocks, even when an older one made offline arrives after it.
+- **Sign-in**: a session that has expired with no network to renew it opens the app on the local copy, with no sign-in prompt; downloaded episodes play. Once online it is renewed, or, if it can't be, the app asks to sign in again and syncs once signed in.
+- While offline the app says so, and episodes that aren't downloaded show as not available.
+
 ## Pipeline
 
 There is one environment: `main` is production. Development uses the sandbox above. Work lands by pull request; nothing is committed to `main` directly.

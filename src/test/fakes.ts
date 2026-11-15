@@ -4,6 +4,7 @@ import {
   type DataApi,
   type Device,
   type DeviceFiles,
+  type DeviceStorage,
   type DirectoryPodcast,
   type Episode,
   type EpisodeState,
@@ -20,6 +21,7 @@ import {
   type SavedEpisodeState,
   type ScreenHold,
   type SignInResult,
+  type StoredSession,
   type SubscribeRequestState,
   type SubscribeStart,
   type User,
@@ -28,34 +30,69 @@ import {
 
 const SESSION_KEY = 'fake-auth-session'
 
+interface FakeSession {
+  user: User
+  /** Its tokens have expired: renewing them needs the network. */
+  expired?: boolean
+  /** It can be renewed; false once its refresh token has expired too. */
+  renewable?: boolean
+}
+
+function readSession(): FakeSession | null {
+  const stored = localStorage.getItem(SESSION_KEY)
+  return stored ? (JSON.parse(stored) as FakeSession) : null
+}
+
 /**
  * In-memory stand-in for Cognito. Like Amplify, it keeps the session in
  * `localStorage`, so rendering a fresh `<App>` behaves like a page reload.
+ * A session can be expired (`expireSession`), as it does after an hour;
+ * confirming it then renews it, which needs the `device` to be online.
  */
-export function fakeAuth(account: { email: string; password: string }): AuthService {
+export function fakeAuth(account: { email: string; password: string }, { device }: { device?: Pick<Device, 'isOnline'> } = {}) {
   return {
-    async currentUser() {
-      const stored = localStorage.getItem(SESSION_KEY)
-      return stored ? (JSON.parse(stored) as User) : null
+    async storedSession(): Promise<StoredSession> {
+      const session = readSession()
+      if (!session) return { status: 'signedOut' }
+      if (session.expired) {
+        if (device && !device.isOnline()) return { status: 'unconfirmed' }
+        if (session.renewable === false) {
+          localStorage.removeItem(SESSION_KEY)
+          return { status: 'signedOut' }
+        }
+        localStorage.setItem(SESSION_KEY, JSON.stringify({ user: session.user }))
+      }
+      return { status: 'signedIn', user: session.user }
     },
-    async signIn(email, password): Promise<SignInResult> {
+    async signIn(email: string, password: string): Promise<SignInResult> {
       if (email !== account.email || password !== account.password) {
         return { ok: false, message: 'Incorrect email or password.' }
       }
       const user = { email }
-      localStorage.setItem(SESSION_KEY, JSON.stringify(user))
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ user }))
       return { ok: true, user }
     },
     async signOut() {
       localStorage.removeItem(SESSION_KEY)
     },
-  }
+    /**
+     * The stored session's tokens expire, as they do an hour after they were
+     * issued. Unless `renewable` is false (its refresh token has expired too),
+     * the next check online renews it.
+     */
+    expireSession({ renewable = true }: { renewable?: boolean } = {}) {
+      const session = readSession()
+      if (session) localStorage.setItem(SESSION_KEY, JSON.stringify({ ...session, expired: true, renewable }))
+    },
+  } satisfies AuthService & Record<string, unknown>
 }
 
 /** A device's connection to the fake backend. */
 interface Connection {
   /** Its live updates are not arriving, as when iOS suspends a backgrounded app. */
   asleep: boolean
+  /** This device alone has lost its network. */
+  offline: boolean
 }
 
 /**
@@ -68,7 +105,13 @@ interface Connection {
  * The returned API is one device's view of the backend; `anotherDevice` gives
  * a second view of the same data, as another phone or computer would have. A
  * device that is `asleep` misses live updates, and does not get them later.
- * `goOffline` takes the network away from every device at once.
+ * `goOffline` takes the network away from every device at once, ending every
+ * live observation with an error, as a dropped connection does; `goOnline`
+ * brings it back, for new observations. A device's `disconnect` and
+ * `reconnect` do the same for that device alone.
+ *
+ * Of two saves to an episode's listening state, the one whose change was made
+ * later wins, whichever arrives last.
  */
 export function fakeDataApi() {
   const podcasts: (Podcast & { feedUrl: string })[] = []
@@ -76,6 +119,8 @@ export function fakeDataApi() {
   /** Each episode's show notes, by ID, kept apart as the client fetches them apart. */
   const showNotes = new Map<string, string | null>()
   const states = new Map<string, SavedEpisodeState>()
+  /** When the change each state holds was made, by episode. */
+  const changeTimes = new Map<string, string>()
   /** Every listening-state change the backend received, in order. */
   const stateWrites: EpisodeStateChange[] = []
   const feeds = new Map<string, Pick<Podcast, 'title' | 'author' | 'artworkUrl'> | 'notAFeed' | 'failed'>()
@@ -121,17 +166,32 @@ export function fakeDataApi() {
   function listen<T>(connection: Connection, listeners: Set<Listener<T>>, observer: Observer<T>, current: () => T) {
     const listener = { connection, observer }
     listeners.add(listener)
-    queueMicrotask(() => listeners.has(listener) && (offline ? observer.error() : observer.next(current())))
+    queueMicrotask(() => {
+      if (!listeners.has(listener)) return
+      if (!offline && !connection.offline) return observer.next(current())
+      listeners.delete(listener)
+      observer.error()
+    })
     return () => void listeners.delete(listener)
   }
 
+  const everyListenerSet = (): Set<Listener<never>>[] =>
+    [
+      podcastListeners,
+      latestListeners,
+      queueListeners,
+      ...episodeListeners.values(),
+      ...stateListeners.values(),
+      ...requestListeners.values(),
+    ] as Set<Listener<never>>[]
+
   function notify<T>(listeners: Set<Listener<T>> | undefined, value: T) {
-    listeners?.forEach(({ connection, observer }) => connection.asleep || offline || observer.next(value))
+    listeners?.forEach(({ connection, observer }) => connection.asleep || connection.offline || offline || observer.next(value))
   }
 
   /** Fails the request if the network is down. */
-  function reach() {
-    if (offline) throw new Error('Network error')
+  function reach(connection: Connection) {
+    if (offline || connection.offline) throw new Error('Network error')
     if (failNext) {
       failNext = false
       throw new Error('Network error')
@@ -152,7 +212,12 @@ export function fakeDataApi() {
     notify(requestListeners.get(requestId), state)
   }
 
-  function storeState(episodeId: string, podcastId: string, change: EpisodeStateChange): SavedEpisodeState {
+  function storeState(
+    episodeId: string,
+    podcastId: string,
+    change: EpisodeStateChange,
+    changedAt?: string,
+  ): SavedEpisodeState {
     const saved = {
       episodeId,
       podcastId,
@@ -164,6 +229,7 @@ export function fakeDataApi() {
       updatedAt: timeAt(++tick),
     }
     states.set(episodeId, saved)
+    changeTimes.set(episodeId, changedAt ?? saved.updatedAt)
     return saved
   }
 
@@ -179,15 +245,15 @@ export function fakeDataApi() {
         return listen(connection, latestListeners, observer, latestEpisodes)
       },
       async getShowNotes(episodeId) {
-        reach()
+        reach(connection)
         return showNotes.get(episodeId) ?? null
       },
       async refreshPodcast(podcastId) {
-        reach()
+        reach(connection)
         refreshRequests.push(podcastId)
       },
       async searchPodcasts(term): Promise<PodcastSearch> {
-        reach()
+        reach(connection)
         if (directoryBroken) return { outcome: 'directoryUnavailable' }
         const wanted = term.trim().toLowerCase()
         return {
@@ -201,7 +267,7 @@ export function fakeDataApi() {
         }
       },
       async subscribeToFeed(feedUrl): Promise<SubscribeStart> {
-        reach()
+        reach(connection)
         if (!/^https?:\/\//.test(feedUrl)) return { outcome: 'invalidUrl' }
         const existing = podcasts.find((podcast) => podcast.feedUrl === feedUrl)
         if (existing) return { outcome: 'alreadySubscribed', podcastId: existing.id }
@@ -210,7 +276,7 @@ export function fakeDataApi() {
         return { outcome: 'pending', requestId }
       },
       async unsubscribe(podcastId) {
-        reach()
+        reach(connection)
         removeWhere(podcasts, (podcast) => podcast.id === podcastId)
         removeWhere(episodes, (episode) => episode.podcastId === podcastId)
         for (const state of statesOf(podcastId)) states.delete(state.episodeId)
@@ -226,10 +292,14 @@ export function fakeDataApi() {
       observeEpisodeStates(podcastId, observer) {
         return listen(connection, listenersFor(stateListeners, podcastId), observer, () => statesOf(podcastId))
       },
-      async saveEpisodeState(episodeId, podcastId, change) {
-        reach()
+      async saveEpisodeState(episodeId, podcastId, change, changedAt) {
+        reach(connection)
         stateWrites.push({ ...change })
-        const saved = storeState(episodeId, podcastId, change)
+        const held = states.get(episodeId)
+        const heldChangedAt = changeTimes.get(episodeId)
+        // A change made later is already saved: it wins.
+        if (held && heldChangedAt && Date.parse(heldChangedAt) > Date.parse(changedAt)) return held
+        const saved = storeState(episodeId, podcastId, change, changedAt)
         // The write's own subscription event arrives separately from its response, as with the real API.
         queueMicrotask(() => {
           notify(stateListeners.get(podcastId), statesOf(podcastId))
@@ -243,8 +313,19 @@ export function fakeDataApi() {
     }
   }
 
+  /** Ends the live observations of every device, or of the one given, with an error. */
+  function dropObservers(connection?: Connection) {
+    for (const listeners of everyListenerSet()) {
+      for (const listener of [...listeners]) {
+        if (connection && listener.connection !== connection) continue
+        listeners.delete(listener)
+        listener.observer.error()
+      }
+    }
+  }
+
   function device() {
-    const connection: Connection = { asleep: false }
+    const connection: Connection = { asleep: false, offline: false }
     return Object.assign(view(connection), {
       /** Live updates stop arriving, as when iOS suspends the app in the background. */
       sleep() {
@@ -253,6 +334,15 @@ export function fakeDataApi() {
       /** Live updates arrive again. Those missed while asleep are not replayed. */
       wake() {
         connection.asleep = false
+      },
+      /** This device alone loses its network: its requests fail, and its live observations end with an error. */
+      disconnect() {
+        connection.offline = true
+        dropObservers(connection)
+      },
+      /** This device's network comes back, for new requests and observations. */
+      reconnect() {
+        connection.offline = false
       },
     })
   }
@@ -294,9 +384,14 @@ export function fakeDataApi() {
     failNextRequest() {
       failNext = true
     },
-    /** The network goes down for every device: requests fail and live updates stop. */
+    /** The network goes down for every device: requests fail, and live observations end with an error. */
     goOffline() {
       offline = true
+      dropObservers()
+    },
+    /** The network comes back: requests and new observations work again. */
+    goOnline() {
+      offline = false
     },
     /** Runs the background check of every pending subscribe, as the backend does. */
     finishSubscribing() {
@@ -795,18 +890,64 @@ export class FakeNetwork {
   }
 }
 
+/** Stands in for the browser's `localStorage`, one per device: records held in memory. */
+export class FakeDeviceStorage implements DeviceStorage {
+  #records = new Map<string, string>()
+
+  get(key: string) {
+    return this.#records.get(key) ?? null
+  }
+
+  set(key: string, value: string) {
+    this.#records.set(key, value)
+  }
+
+  remove(key: string) {
+    this.#records.delete(key)
+  }
+
+  keys() {
+    return [...this.#records.keys()]
+  }
+}
+
 /**
- * Stands in for the device: its file storage, the network, the screen's wake
- * lock and the browser's storage persistence. Rendering a fresh `<App>` with
- * the same instance is a relaunch on the same device: files stay.
+ * Stands in for the device: its file storage and small records, the network,
+ * the screen's wake lock and the browser's storage persistence. Rendering a
+ * fresh `<App>` with the same instance is a relaunch on the same device:
+ * files and records stay.
  */
 export class FakeDevice implements Device {
   readonly files = new FakeDeviceFiles()
+  readonly storage = new FakeDeviceStorage()
   readonly network = new FakeNetwork()
   readonly fetch: Fetch = (url, init) => this.network.fetch(url, init)
   /** How many times the app asked for persistent storage. */
   persistRequests = 0
   #holds = new Set<{ released: boolean }>()
+  #online = true
+  #connectivityListeners = new Set<() => void>()
+
+  readonly isOnline = () => this.#online
+
+  readonly watchConnectivity = (listener: () => void) => {
+    this.#connectivityListeners.add(listener)
+    return () => void this.#connectivityListeners.delete(listener)
+  }
+
+  /** The device loses its network, as in airplane mode: the browser says so, and its fetches fail. */
+  goOffline() {
+    this.#online = false
+    this.network.dropConnection()
+    this.#connectivityListeners.forEach((listener) => listener())
+  }
+
+  /** The network comes back. */
+  goOnline() {
+    this.#online = true
+    this.network.reconnect()
+    this.#connectivityListeners.forEach((listener) => listener())
+  }
 
   async keepScreenOn(): Promise<ScreenHold> {
     const hold = {

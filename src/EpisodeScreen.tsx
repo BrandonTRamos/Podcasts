@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { DownloadControl } from './DownloadControl'
 import type { DownloadState } from './downloads'
-import { EpisodeMeta } from './EpisodeRow'
+import { EpisodeMeta, UnavailableOffline } from './EpisodeRow'
 import { type ListeningStore, useEpisodeStates } from './listening'
 import type { DataApi, Episode } from './services'
 import { ShowNotes, type ShowNotesState } from './ShowNotes'
@@ -17,6 +17,7 @@ export function EpisodeScreen({
   onPlay,
   download,
   onDownload,
+  offline,
 }: {
   data: Pick<DataApi, 'getShowNotes'>
   episode: Episode
@@ -28,10 +29,13 @@ export function EpisodeScreen({
   onPlay: (episode: Episode) => void
   download: DownloadState
   onDownload: (episode: Episode) => void
+  /** The device is offline: only a downloaded episode can play. */
+  offline: boolean
 }) {
   const [notes, setNotes] = useState<ShowNotesState>({ status: 'loading' })
   // Wait for the listening state, so playing from here still resumes.
   const statesStatus = useEpisodeStates(listening, episode.podcastId)
+  const unavailable = offline && download.status !== 'downloaded'
 
   useEffect(() => {
     let cancelled = false
@@ -54,9 +58,15 @@ export function EpisodeScreen({
       <header>
         <h1>{episode.title}</h1>
         <EpisodeMeta episode={episode} podcastTitle={podcastTitle} />
-        <button type="button" className="episode-play" onClick={() => onPlay(episode)} disabled={statesStatus === 'loading'}>
+        <button
+          type="button"
+          className="episode-play"
+          onClick={() => onPlay(episode)}
+          disabled={statesStatus === 'loading' || unavailable}
+        >
           Play
         </button>
+        {unavailable && <UnavailableOffline />}
         <DownloadControl download={download} onDownload={() => onDownload(episode)} />
       </header>
       {statesStatus === 'failed' && <p role="alert">Couldn’t load what you’ve played.</p>}

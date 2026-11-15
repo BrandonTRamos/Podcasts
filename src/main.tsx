@@ -17,6 +17,15 @@ const outputs = Object.values(
 
 const root = createRoot(document.getElementById('root')!)
 
+// Keeps the app shell on the device, so TinCan opens with no network (see appShell.ts).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // Without it the app still works online; it just can't open offline.
+    })
+  })
+}
+
 if (outputs) {
   Amplify.configure(outputs)
   root.render(

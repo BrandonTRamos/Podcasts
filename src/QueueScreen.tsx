@@ -1,4 +1,5 @@
 import { DownloadedBadge } from './DownloadControl'
+import { UnavailableOffline } from './EpisodeRow'
 import { formatDuration } from './format'
 import type { ListeningStatus } from './listening'
 import type { Episode } from './services'
@@ -13,6 +14,7 @@ export function QueueScreen({
   onMove,
   onRemove,
   downloaded,
+  offline,
 }: {
   queue: Episode[]
   status: ListeningStatus
@@ -24,6 +26,8 @@ export function QueueScreen({
   onRemove: (episodeId: string) => void
   /** Whether the episode is stored on this device. */
   downloaded: (episodeId: string) => boolean
+  /** The device is offline: only downloaded episodes can play. */
+  offline: boolean
 }) {
   return (
     <main className="queue">
@@ -40,11 +44,12 @@ export function QueueScreen({
         <ol className="queued" aria-label="Queued episodes">
           {queue.map((episode, index) => {
             const podcastTitle = podcastTitleOf(episode.podcastId)
+            const unavailable = offline && !downloaded(episode.id)
             return (
               <li key={episode.id}>
                 <div className="queued-episode">
                   <h2>
-                    <button type="button" onClick={() => onPlay(episode)}>
+                    <button type="button" onClick={() => onPlay(episode)} disabled={unavailable}>
                       {episode.title}
                     </button>
                   </h2>
@@ -54,6 +59,7 @@ export function QueueScreen({
                     {episode.durationSeconds !== null && formatDuration(episode.durationSeconds)}
                   </p>
                   {downloaded(episode.id) && <DownloadedBadge />}
+                  {unavailable && <UnavailableOffline />}
                 </div>
                 <div className="queued-actions">
                   <button
