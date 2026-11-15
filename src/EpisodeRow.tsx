@@ -2,13 +2,17 @@ import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { DownloadControl, DownloadedBadge } from './DownloadControl'
 import type { DownloadState } from './downloads'
 import { formatDate, formatDuration } from './format'
-import { MoreIcon, PlayIcon } from './Icons'
+import { MoreIcon, PauseIcon, PlayIcon } from './Icons'
 import type { QueuePlace } from './listening'
 import type { Episode, EpisodeState } from './services'
 
 /** What a listener can do with an episode in a list. */
 export interface EpisodeActions {
   onPlay: (episode: Episode) => void
+  /** Pauses what is playing. */
+  onPause: () => void
+  /** Whether it is the episode playing now. */
+  isPlaying: (episodeId: string) => boolean
   /** Opens the episode's own screen, with its show notes. */
   onOpen: (episode: Episode) => void
   onQueue: (episode: Episode, where: QueuePlace) => void
@@ -25,7 +29,7 @@ export interface EpisodeActions {
 /**
  * One episode in a list: its date, its title (tap to play, as the play button
  * beside its length does), how far through it is, and whether it is queued or
- * downloaded. Everything else a listener can do with it (mark it played, read
+ * downloaded. While it plays, that button pauses it instead. Everything else a listener can do with it (mark it played, read
  * its show notes, queue it, download it) is behind its "More actions" button.
  * Shows its podcast's title too when the list mixes podcasts.
  */
@@ -34,6 +38,8 @@ export function EpisodeRow({
   state,
   podcastTitle,
   onPlay,
+  onPause,
+  isPlaying,
   onOpen,
   onQueue,
   onMarkPlayed,
@@ -58,17 +64,23 @@ export function EpisodeRow({
           </button>
         </h2>
         <div className="episode-line">
-          {/* A second way to the title's action for a pointer or a thumb; the title carries it for everyone else. */}
-          <button
-            type="button"
-            className="play-circle"
-            tabIndex={-1}
-            aria-hidden="true"
-            onClick={() => onPlay(episode)}
-            disabled={unavailable}
-          >
-            <PlayIcon size={16} />
-          </button>
+          {isPlaying(episode.id) ? (
+            <button type="button" className="play-circle" onClick={onPause} aria-label={`Pause ${episode.title}`}>
+              <PauseIcon size={16} />
+            </button>
+          ) : (
+            // A second way to the title's action for a pointer or a thumb; the title carries it for everyone else.
+            <button
+              type="button"
+              className="play-circle"
+              tabIndex={-1}
+              aria-hidden="true"
+              onClick={() => onPlay(episode)}
+              disabled={unavailable}
+            >
+              <PlayIcon size={16} />
+            </button>
+          )}
           <ListeningProgress episode={episode} state={state} />
           {state?.queueOrder != null && <span className="episode-queued">Queued</span>}
           {download.status === 'downloaded' && <DownloadedBadge />}
