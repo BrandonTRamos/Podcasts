@@ -6,7 +6,7 @@ export const OTHER = 'Other'
 /** One group of the library as shown: a category, or Other (`category` null). */
 export interface LibrarySection {
   category: Category | null
-  /** By title. */
+  /** In the listener's order (see `inListOrder`). */
   podcasts: Podcast[]
 }
 
@@ -15,7 +15,7 @@ export interface LibrarySection {
  * category shows, even with no podcasts yet; Other shows only when it holds some.
  */
 export function librarySections(podcasts: Podcast[], categories: Category[]): LibrarySection[] {
-  const sorted = byTitle(podcasts)
+  const sorted = inListOrder(podcasts)
   const known = new Set(categories.map((category) => category.id))
   const sections: LibrarySection[] = byName(categories).map((category) => ({
     category,
@@ -26,8 +26,48 @@ export function librarySections(podcasts: Podcast[], categories: Category[]): Li
   return sections
 }
 
-export function byTitle(podcasts: Podcast[]): Podcast[] {
-  return [...podcasts].sort((a, b) => a.title.localeCompare(b.title))
+/** The order a list of podcasts shows in: those the listener placed, lowest first, then the rest by title. */
+export function inListOrder(podcasts: Podcast[]): Podcast[] {
+  return [...podcasts].sort((a, b) => {
+    if (a.libraryOrder !== null && b.libraryOrder !== null && a.libraryOrder !== b.libraryOrder) {
+      return a.libraryOrder - b.libraryOrder
+    }
+    if ((a.libraryOrder === null) !== (b.libraryOrder === null)) return a.libraryOrder === null ? 1 : -1
+    return a.title.localeCompare(b.title)
+  })
+}
+
+/** A podcast's new place in the library. */
+export interface Placement {
+  podcastId: string
+  libraryOrder: number
+}
+
+/**
+ * The places to write so that `podcastId` shows at `index` of a list now
+ * showing `list` (in order, the podcast itself left out, or absent if it is
+ * coming from another list). Usually one, the podcast's own, between its new
+ * neighbours. When a podcast before it has no place yet, those up to it are
+ * numbered afresh, as are all when the neighbours' places are too close to
+ * split.
+ */
+export function placementsFor(list: Podcast[], podcastId: string, index: number): Placement[] {
+  const others = list.filter((podcast) => podcast.id !== podcastId)
+  const at = Math.max(0, Math.min(index, others.length))
+  const before = others.slice(0, at)
+  const after = others[at]
+  if (before.every((podcast) => podcast.libraryOrder !== null)) {
+    const low = before.at(-1)?.libraryOrder ?? null
+    const high = after?.libraryOrder ?? null
+    const order = low === null ? (high === null ? 1 : high - 1) : high === null ? low + 1 : (low + high) / 2
+    if (order !== low && order !== high) return [{ podcastId, libraryOrder: order }]
+  }
+  // Numbered afresh, from 1: those before it, it, then those after it that have a place.
+  const renumbered = [...before.map((podcast) => podcast.id), podcastId, ...others.slice(at).filter((p) => p.libraryOrder !== null).map((p) => p.id)]
+  const current = new Map(others.map((podcast) => [podcast.id, podcast.libraryOrder]))
+  return renumbered
+    .map((id, i) => ({ podcastId: id, libraryOrder: i + 1 }))
+    .filter(({ podcastId: id, libraryOrder }) => id === podcastId || current.get(id) !== libraryOrder)
 }
 
 export function byName(categories: Category[]): Category[] {
