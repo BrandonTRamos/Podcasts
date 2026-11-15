@@ -1,5 +1,6 @@
-import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react'
-import { RefreshIcon } from './Icons'
+import { type ChangeEvent, type FormEvent, type RefObject, useEffect, useRef, useState } from 'react'
+import { PlusIcon } from './Icons'
+import { MoreActions } from './MoreActions'
 import type { ImportOutcome, ImportState } from './opmlImport'
 import type { DataApi, Podcast } from './services'
 import type { LoadState } from './SignedInApp'
@@ -23,25 +24,43 @@ export function LibraryScreen({
   onReload: () => void
   onSignOut: () => Promise<void>
 }) {
+  const [adding, setAdding] = useState(false)
+  const opmlFile = useRef<HTMLInputElement>(null)
+  const count = podcasts.status === 'loaded' ? podcasts.items.length : 0
+  const importing = opmlImport.status === 'reading' || opmlImport.status === 'importing'
   return (
     <main className="library">
       <header>
-        <h1>Library</h1>
-        <button type="button" className="icon-button" onClick={onReload} aria-label="Reload app" title="Reload app">
-          <RefreshIcon size={22} />
+        <div className="library-title">
+          <h1>Library</h1>
+          {count > 0 && <p className="library-count">{count === 1 ? '1 podcast' : `${count} podcasts`}</p>}
+        </div>
+        <button type="button" className="icon-button" onClick={() => setAdding(true)} aria-label="Add podcast">
+          <PlusIcon size={22} />
         </button>
-        <button type="button" className="text-button" onClick={() => void onSignOut()}>
-          Sign out
-        </button>
+        <MoreActions>
+          <button type="button" onClick={() => opmlFile.current?.click()} disabled={importing}>
+            Import OPML file
+          </button>
+          <button type="button" onClick={onReload}>
+            Reload app
+          </button>
+          <button type="button" onClick={() => void onSignOut()}>
+            Sign out
+          </button>
+        </MoreActions>
       </header>
-      <AddPodcastForm
-        data={data}
-        titleOf={(podcastId) =>
-          podcasts.status === 'loaded' ? podcasts.items.find((p) => p.id === podcastId)?.title : undefined
-        }
-        onSubscribed={onOpenPodcast}
-      />
-      <OpmlImport state={opmlImport} onImport={onImportOpml} />
+      {adding && (
+        <AddPodcastDialog
+          data={data}
+          titleOf={(podcastId) =>
+            podcasts.status === 'loaded' ? podcasts.items.find((p) => p.id === podcastId)?.title : undefined
+          }
+          onSubscribed={onOpenPodcast}
+          onClose={() => setAdding(false)}
+        />
+      )}
+      <OpmlImport state={opmlImport} onImport={onImportOpml} input={opmlFile} busy={importing} />
       {podcasts.status === 'loading' && <p>Loading…</p>}
       {podcasts.status === 'failed' && <p role="alert">Couldn’t load your library.</p>}
       {podcasts.status === 'loaded' &&
@@ -80,14 +99,21 @@ const errorMessages: Record<SubscribeFailure, string> = {
   lost: 'Couldn’t check on the subscription. Reload to see if it was added.',
 }
 
-function AddPodcastForm({
+/**
+ * Asks for a feed URL to subscribe to, over the library. It stays while the
+ * feed is checked, saying how that goes, and gives way to the podcast once
+ * it is added. Cancel, Escape and a tap outside it close it.
+ */
+function AddPodcastDialog({
   data,
   titleOf,
   onSubscribed,
+  onClose,
 }: {
   data: Pick<DataApi, 'subscribeToFeed' | 'observeSubscribeRequest'>
   titleOf: (podcastId: string) => string | undefined
   onSubscribed: (podcastId: string) => void
+  onClose: () => void
 }) {
   const [feedUrl, setFeedUrl] = useState('')
   const { state, busy, subscribe } = useSubscribe(data)
@@ -97,43 +123,75 @@ function AddPodcastForm({
     if (state?.status === 'subscribed') onSubscribed(state.podcastId)
   }, [state, onSubscribed])
 
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [onClose])
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     void subscribe(feedUrl)
   }
 
   return (
-    <form className="add-podcast" onSubmit={handleSubmit} noValidate>
-      <label>
-        Feed URL
-        <input
-          type="url"
-          inputMode="url"
-          autoComplete="off"
-          placeholder="https://"
-          value={feedUrl}
-          onChange={(e) => setFeedUrl(e.target.value)}
-        />
-      </label>
-      <button type="submit" className="primary" disabled={busy}>
-        Subscribe
-      </button>
-      {state?.status === 'pending' && <p role="status">Checking the feed…</p>}
-      {state?.status === 'alreadySubscribed' && (
-        <p role="status">
-          {titleOf(state.podcastId)
-            ? `You’re already subscribed to ${titleOf(state.podcastId)}.`
-            : 'You’re already subscribed to that podcast.'}
-        </p>
-      )}
-      {error && <p role="alert">{error}</p>}
-    </form>
+    <div className="dialog-backdrop" onClick={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="add-podcast-title">
+        <h2 id="add-podcast-title">Add podcast</h2>
+        <form className="add-podcast" onSubmit={handleSubmit} noValidate>
+          <label>
+            Feed URL
+            <input
+              type="url"
+              inputMode="url"
+              autoComplete="off"
+              autoFocus
+              placeholder="https://"
+              value={feedUrl}
+              onChange={(e) => setFeedUrl(e.target.value)}
+            />
+          </label>
+          {state?.status === 'pending' && <p role="status">Checking the feed…</p>}
+          {state?.status === 'alreadySubscribed' && (
+            <p role="status">
+              {titleOf(state.podcastId)
+                ? `You’re already subscribed to ${titleOf(state.podcastId)}.`
+                : 'You’re already subscribed to that podcast.'}
+            </p>
+          )}
+          {error && <p role="alert">{error}</p>}
+          <div className="dialog-actions">
+            <button type="button" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="primary" disabled={busy}>
+              Subscribe
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
   )
 }
 
-/** Brings in every subscription from another podcast app, from the OPML file it exports. */
-function OpmlImport({ state, onImport }: { state: ImportState; onImport: (file: File) => void }) {
-  const busy = state.status === 'reading' || state.status === 'importing'
+/**
+ * Brings in every subscription from another podcast app, from the OPML file
+ * it exports. The file picker is opened from the library's "More actions";
+ * this holds its input, out of sight, and says how the import goes.
+ */
+function OpmlImport({
+  state,
+  onImport,
+  input,
+  busy,
+}: {
+  state: ImportState
+  onImport: (file: File) => void
+  input: RefObject<HTMLInputElement | null>
+  busy: boolean
+}) {
 
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -144,15 +202,16 @@ function OpmlImport({ state, onImport }: { state: ImportState; onImport: (file: 
 
   return (
     <section className="opml-import">
-      <label>
-        Import OPML file
-        <input
-          type="file"
-          accept=".opml,.xml,text/x-opml,text/xml,application/xml"
-          onChange={handleChange}
-          disabled={busy}
-        />
-      </label>
+      <input
+        ref={input}
+        type="file"
+        className="visually-hidden"
+        aria-label="Import OPML file"
+        tabIndex={-1}
+        accept=".opml,.xml,text/x-opml,text/xml,application/xml"
+        onChange={handleChange}
+        disabled={busy}
+      />
       {state.status === 'tooLarge' && <p role="alert">That file is too big for an OPML file (over 5 MB).</p>}
       {state.status === 'invalid' && <p role="alert">That file isn’t a valid OPML file.</p>}
       {state.status === 'empty' && <p role="alert">That OPML file lists no podcast feeds.</p>}

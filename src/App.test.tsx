@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { chooseLibraryAction } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 
@@ -26,7 +27,7 @@ describe('reloading', () => {
     const device = new FakeDevice()
     render(<App services={{ auth, data: fakeDataApi(), audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device }} />)
 
-    await userEvent.setup().click(await screen.findByRole('button', { name: 'Reload app' }))
+    await chooseLibraryAction(userEvent.setup(), 'Reload app')
 
     expect(device.reloads).toBe(1)
   })
@@ -96,7 +97,7 @@ describe('access', () => {
     const { user } = renderApp()
     await signIn(user, owner.email, owner.password)
 
-    await user.click(await screen.findByRole('button', { name: 'Sign out' }))
+    await chooseLibraryAction(user, 'Sign out')
 
     expect(await screen.findByRole('heading', { name: 'Sign in to TinCan' })).toBeInTheDocument()
   })

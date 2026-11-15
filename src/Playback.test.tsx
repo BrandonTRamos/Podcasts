@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { chooseLibraryAction } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = {
@@ -385,7 +386,7 @@ describe('signing out', () => {
     await user.click(screen.getByRole('button', { name: first.title }))
     await user.click(screen.getByRole('button', { name: 'Back to library' }))
 
-    await user.click(await screen.findByRole('button', { name: 'Sign out' }))
+    await chooseLibraryAction(user, 'Sign out')
 
     expect(await screen.findByRole('heading', { name: 'Sign in to TinCan' })).toBeInTheDocument()
     expect(audio.paused).toBe(true)
