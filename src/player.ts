@@ -6,8 +6,18 @@ export const SKIP_BACK_SECONDS = 15
 export const SKIP_FORWARD_SECONDS = 30
 /** While playing, the position is saved no more often than this. Each save is a write to the backend. */
 export const SAVE_INTERVAL_MS = 60_000
-/** The playback speeds the listener can pick from; 1 is normal speed. */
-export const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2] as const
+/** The range of playback speeds the listener can slide between; 1 is normal speed. */
+export const MIN_SPEED = 0.5
+export const MAX_SPEED = 3
+/** Speeds move in steps of 0.05. */
+export const SPEED_STEP = 0.05
+const STEPS_PER_UNIT = 20
+
+/** The nearest speed on the slider's steps, within its range. Dividing a whole number of steps keeps 1.15 from becoming 1.1500000000000001. */
+export function toSpeedStep(speed: number): number {
+  const snapped = Math.round(speed * STEPS_PER_UNIT) / STEPS_PER_UNIT
+  return Math.min(MAX_SPEED, Math.max(MIN_SPEED, snapped))
+}
 
 /** What the player needs to play an episode and show what is playing. */
 export interface PlayableEpisode {
@@ -88,7 +98,7 @@ export interface Player {
   skipForward(): void
   /** Moves on to the next queued episode, keeping the place in this one. Does nothing if none is queued. */
   skipToNext(): void
-  /** Plays this and every later episode at this speed (1 is normal), starting now. */
+  /** Plays this and every later episode at this speed (1 is normal), starting now. Snapped to the slider's steps and range. */
   setSpeed(speed: number): void
   /** Saves the position now, if it has moved since it was last saved: the app is going to the background. */
   savePosition(): void
@@ -281,8 +291,10 @@ export function createPlayer(
       if (next) play(next.episode, next.startAt)
     },
 
-    setSpeed(speed) {
-      if (!(speed > 0) || speed === state.speed) return
+    setSpeed(requested) {
+      if (!Number.isFinite(requested)) return
+      const speed = toSpeedStep(requested)
+      if (speed === state.speed) return
       set({ ...state, speed })
       applySpeed()
     },
@@ -313,7 +325,7 @@ const SPEED_KEY = 'tincan.playbackSpeed'
 function storedSpeed(): number {
   try {
     const speed = Number(localStorage.getItem(SPEED_KEY))
-    return (SPEEDS as readonly number[]).includes(speed) ? speed : 1
+    return Number.isFinite(speed) && speed > 0 ? toSpeedStep(speed) : 1
   } catch {
     return 1
   }
