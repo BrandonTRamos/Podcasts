@@ -171,14 +171,14 @@ export interface DataApi {
    */
   observeEpisodeStates(podcastId: string, observer: Observer<SavedEpisodeState[]>): () => void
   /**
-   * Changes only the given fields of an episode's listening state, so a change
-   * made elsewhere to another field survives. An episode with no state yet
-   * starts at the beginning, unplayed. `changedAt` is when the listener made
-   * the change (ISO 8601), which may be long before it is sent, as for one
-   * made offline: the backend keeps it only if no change to the episode it
-   * holds was made later, so the most recent change wins wherever it was made.
-   * Returns the whole state as saved, which is the later change's when this
-   * one lost.
+   * Changes only the given fields of an episode's listening state, so an
+   * earlier change made elsewhere to another field survives. An episode with
+   * no state yet starts at the beginning, unplayed. `changedAt` is when the
+   * listener made the change (ISO 8601), which may be long before it is sent,
+   * as for one made offline. The most recent change to an episode wins,
+   * wherever it was made: if the backend holds one made later, this whole
+   * change is dropped, even the fields the later one left alone. Returns the
+   * whole state as saved, the later change's when this one lost.
    */
   saveEpisodeState(
     episodeId: string,

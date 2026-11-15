@@ -304,6 +304,25 @@ describe('syncing what was played offline', () => {
   })
 })
 
+describe('a network that seems up but reaches nothing', () => {
+  it('catches up on returning to the foreground, though the browser thought it online throughout', async () => {
+    const { data } = await backendWithShow()
+    const device = new FakeDevice()
+    const app = launch(data, device)
+    await app.ui.findByRole('button', { name: /The Example Show/ })
+    // A captive network: the backend can't be reached, though the device says it is online.
+    act(() => data.goOffline())
+    data.seedPodcast('https://feeds.example.com/other.xml', { title: 'Another Show' })
+    act(() => data.goOnline())
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    act(() => void document.dispatchEvent(new Event('visibilitychange')))
+
+    expect(await app.ui.findByRole('button', { name: /Another Show/ })).toBeInTheDocument()
+    Reflect.deleteProperty(document, 'visibilityState')
+  })
+})
+
 describe('the same episode changed on two devices', () => {
   const at = (time: string) => vi.setSystemTime(new Date(`2026-11-14T${time}:00.000Z`))
 

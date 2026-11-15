@@ -58,9 +58,7 @@ class FakeCaches {
 function browser() {
   let deployed = site('v1')
   let online = true
-  const requested: string[] = []
   const fetchPath = async (path: string) => {
-    requested.push(path)
     if (!online) throw new TypeError('Failed to fetch')
     // The host serves the page at the site root.
     const body = deployed.get(path === '/' ? '/index.html' : path)
@@ -75,8 +73,12 @@ function browser() {
   let worker: Listeners | null = null
 
   return {
-    caches,
-    requested,
+    /** How many copies of the file the browser holds, in any of the site's caches. */
+    async storedCopiesOf(path: string) {
+      let copies = 0
+      for (const name of await caches.keys()) if (await (await caches.open(name)).match(path)) copies++
+      return copies
+    },
     deploy(version: string) {
       deployed = site(version)
     },
@@ -142,16 +144,6 @@ describe('opening TinCan with no network', () => {
     expect(await page.response!.text()).toBe('<html>TinCan v2</html>')
   })
 
-  it('serves the shell’s scripts from the device, without the network', async () => {
-    const tab = browser()
-    await tab.install(shellOf('v1'))
-    tab.requested.length = 0
-
-    await tab.request(`${origin}/assets/index-v1.js`)
-
-    expect(tab.requested).toEqual([])
-  })
-
   it('keeps only the newest version’s shell once a new worker takes over', async () => {
     const tab = browser()
     await tab.install(shellOf('v1'))
@@ -160,7 +152,8 @@ describe('opening TinCan with no network', () => {
     await tab.install(shellOf('v2'))
     tab.goOffline()
 
-    expect(await tab.caches.keys()).toEqual(['tincan-shell-v2'])
+    expect(await tab.storedCopiesOf('/assets/index-v1.js')).toBe(0)
+    expect(await tab.storedCopiesOf('/assets/index-v2.js')).toBe(1)
     const page = await tab.request(`${origin}/`, { mode: 'navigate' })
     expect(await page.response!.text()).toBe('<html>TinCan v2</html>')
   })

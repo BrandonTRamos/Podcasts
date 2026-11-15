@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { clearLocalCopy, withLocalCopy } from './localCopy'
+import { forgetLibrary, withLocalCopy } from './localCopy'
 import type { Services, StoredSession } from './services'
 import { SignedInApp } from './SignedInApp'
 import { SignInScreen } from './SignInScreen'
@@ -34,12 +34,14 @@ export function App({ services }: { services: Services }) {
     }
   }, [auth])
 
-  // Once the network is back, renew the session, or find it can't be.
+  // Once the network is back, renew the session, or find it can't be. Also
+  // on returning to the foreground, as the browser can think it online when
+  // nothing is reachable (a captive network), and so never say it came back.
   useEffect(() => {
     if (session.status !== 'unconfirmed') return
     let cancelled = false
-    const stop = device.watchConnectivity(() => {
-      if (!device.isOnline()) return
+    const check = () => {
+      if (!device.isOnline() || document.visibilityState === 'hidden') return
       auth
         .storedSession()
         .catch((): StoredSession => ({ status: 'unconfirmed' }))
@@ -48,10 +50,13 @@ export function App({ services }: { services: Services }) {
           if (stored.status === 'signedIn') setSession({ status: 'signedIn' })
           else if (stored.status === 'signedOut') setSession({ status: 'expired' })
         })
-    })
+    }
+    const stop = device.watchConnectivity(check)
+    document.addEventListener('visibilitychange', check)
     return () => {
       cancelled = true
       stop()
+      document.removeEventListener('visibilitychange', check)
     }
   }, [session.status, auth, device])
 
@@ -73,8 +78,9 @@ export function App({ services }: { services: Services }) {
         try {
           await auth.signOut()
         } finally {
-          // Signing out removes access from this device: what it keeps of the library goes too.
-          clearLocalCopy(device.storage)
+          // Signing out removes access from this device: what it keeps of the
+          // library goes too, with changes not yet synced.
+          forgetLibrary(device.storage)
           setSession({ status: 'signedOut' })
         }
       }}

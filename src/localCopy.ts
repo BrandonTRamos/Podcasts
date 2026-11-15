@@ -11,8 +11,10 @@ const COPY_PREFIX = 'copy:'
  * Each observation shows the copy at once, if there is one, then what the
  * backend says, which replaces the copy. When the backend can't be reached
  * the copy stands, with no error, and the observation starts again by itself
- * once the device is back online. With no copy, the error passes through as
- * before, and the observation still starts again once online.
+ * once the device is back online, or the app returns to the foreground while
+ * online (the browser can think it online when nothing is reachable). With no
+ * copy, the error passes through as before, and the observation still starts
+ * again later in the same way.
  *
  * Everything else, writes included, goes straight to the backend.
  */
@@ -61,12 +63,18 @@ export function withLocalCopy(data: DataApi, device: Pick<Device, 'storage' | 'i
 
     function waitForNetwork() {
       stopWaiting?.()
-      stopWaiting = device.watchConnectivity(() => {
-        if (closed || !device.isOnline()) return
+      const retry = () => {
+        if (closed || !device.isOnline() || document.visibilityState === 'hidden') return
         stopWaiting?.()
         stopWaiting = null
         startLive()
-      })
+      }
+      const stopWatching = device.watchConnectivity(retry)
+      document.addEventListener('visibilitychange', retry)
+      stopWaiting = () => {
+        stopWatching()
+        document.removeEventListener('visibilitychange', retry)
+      }
     }
 
     startLive()
@@ -100,8 +108,8 @@ function copyOfQueue(snapshot: QueueSnapshot): QueueSnapshot {
   return { entries: snapshot.entries, asOf }
 }
 
-/** Forgets everything this device keeps of the library, as signing out does. */
-export function clearLocalCopy(storage: DeviceStorage) {
+/** Forgets everything this device keeps of the library, changes not yet synced included, as signing out does. */
+export function forgetLibrary(storage: DeviceStorage) {
   for (const key of storage.keys()) storage.remove(key)
 }
 

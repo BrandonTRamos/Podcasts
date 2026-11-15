@@ -17,7 +17,7 @@ export function EpisodeScreen({
   onPlay,
   download,
   onDownload,
-  offline,
+  unavailable,
 }: {
   data: Pick<DataApi, 'getShowNotes'>
   episode: Episode
@@ -29,13 +29,12 @@ export function EpisodeScreen({
   onPlay: (episode: Episode) => void
   download: DownloadState
   onDownload: (episode: Episode) => void
-  /** The device is offline: only a downloaded episode can play. */
-  offline: boolean
+  /** It can't play now: the device is offline and it is not downloaded. */
+  unavailable: boolean
 }) {
   const [notes, setNotes] = useState<ShowNotesState>({ status: 'loading' })
   // Wait for the listening state, so playing from here still resumes.
   const statesStatus = useEpisodeStates(listening, episode.podcastId)
-  const unavailable = offline && download.status !== 'downloaded'
 
   useEffect(() => {
     let cancelled = false

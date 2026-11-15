@@ -160,6 +160,8 @@ export function SignedInApp({
     listening.dequeue(episode.id)
   }
 
+  const unavailable = (episodeId: string) => !online && downloads.get(episodeId).status !== 'downloaded'
+
   const episodeActions: EpisodeActions = {
     onPlay: playEpisode,
     onOpen: (episode) => {
@@ -170,7 +172,7 @@ export function SignedInApp({
       listening.update(episode.id, episode.podcastId, played ? { played } : { played, positionSeconds: 0 }),
     onDownload: downloads.download,
     downloadOf: downloads.get,
-    offline: !online,
+    unavailable,
   }
 
   function openQueue() {
@@ -199,7 +201,7 @@ export function SignedInApp({
         onMove={(episodeId, index) => listening.moveInQueue(episodeId, index)}
         onRemove={(episodeId) => listening.dequeue(episodeId)}
         downloaded={(episodeId) => downloads.get(episodeId).status === 'downloaded'}
-        offline={!online}
+        unavailable={unavailable}
       />
     )
   } else if (screen.name === 'episode') {
@@ -216,7 +218,7 @@ export function SignedInApp({
         onPlay={playEpisode}
         download={downloads.get(episode.id)}
         onDownload={downloads.download}
-        offline={!online}
+        unavailable={unavailable(episode.id)}
       />
     )
   } else if (screen.name === 'latest') {

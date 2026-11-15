@@ -16,8 +16,8 @@ export interface EpisodeActions {
   onDownload: (episode: Episode) => void
   /** Its download on this device. */
   downloadOf: (episodeId: string) => DownloadState
-  /** The device is offline: only downloaded episodes can play. */
-  offline: boolean
+  /** Whether it can't play now: the device is offline and it is not downloaded. */
+  unavailable: (episodeId: string) => boolean
 }
 
 /**
@@ -35,15 +35,14 @@ export function EpisodeRow({
   onMarkPlayed,
   onDownload,
   downloadOf,
-  offline,
+  unavailable: unavailableNow,
 }: {
   episode: Episode
   state: EpisodeState | undefined
   podcastTitle?: string
 } & EpisodeActions) {
   const played = state?.played ?? false
-  const download = downloadOf(episode.id)
-  const unavailable = offline && download.status !== 'downloaded'
+  const unavailable = unavailableNow(episode.id)
   return (
     <li>
       <h2>
@@ -71,7 +70,7 @@ export function EpisodeRow({
           Add to queue
         </button>
       </div>
-      <DownloadControl download={download} onDownload={() => onDownload(episode)} />
+      <DownloadControl download={downloadOf(episode.id)} onDownload={() => onDownload(episode)} />
     </li>
   )
 }

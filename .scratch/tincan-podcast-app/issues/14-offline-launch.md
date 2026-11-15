@@ -4,14 +4,14 @@
 
 **Blocked by:** 05, 13
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] With no network, the app opens
-- [ ] The library, episode lists and listening state are visible offline
-- [ ] Downloaded episodes play offline, with seeking
-- [ ] Offline playback works when the session has expired, with no sign-in prompt in the way
-- [ ] Episodes that are not downloaded are shown as unavailable while offline
-- [ ] The app shows when it is offline
-- [ ] Position, played state and queue changes made offline are kept and synced when the network returns
-- [ ] When the same episode changed on two devices, the most recent change wins
-- [ ] Client-seam tests cover launch, playback and later sync with the data API unreachable
+- [x] With no network, the app opens
+- [x] The library, episode lists and listening state are visible offline
+- [x] Downloaded episodes play offline, with seeking
+- [x] Offline playback works when the session has expired, with no sign-in prompt in the way
+- [x] Episodes that are not downloaded are shown as unavailable while offline
+- [x] The app shows when it is offline
+- [x] Position, played state and queue changes made offline are kept and synced when the network returns
+- [x] When the same episode changed on two devices, the most recent change wins
+- [x] Client-seam tests cover launch, playback and later sync with the data API unreachable

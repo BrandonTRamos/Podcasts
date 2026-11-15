@@ -83,9 +83,12 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
           const user = await getCurrentUser()
           return { status: 'signedIn', user: { email: user.signInDetails?.loginId ?? user.username } }
         } catch (error) {
-          // No tokens stored, or Cognito refused to renew them (it then clears them).
-          if (error instanceof Error && error.name === 'UserUnAuthenticatedException') return { status: 'signedOut' }
-          // The tokens have expired and renewing them failed, as it does with no network.
+          // No tokens stored, or Cognito refused to renew them for good (Amplify then clears them).
+          const name = error instanceof Error ? error.name : ''
+          if (name === 'UserUnAuthenticatedException' || SESSION_ENDED.some((ended) => name.startsWith(ended))) {
+            return { status: 'signedOut' }
+          }
+          // The tokens have expired and renewing them failed for now, as it does with no network.
           return { status: 'unconfirmed' }
         }
       },
@@ -397,6 +400,16 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
     },
   }
 }
+
+/** Errors renewing a session that mean it is over: Amplify clears its tokens on these. */
+const SESSION_ENDED = [
+  'NotAuthorizedException',
+  'TokenRevokedException',
+  'UserNotFoundException',
+  'PasswordResetRequiredException',
+  'UserNotConfirmedException',
+  'RefreshTokenReuseException',
+]
 
 const UPDATE_EPISODE_STATE = /* GraphQL */ `
   mutation UpdateEpisodeState($input: UpdateEpisodeStateInput!, $condition: ModelEpisodeStateConditionInput) {
