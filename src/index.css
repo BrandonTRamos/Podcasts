@@ -140,6 +140,7 @@ button.plain {
   white-space: normal;
 }
 
+input[type='text'],
 input[type='url'],
 input[type='search'],
 input[type='email'],
@@ -348,6 +349,70 @@ button.back {
   border-bottom: 1px solid var(--line);
 }
 
+/* A category: its heading opens and closes it. */
+.category {
+  border-bottom: 1px solid var(--line);
+}
+
+.category-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.category-heading h2 {
+  flex: 1;
+  min-width: 0;
+}
+
+button.category-toggle {
+  justify-content: flex-start;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 3rem;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font-size: 1.0625rem;
+}
+
+.category-toggle .icon {
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+
+.category-toggle[aria-expanded='false'] .icon {
+  transform: rotate(-90deg);
+}
+
+.category-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.category-count {
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+.category-heading .more-actions .icon-button {
+  margin-right: -0.75rem;
+  color: var(--muted);
+}
+
+.category-empty {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+/* A category's podcasts sit under its heading, its own rule closing them. */
+.category .podcasts li:last-child button {
+  border-bottom: 0;
+}
+
 .podcasts .artwork {
   grid-row: 1 / 3;
 }
@@ -414,6 +479,36 @@ button.back {
   font-size: 1rem;
 }
 
+.category-picker {
+  margin-top: 0.625rem;
+}
+
+.category-picker label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.category-picker select {
+  min-width: 0;
+  max-width: 12rem;
+  height: 2.25rem;
+  padding: 0 0.625rem;
+  border: 0;
+  border-radius: 0.625rem;
+  background: var(--fill);
+  color: var(--ink);
+  /* At least 16px, below which iOS zooms the page in when a field is focused. */
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.category-picker p {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+}
+
 .unsubscribe {
   margin-top: 0.625rem;
 }
@@ -424,7 +519,8 @@ button.back {
 }
 
 /* Asking first: a sheet over the screen's foot, clear of the bars there. */
-.unsubscribe[role='alertdialog'] {
+.unsubscribe[role='alertdialog'],
+.confirm-sheet {
   position: fixed;
   z-index: 20;
   inset-inline: max(0.75rem, calc((100% - var(--page)) / 2 + 0.75rem));
@@ -438,22 +534,26 @@ button.back {
     0 0 0 1px var(--line);
 }
 
-.unsubscribe h2 {
+.unsubscribe h2,
+.confirm-sheet h2 {
   margin: 0 0 0.25rem;
 }
 
-.unsubscribe[role='alertdialog'] p {
+.unsubscribe[role='alertdialog'] p,
+.confirm-sheet p {
   margin: 0 0 1rem;
   color: var(--muted);
   font-size: 0.9375rem;
 }
 
-.unsubscribe[role='alertdialog'] button {
+.unsubscribe[role='alertdialog'] button,
+.confirm-sheet button {
   min-height: 2.75rem;
   padding: 0 1.125rem;
 }
 
-.unsubscribe button + button {
+.unsubscribe button + button,
+.confirm-sheet button + button {
   margin-inline-start: 0.5rem;
 }
 

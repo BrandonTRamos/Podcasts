@@ -5,7 +5,7 @@ import { MoreIcon } from './Icons'
  * A button that shows the actions given, in a panel beside it. Choosing one
  * closes the panel, as do Escape and a tap anywhere else.
  */
-export function MoreActions({ children }: { children: ReactNode }) {
+export function MoreActions({ children, label = 'More actions' }: { children: ReactNode; label?: string }) {
   const [open, setOpen] = useState(false)
   const container = useRef<HTMLDivElement>(null)
   const panel = useRef<HTMLDivElement>(null)
@@ -33,7 +33,7 @@ export function MoreActions({ children }: { children: ReactNode }) {
       <button
         type="button"
         className="icon-button"
-        aria-label="More actions"
+        aria-label={label}
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
@@ -43,7 +43,7 @@ export function MoreActions({ children }: { children: ReactNode }) {
         <div
           className="more-actions-panel"
           role="group"
-          aria-label="More actions"
+          aria-label={label}
           ref={panel}
           onClick={(event) => {
             if ((event.target as Element).closest('button')) setOpen(false)
