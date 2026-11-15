@@ -1442,3 +1442,86 @@ button.mini-player-open {
     color: #f5e7b8;
   }
 }
+
+/*
+ * Pull to refresh: a round badge that comes down from the top of the screen
+ * with the finger, turning as it comes, and spins while the refresh runs.
+ */
+.pull-refresh {
+  position: fixed;
+  top: env(safe-area-inset-top);
+  left: 50%;
+  z-index: 30;
+  pointer-events: none;
+  transform: translate(-50%, calc(var(--pull) - 100%));
+  opacity: 0;
+  transition:
+    transform 0.25s ease,
+    opacity 0.25s ease;
+}
+
+.pull-refresh.following,
+.pull-refresh.refreshing {
+  opacity: 1;
+}
+
+/* While the finger is down the badge keeps up with it, unsmoothed. */
+.pull-refresh.following {
+  transition: none;
+}
+
+.pull-refresh-spinner {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--muted);
+  box-shadow: var(--shadow);
+  transform: rotate(var(--pull-turn));
+}
+
+/* Far enough: letting go now refreshes. */
+.pull-refresh.armed .pull-refresh-spinner {
+  color: var(--accent);
+}
+
+.pull-refresh.refreshing .pull-refresh-spinner {
+  animation: pull-refresh-spin 0.8s linear infinite;
+}
+
+@keyframes pull-refresh-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pull-refresh {
+    transition: opacity 0.25s ease;
+  }
+  .pull-refresh.refreshing .pull-refresh-spinner {
+    animation: none;
+  }
+}
+
+.pull-refresh-failed {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 0.75rem);
+  left: 50%;
+  z-index: 30;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 2 * var(--gutter));
+  margin: 0;
+  padding: 0.5rem 1rem;
+  border-radius: 1.25rem;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 0.875rem;
+  box-shadow: var(--shadow);
+}

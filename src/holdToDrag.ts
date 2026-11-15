@@ -19,6 +19,12 @@ export const HOLD_MS = 400
 /** How far a finger may stray while holding before it counts as scrolling instead. */
 const SLOP_PX = 8
 
+/** How many drags are under way on the page: other gestures, such as pulling to refresh, leave the finger to them. */
+let dragsUnderway = 0
+
+/** Whether something held is being dragged, anywhere on the page. */
+export const dragUnderway = () => dragsUnderway > 0
+
 /**
  * Press and hold to pick something up, then drag it. A press that moves first
  * is left to scroll the page, and a short one to click. Once picked up, the
@@ -82,6 +88,7 @@ export function useHoldToDrag(handlers: DragHandlers) {
 
     const timer = window.setTimeout(() => {
       dragging.current = true
+      dragsUnderway++
       window.removeEventListener('scroll', stop, true)
       navigator.vibrate?.(10)
       latest.current.start(id, element, at)
@@ -99,6 +106,7 @@ export function useHoldToDrag(handlers: DragHandlers) {
     function finish(dropped: boolean) {
       stop()
       dragging.current = false
+      dragsUnderway--
       latest.current.end(dropped)
     }
 
