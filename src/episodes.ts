@@ -19,3 +19,8 @@ export function newestFirst(episodes: Episode[]): Episode[] {
   const time = (episode: Episode) => (episode.publishedAt ? Date.parse(episode.publishedAt) : -Infinity)
   return [...episodes].sort((a, b) => time(b) - time(a) || 0)
 }
+
+/** Whether the listener has started the episode but not finished it: a place past the start, and not played. */
+export function isInProgress(state: Pick<EpisodeState, 'positionSeconds' | 'played'> | undefined): boolean {
+  return state !== undefined && !state.played && state.positionSeconds > 0
+}

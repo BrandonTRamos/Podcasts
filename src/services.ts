@@ -104,6 +104,12 @@ export interface QueuedEpisode {
   state: SavedEpisodeState
 }
 
+/** An episode started but not finished, with the listening state that says so. */
+export interface InProgressEpisode {
+  episode: Episode
+  state: SavedEpisodeState
+}
+
 /** The whole queue, as one delivery of it shows it. */
 export interface QueueSnapshot {
   entries: QueuedEpisode[]
@@ -261,6 +267,13 @@ export interface DataApi {
    * left (see `QueueSnapshot.asOf`).
    */
   observeQueue(observer: Observer<QueueSnapshot>): () => void
+  /**
+   * Every episode started but not finished (a position past the start, not
+   * played), whatever its podcast, with its details and listening state: all
+   * of them once fetched, then again whenever any device starts, finishes or
+   * moves on in one. Each delivery is the whole list, in no particular order.
+   */
+  observeInProgress(observer: Observer<InProgressEpisode[]>): () => void
   /**
    * Asks the backend to prepare a temporary copy of the episode's file, for
    * when its host blocks direct download. Returns at once; the copy is made

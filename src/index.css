@@ -321,6 +321,37 @@ button.back {
   background: var(--fill);
 }
 
+/* Two or more views of one screen, side by side in a track: the one showing raised on it. */
+.segmented {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: var(--fill);
+}
+
+.segmented button {
+  min-height: 2.25rem;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+.segmented button[aria-selected='true'] {
+  background: var(--bg);
+  color: var(--ink);
+  font-weight: 800;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.15);
+}
+
+.in-progress-empty {
+  color: var(--muted);
+}
+
 .add-podcast p {
   margin: 0.625rem 0 0;
   font-size: 0.875rem;

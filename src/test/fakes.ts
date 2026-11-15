@@ -13,6 +13,7 @@ import {
   type FeedError,
   type Fetch,
   type FileAppender,
+  type InProgressEpisode,
   type MediaSessionControls,
   type Observer,
   type Podcast,
@@ -30,6 +31,7 @@ import {
   type User,
   LATEST_EPISODES_LIMIT,
 } from '../services'
+import { isInProgress } from '../episodes'
 
 const SESSION_KEY = 'fake-auth-session'
 
@@ -141,6 +143,7 @@ export function fakeDataApi() {
   const stateListeners = new Map<string, Set<Listener<SavedEpisodeState[]>>>()
   const requestListeners = new Map<string, Set<Listener<SubscribeRequestState>>>()
   const queueListeners = new Set<Listener<QueueSnapshot>>()
+  const inProgressListeners = new Set<Listener<InProgressEpisode[]>>()
   /** Temporary copies asked for and not yet settled, oldest first, each with who is watching it. */
   const stagings: { episodeId: string; listener: Listener<StagingState> }[] = []
   /** Every episode a temporary copy was asked for, in order. */
@@ -167,6 +170,10 @@ export function fakeDataApi() {
     [...states.values()]
       .filter((state) => state.queueOrder !== null)
       .map((state) => ({ state, episode: episodes.find((episode) => episode.id === state.episodeId)! }))
+  const inProgress = (): InProgressEpisode[] =>
+    [...states.values()]
+      .filter(isInProgress)
+      .map((state) => ({ state, episode: episodes.find((episode) => episode.id === state.episodeId)! }))
 
   function listenersFor<T>(map: Map<string, Set<Listener<T>>>, key: string) {
     const listeners = map.get(key) ?? new Set()
@@ -192,6 +199,7 @@ export function fakeDataApi() {
       categoryListeners,
       latestListeners,
       queueListeners,
+      inProgressListeners,
       ...episodeListeners.values(),
       ...stateListeners.values(),
       ...requestListeners.values(),
@@ -343,6 +351,7 @@ export function fakeDataApi() {
         notify(latestListeners, latestEpisodes())
         notify(stateListeners.get(podcastId), [])
         notify(queueListeners, { entries: queue(), asOf: timeAt(++tick) })
+        notify(inProgressListeners, inProgress())
       },
       observeSubscribeRequest(requestId, observer) {
         return listen(connection, listenersFor(requestListeners, requestId), observer, () => requests.get(requestId)!.state)
@@ -363,11 +372,15 @@ export function fakeDataApi() {
         queueMicrotask(() => {
           notify(stateListeners.get(podcastId), statesOf(podcastId))
           notify(queueListeners, { entries: queue(), asOf: saved.updatedAt })
+          notify(inProgressListeners, inProgress())
         })
         return saved
       },
       observeQueue(observer) {
         return listen(connection, queueListeners, observer, () => ({ entries: queue(), asOf: null }))
+      },
+      observeInProgress(observer) {
+        return listen(connection, inProgressListeners, observer, inProgress)
       },
       stageDownload(episodeId, observer) {
         const listener = { connection, observer }
