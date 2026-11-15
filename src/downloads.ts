@@ -59,10 +59,32 @@ export interface DownloadManager {
   getVersion(): number
 }
 
-const PARTIAL = '.part'
-/** The name of an episode's stored file. Episode IDs can hold characters a file name can't. */
-const fileName = (episodeId: string) => encodeURIComponent(episodeId)
-const partialName = (episodeId: string) => fileName(episodeId) + PARTIAL
+/**
+ * The name of an episode's stored file. Episode IDs can hold characters a
+ * file name can't, and dots are escaped too, so a partial file's name splits
+ * unambiguously.
+ */
+const fileName = (episodeId: string) => encodeURIComponent(episodeId).replace(/\./g, '%2E')
+
+/**
+ * A part-downloaded file's name carries the size the host said the whole file
+ * is, so a resume after a relaunch can tell that the file has changed since.
+ */
+const partialName = (episodeId: string, total: number | null) => `${fileName(episodeId)}.${total ?? 'unknown'}.part`
+
+/** A part-downloaded file, read from its name. */
+interface PartialFile {
+  name: string
+  episodeId: string
+  total: number | null
+}
+
+function parsePartial(name: string): PartialFile | null {
+  const match = /^([^.]+)\.(\d+|unknown)\.part$/.exec(name)
+  const episodeId = match && decode(match[1])
+  if (!match || episodeId === null) return null
+  return { name, episodeId, total: match[2] === 'unknown' ? null : Number(match[2]) }
+}
 
 /** Progress is shown to the whole percent; when the size is unknown, to the megabyte. */
 const UNKNOWN_SIZE_STEP = 1_000_000
@@ -105,12 +127,12 @@ export function createDownloadManager(device: Device): DownloadManager {
       return
     }
     for (const name of names) {
-      const partial = name.endsWith(PARTIAL)
-      const episodeId = decode(partial ? name.slice(0, -PARTIAL.length) : name)
+      const partial = parsePartial(name)
+      const episodeId = partial ? partial.episodeId : decode(name)
       if (episodeId === null || states.has(episodeId)) continue
       try {
         if (partial) {
-          set(episodeId, { status: 'interrupted', bytes: (await device.files.size(name)) ?? 0, total: null })
+          set(episodeId, { status: 'interrupted', bytes: (await device.files.size(name)) ?? 0, total: partial.total })
         } else {
           const url = await device.files.playbackUrl(name)
           if (url) {
@@ -151,7 +173,7 @@ export function createDownloadManager(device: Device): DownloadManager {
       askedToPersist = true
       device.persistStorage().catch(() => false)
     }
-    void transfer(episode, known.total)
+    void transfer(episode)
       .catch((error: unknown): DownloadState => ({
         status: 'failed',
         reason: error instanceof DOMException && error.name === 'QuotaExceededError' ? 'noSpace' : 'other',
@@ -165,12 +187,13 @@ export function createDownloadManager(device: Device): DownloadManager {
   }
 
   /** Fetches what is missing of the episode's file into storage, and says how that ended. */
-  async function transfer({ id, enclosureUrl }: Downloadable, knownTotal: number | null): Promise<DownloadState> {
+  async function transfer({ id, enclosureUrl }: Downloadable): Promise<DownloadState> {
     await scanned
     // Asked for before the launch scan had found it stored.
     if (copies.has(id) || (await adoptStoredCopy(id))) return { status: 'downloaded' }
-    const partial = partialName(id)
-    const stored = (await device.files.size(partial)) ?? 0
+    const existing = await findPartial(id)
+    const stored = existing ? ((await device.files.size(existing.name)) ?? 0) : 0
+    const knownTotal = existing?.total ?? null
     let response = await request(enclosureUrl, stored)
     // The host has no more to send, or its file is no longer the size it was:
     // what is stored doesn't match it, so start again.
@@ -192,6 +215,11 @@ export function createDownloadManager(device: Device): DownloadManager {
     // A host that can't send part of a file sends all of it.
     const offset = response.status === 206 ? stored : 0
     const total = totalSize(response, offset)
+    const partial = partialName(id, total)
+    if (existing && existing.name !== partial) {
+      if (offset === 0) await device.files.remove(existing.name)
+      else await device.files.rename(existing.name, partial)
+    }
     const file = await device.files.openForAppend(partial, { fresh: offset === 0 })
     let bytes = offset
     let shown = progressStep(bytes, total)
@@ -207,8 +235,10 @@ export function createDownloadManager(device: Device): DownloadManager {
           break
         }
         if (chunk.done) break
+        // Taken first: writing may hand the chunk's buffer over and leave it empty.
+        const length = chunk.value.length
         await file.write(chunk.value)
-        bytes += chunk.value.length
+        bytes += length
         const step = progressStep(bytes, total)
         if (step !== shown) {
           shown = step
@@ -235,6 +265,15 @@ export function createDownloadManager(device: Device): DownloadManager {
     }
     await device.files.rename(partial, fileName(id))
     return (await adoptStoredCopy(id)) ? { status: 'downloaded' } : { status: 'failed', reason: 'other' }
+  }
+
+  /** The episode's part-downloaded file, if it has one. */
+  async function findPartial(episodeId: string): Promise<PartialFile | null> {
+    for (const name of await device.files.list()) {
+      const partial = parsePartial(name)
+      if (partial?.episodeId === episodeId) return partial
+    }
+    return null
   }
 
   /** Plays the episode's stored file from now on, if it has one. Says whether it does. */

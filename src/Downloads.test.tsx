@@ -281,6 +281,49 @@ describe('downloading an episode', () => {
     expect(device.files.onlyFile()).toEqual(firstFile)
   })
 
+  it('keeps what was stored when the app is killed mid-download, and resumes from there', async () => {
+    const { data, device, user, unmount } = await setUp()
+    device.network.throttle()
+    await startDownload(user, first.title)
+    device.network.deliver(400)
+    await within(row(first.title)).findByText('40%')
+
+    // As iOS may do to the app while the phone is locked: nothing gets to finish or close.
+    device.killApp()
+    unmount()
+    device.network.unthrottle()
+    const relaunched = await launch(data, device)
+
+    const resume = await within(row(first.title)).findByRole('button', { name: 'Resume download' })
+    expect(within(row(first.title)).getByText('40%')).toBeInTheDocument()
+    expect(device.files.onlyFile()).toEqual(firstFile.subarray(0, 400))
+    await relaunched.user.click(resume)
+
+    expect(await downloaded(first.title)).toBeInTheDocument()
+    expect(device.network.requests.at(-1)).toMatchObject({ range: 'bytes=400-' })
+    expect(device.files.onlyFile()).toEqual(firstFile)
+  })
+
+  it('starts again from the beginning when the file on the host changed size while the app was closed', async () => {
+    const { data, device, user, unmount } = await setUp()
+    device.network.throttle()
+    await startDownload(user, first.title)
+    device.network.deliver(400)
+    await within(row(first.title)).findByText('40%')
+    device.killApp()
+    unmount()
+
+    // A different ad break, say: the same URL now serves a longer file.
+    const replacement = audioFile(1200).reverse()
+    device.network.host(first.enclosureUrl, replacement)
+    device.network.unthrottle()
+    const relaunched = await launch(data, device)
+    await relaunched.user.click(await within(row(first.title)).findByRole('button', { name: 'Resume download' }))
+
+    expect(await downloaded(first.title)).toBeInTheDocument()
+    expect(device.files.onlyFile()).toEqual(replacement)
+  })
+
   it('still shows a finished download as downloaded after a relaunch', async () => {
     const { data, device, user, unmount } = await setUp()
     await startDownload(user, first.title)

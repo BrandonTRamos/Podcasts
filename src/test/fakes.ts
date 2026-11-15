@@ -561,13 +561,17 @@ export class FakeMediaSession implements MediaSessionControls {
 /**
  * Stands in for the Origin Private File System: files held in memory, which
  * outlive any one launch of the app as long as the same instance is passed
- * in. Writes land at once, so a file being downloaded shows what has arrived.
+ * in. Writes land at once and durably, so a file being downloaded shows what
+ * has arrived, and `killApp` keeps it. Like the real one, a write takes over
+ * the chunk's buffer, leaving the chunk empty.
  */
 export class FakeDeviceFiles implements DeviceFiles {
   #files = new Map<string, Uint8Array>()
   #urls = new Map<string, string>()
   #nextUrl = 1
   #outOfSpace = false
+  /** Bumped when the app is killed: files it had open can no longer be written by it. */
+  #launch = 0
 
   async list() {
     return [...this.#files.keys()]
@@ -581,9 +585,10 @@ export class FakeDeviceFiles implements DeviceFiles {
     if (fresh || !this.#files.has(name)) this.#files.set(name, new Uint8Array())
     let open = true
     let broken = false
+    const launch = this.#launch
     return {
       write: async (chunk) => {
-        if (!open || broken) throw new TypeError('The file is closed')
+        if (!open || broken || launch !== this.#launch) throw new TypeError('The file is closed')
         if (this.#outOfSpace) {
           broken = true
           throw new DOMException('No space left', 'QuotaExceededError')
@@ -593,6 +598,9 @@ export class FakeDeviceFiles implements DeviceFiles {
         after.set(before)
         after.set(chunk, before.length)
         this.#files.set(name, after)
+        if (chunk.byteOffset === 0 && chunk.byteLength === chunk.buffer.byteLength) {
+          structuredClone(chunk.buffer, { transfer: [chunk.buffer as ArrayBuffer] })
+        }
       },
       // As with a real writable stream, one that failed a write fails to close too.
       close: async () => {
@@ -632,6 +640,11 @@ export class FakeDeviceFiles implements DeviceFiles {
     return [...this.#files.values()][0]
   }
 
+  /** The app is killed: what it stored stays, and files it had open take no more from it. */
+  killApp() {
+    this.#launch++
+  }
+
   /** Every later write fails as the device has no room left. */
   runOutOfSpace() {
     this.#outOfSpace = true
@@ -668,6 +681,8 @@ export class FakeNetwork {
   #allowance = 0
   #waiting = new Set<() => void>()
   #open = new Set<ReadableStreamDefaultController<Uint8Array>>()
+  /** Responses to an app that has been killed: nothing more arrives for them, and nothing tells them. */
+  #frozen = new WeakSet<ReadableStreamDefaultController<Uint8Array>>()
   /** Every request made, oldest first, with its Range header if it had one. */
   readonly requests: { url: string; range: string | null; mode: 'cors' | 'no-cors' }[] = []
 
@@ -710,6 +725,12 @@ export class FakeNetwork {
     this.#offline = false
   }
 
+  /** The app is killed: responses still arriving for it stop dead. */
+  forgetOpenResponses() {
+    for (const controller of this.#open) this.#frozen.add(controller)
+    this.#open.clear()
+  }
+
   readonly fetch: Fetch = async (url, init = {}) => {
     const range = init.headers?.Range ?? null
     const mode = init.mode ?? 'cors'
@@ -746,6 +767,7 @@ export class FakeNetwork {
         while (this.#throttled && this.#allowance === 0 && this.#open.has(c)) {
           await new Promise<void>((resolve) => this.#waiting.add(resolve))
         }
+        if (this.#frozen.has(c)) return new Promise<void>(() => {})
         if (!this.#open.has(c)) return
         if (sent >= bytes.length) {
           this.#open.delete(c)
@@ -806,6 +828,17 @@ export class FakeDevice implements Device {
   /** Whether anything is keeping the screen on. */
   screenKeptOn() {
     return this.#holds.size > 0
+  }
+
+  /**
+   * The OS kills the app, as iOS may while the phone is locked: its
+   * downloads stop dead, with no chance to finish writing or close anything.
+   * Unmount it and launch again with this device to come back.
+   */
+  killApp() {
+    this.network.forgetOpenResponses()
+    this.files.killApp()
+    this.dropScreenHolds()
   }
 
   /** The system drops every hold on the screen, as it does when the app is hidden. */

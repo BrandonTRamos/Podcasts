@@ -224,8 +224,8 @@ export interface DeviceFiles {
   size(name: string): Promise<number | null>
   /**
    * Opens the file to write to its end, creating it if absent, or emptying it
-   * first when `fresh`. What is written is stored as it is written; closing
-   * makes sure all of it is.
+   * first when `fresh`. Each write is stored durably before it resolves, so
+   * the app being killed part way keeps every write that resolved.
    */
   openForAppend(name: string, options?: { fresh?: boolean }): Promise<FileAppender>
   /** Renames the file, replacing any already called `to`. */
@@ -240,7 +240,11 @@ export interface DeviceFiles {
 }
 
 export interface FileAppender {
-  /** Adds the bytes to the end of the file. Rejects when the device is out of space (`QuotaExceededError`). */
+  /**
+   * Adds the bytes to the end of the file. It may take over the chunk's
+   * buffer rather than copy it, leaving the chunk empty. Rejects when the
+   * device is out of space (`QuotaExceededError`).
+   */
   write(chunk: Uint8Array): Promise<void>
   close(): Promise<void>
 }
