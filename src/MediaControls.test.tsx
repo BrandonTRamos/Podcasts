@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
@@ -112,9 +112,9 @@ describe('what the OS media controls show', () => {
     await user.click(screen.getByRole('button', { name: first.title }))
     await user.click(within(miniPlayer()).getByRole('button', { name: new RegExp(first.title) }))
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Playback speed' }), '1.5×')
+    fireEvent.change(screen.getByRole('slider', { name: 'Playback speed' }), { target: { value: '1.45' } })
 
-    expect(mediaSession.positionState).toMatchObject({ playbackRate: 1.5 })
+    expect(mediaSession.positionState).toMatchObject({ playbackRate: 1.45 })
   })
 
   it('shows it paused when paused in the app', async () => {

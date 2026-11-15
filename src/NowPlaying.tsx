@@ -1,7 +1,7 @@
 import { formatClock } from './format'
 import { ChevronDownIcon, PauseIcon, PlayIcon, QueueIcon, SkipBackIcon, SkipForwardIcon } from './Icons'
 import { Artwork } from './LibraryScreen'
-import { type LoadedState, type Player, SKIP_BACK_SECONDS, SKIP_FORWARD_SECONDS, SPEEDS } from './player'
+import { type LoadedState, type Player, MAX_SPEED, MIN_SPEED, SKIP_BACK_SECONDS, SKIP_FORWARD_SECONDS, SPEED_STEP } from './player'
 
 /** Stays at the foot of every screen but now playing while an episode is loaded. */
 export function MiniPlayer({ state, player, onOpen }: { state: LoadedState; player: Player; onOpen: () => void }) {
@@ -85,18 +85,28 @@ export function NowPlayingScreen({
         </button>
       </div>
       <div className="now-playing-extras">
-        <select
-          className="speed"
-          aria-label="Playback speed"
-          value={state.speed}
-          onChange={(e) => player.setSpeed(Number(e.target.value))}
-        >
-          {SPEEDS.map((speed) => (
-            <option key={speed} value={speed}>
-              {speed}×
-            </option>
-          ))}
-        </select>
+        <div className="speed">
+          <button
+            type="button"
+            className="speed-value"
+            onClick={() => player.setSpeed(1)}
+            disabled={state.speed === 1}
+            aria-label={`Speed ${formatSpeed(state.speed)}. Reset to normal speed`}
+          >
+            {formatSpeed(state.speed)}
+          </button>
+          <input
+            type="range"
+            className="seek-bar speed-bar"
+            aria-label="Playback speed"
+            aria-valuetext={formatSpeed(state.speed)}
+            min={MIN_SPEED}
+            max={MAX_SPEED}
+            step={SPEED_STEP}
+            value={state.speed}
+            onChange={(e) => player.setSpeed(Number(e.target.value))}
+          />
+        </div>
         <button type="button" className="text-button" onClick={onOpenQueue}>
           <QueueIcon size={22} />
           Queue
@@ -104,6 +114,11 @@ export function NowPlayingScreen({
       </div>
     </main>
   )
+}
+
+/** Two decimals always, so the readout keeps its width as the slider moves: 1.00×, 1.05×. */
+function formatSpeed(speed: number) {
+  return `${speed.toFixed(2)}×`
 }
 
 function FailedMessage() {
