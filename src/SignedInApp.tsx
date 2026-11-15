@@ -4,7 +4,7 @@ import { DownloadsScreen } from './DownloadsScreen'
 import type { EpisodeActions } from './EpisodeRow'
 import { EpisodeScreen } from './EpisodeScreen'
 import { LatestScreen } from './LatestScreen'
-import { LibraryScreen, type OpenSections } from './LibraryScreen'
+import { FAVORITES_SECTION, LibraryScreen, type OpenSections } from './LibraryScreen'
 import { createListeningStore, resumePosition, useEpisodeStates } from './listening'
 import { readJson, writeJson } from './localCopy'
 import { MiniPlayer, NowPlayingScreen } from './NowPlaying'
@@ -94,7 +94,8 @@ export function SignedInApp({
   const [podcasts, setPodcasts] = useState<LoadState<Podcast>>({ status: 'loading' })
   const [categories, setCategories] = useState<LoadState<Category>>({ status: 'loading' })
   // Here rather than on the library, so a category opened stays open while the listener visits a podcast.
-  const [openSections, setOpenSections] = useState<OpenSections>(() => new Set())
+  // Favorites start open; the rest closed.
+  const [openSections, setOpenSections] = useState<OpenSections>(() => new Set([FAVORITES_SECTION]))
   const [listening] = useState(() => createListeningStore(data, device.storage))
   const online = useOnline(device)
   // Here rather than on the library, so an import carries on while the listener goes elsewhere.

@@ -10,7 +10,7 @@ import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from '
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 
 function podcast(id: string, title: string, libraryOrder: number | null = null): Podcast {
-  return { id, title, author: null, artworkUrl: null, lastFetchedAt: null, lastFetchError: null, categoryId: null, libraryOrder }
+  return { id, title, author: null, artworkUrl: null, lastFetchedAt: null, lastFetchError: null, categoryId: null, libraryOrder, favoriteOrder: null }
 }
 
 describe('the order of a list of podcasts', () => {

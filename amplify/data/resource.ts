@@ -33,6 +33,9 @@ const schema = a
         // those with none, by title. Absent until moved. Fractional, so a move is
         // usually one write.
         libraryOrder: a.float(),
+        // Where it is among the listener's favorites, lowest first; absent when
+        // not a favorite. A favorite stays in its category too: Favorites shows a copy.
+        favoriteOrder: a.float(),
         episodes: a.hasMany('Episode', 'podcastId'),
       })
       .secondaryIndexes((index) => [index('feedUrl')]),

@@ -52,6 +52,12 @@ export interface Podcast {
    * moving one podcast is usually a single write.
    */
   libraryOrder: number | null
+  /**
+   * Where it is among the listener's favorites, lowest first; null when not a
+   * favorite. A favorite stays in its category as well: Favorites, pinned to
+   * the library's top, shows a copy.
+   */
+  favoriteOrder: number | null
 }
 
 /** A group of podcasts the listener made, such as News or Movies. A podcast is in one at most. */
@@ -188,6 +194,12 @@ export interface DataApi {
    * can't be reached.
    */
   placePodcast(podcastId: string, categoryId: string | null, libraryOrder: number): Promise<void>
+  /**
+   * Makes the podcast a favorite at the given place among them, or no longer
+   * one for null. The change arrives through `observePodcasts`. Throws when
+   * the backend can't be reached.
+   */
+  placeFavorite(podcastId: string, favoriteOrder: number | null): Promise<void>
   /** One podcast's episodes, in no particular order, kept current as they are ingested. */
   observeEpisodes(podcastId: string, observer: Observer<Episode[]>): () => void
   /**

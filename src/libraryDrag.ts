@@ -12,6 +12,8 @@ export interface DropTarget {
 /** A podcast being dragged through the library. */
 export interface LibraryDrag {
   podcast: Podcast
+  /** The row it was picked up from: its `data-flip` key, which a podcast shown twice (as a favorite) has one of per row. */
+  row: string
   /** Where it was picked up from. */
   origin: DropTarget
   /** Where on the row it was held, from the row's top. */
@@ -48,24 +50,29 @@ interface Zone {
  * `data-drop="row"` (with `data-section` and `data-index`), headings with
  * `data-drop="heading"`, which put it first in that section, and the gap it
  * would fill with `data-drop="gap"`. Whatever should slide when the gap moves
- * carries `data-flip` (a key unique in the library).
+ * carries `data-flip` (a key unique in the library); a podcast's row is
+ * bound, and keyed, by the same key.
  *
  * The lifted podcast follows the finger without React rendering; the library
  * renders only when where it would land changes, and everything that moves
  * then slides there. Let go, it glides into its place before the move is made.
  * Held over a closed section's heading a moment, the section opens. Near the
- * top or the bottom, the page scrolls.
+ * top or the bottom, the page scrolls. A podcast drops only in the sections
+ * `accepts` allows for the one it came from.
  */
 export function useLibraryDrag({
   container,
   podcastOf,
+  accepts = () => true,
   isOpen,
   onOpenSection,
   onDrop,
 }: {
   container: RefObject<HTMLElement | null>
-  /** The podcast with this ID, and its section's key. */
-  podcastOf: (podcastId: string) => { podcast: Podcast; section: string } | undefined
+  /** The podcast in the row with this key, and its section's key. */
+  podcastOf: (row: string) => { podcast: Podcast; section: string } | undefined
+  /** Whether a podcast from section `from` may drop in section `to`. */
+  accepts?: (from: string, to: string) => boolean
   isOpen: (section: string) => boolean
   onOpenSection: (section: string) => void
   onDrop: (podcast: Podcast, from: string, target: DropTarget) => void
@@ -96,7 +103,8 @@ export function useLibraryDrag({
   function retarget() {
     const now = current.current
     if (!now || now.settling) return
-    const target = targetAt(zones.current, point.current.y + window.scrollY) ?? now.target
+    const allowed = zones.current.filter((zone) => accepts(now.origin.section, zone.section))
+    const target = targetAt(allowed, point.current.y + window.scrollY) ?? now.target
     if (target.section === now.target.section && target.index === now.target.index) return
     before.current = positions(container.current)
     set({ ...now, target })
@@ -107,7 +115,7 @@ export function useLibraryDrag({
     const now = current.current
     if (!now) return
     gliding.current = false
-    before.current = positions(container.current, { [now.podcast.id]: 'gap' })
+    before.current = positions(container.current, { [now.row]: 'gap' })
     set(null)
     const { origin, target } = now
     if (origin.section !== target.section || origin.index !== target.index) {
@@ -120,14 +128,15 @@ export function useLibraryDrag({
   })
 
   const bind = useHoldToDrag({
-    start(podcastId, element, at) {
-      const found = podcastOf(podcastId)
+    start(row, element, at) {
+      const found = podcastOf(row)
       if (!found || current.current) return
       const rect = element.getBoundingClientRect()
       const origin = { section: found.section, index: Number(element.dataset.index ?? 0) }
       point.current = at
       set({
         podcast: found.podcast,
+        row,
         origin,
         grabY: at.y - rect.top,
         left: rect.left,
