@@ -358,15 +358,31 @@ button.back {
   border-bottom: 1px solid var(--line);
 }
 
-/* A category: its heading opens and closes it. */
-.category {
+/*
+ * A category: its heading opens and closes it. The rule between categories
+ * belongs to the heading below it, so it slides with the heading while a
+ * podcast is dragged.
+ */
+.category:not(:has(~ .category)) {
   border-bottom: 1px solid var(--line);
 }
 
 .category-heading {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.25rem;
+}
+
+.category + .category .category-heading::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  border-top: 1px solid var(--line);
+}
+
+.category-heading.drop-into::before {
+  display: none;
 }
 
 .category-heading h2 {
@@ -422,6 +438,17 @@ button.category-toggle {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Held, a podcast sinks a little as the press goes on, then lifts once picked up. */
+.podcasts li > button {
+  transition: transform 0.12s ease-out;
+}
+
+.podcasts li:active > button {
+  transform: scale(0.975);
+  transition: transform 0.35s ease-out 0.08s;
 }
 
 .library.dragging,
@@ -429,31 +456,46 @@ button.category-toggle {
   cursor: grabbing;
 }
 
+/* What slides as the gap moves is drawn on its own layer, so sliding stays smooth. */
+.library.dragging [data-flip] {
+  will-change: transform;
+}
+
 /* The row picked up keeps its place in the page, out of sight, for the touch holding it. */
 .podcasts li.drag-source {
   display: none;
 }
 
-/* Where the dragged podcast would land. */
+/* Where the dragged podcast would land: room left open under the lifted card. */
 .podcasts li.drop-gap {
   box-sizing: border-box;
-  border-radius: 0.75rem;
-  background: var(--fill);
-  box-shadow: inset 0 0 0 1.5px var(--line);
 }
 
-/* A closed (or empty) section the dragged podcast would go into. */
-.category-heading.drop-into {
-  margin-inline: -0.5rem;
-  padding-inline: 0.5rem;
+/* A closed section the dragged podcast would go into. */
+.category-heading {
   border-radius: 0.75rem;
+  transition:
+    background-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.category-heading.drop-into {
   background: var(--fill);
-  box-shadow: inset 0 0 0 1.5px var(--accent);
+  box-shadow:
+    0 0 0 0.5rem var(--fill),
+    0 0 0 calc(0.5rem + 1.5px) var(--accent);
 }
 
 .dragged-podcast {
   position: fixed;
+  top: 0;
+  left: 0;
   z-index: 30;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.dragged-card {
   box-sizing: border-box;
   margin: 0;
   padding: 0 0.75rem;
@@ -461,11 +503,30 @@ button.category-toggle {
   background: var(--bg);
   box-shadow: var(--shadow), 0 0 0 1px var(--line);
   transform: scale(1.03);
-  pointer-events: none;
+  animation: lift 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.dragged-podcast button {
+@keyframes lift {
+  from {
+    transform: scale(0.975);
+    box-shadow: none;
+  }
+}
+
+.dragged-card button {
   border-bottom: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .podcasts li > button,
+  .podcasts li:active > button {
+    transform: none;
+    transition: none;
+  }
+
+  .dragged-card {
+    animation: none;
+  }
 }
 
 /* A category's podcasts sit under its heading, its own rule closing them. */
