@@ -62,7 +62,7 @@ function launch(data: Data, device: FakeDevice) {
     user,
     unmount,
     async openShow() {
-      await user.click(await ui.findByRole('button', { name: /The Example Show/ }))
+      await user.click(within(await ui.findByRole('list', { name: 'Podcasts' })).getByRole('button', { name: /The Example Show/ }))
       await ui.findByRole('list', { name: 'Episodes' })
     },
     /** The episode's entry in the show's list. */

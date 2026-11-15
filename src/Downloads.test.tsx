@@ -49,7 +49,7 @@ async function launch(data: FakeDataApi, device: FakeDevice) {
   const services = { auth: fakeAuth(owner), data, audio, mediaSession: new FakeMediaSession(), device }
   const { unmount } = render(<App services={services} />)
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /The Example Show/ }))
+  await user.click(within(await screen.findByRole('list', { name: 'Podcasts' })).getByRole('button', { name: /The Example Show/ }))
   await screen.findByRole('list', { name: 'Episodes' })
   return { audio, user, unmount }
 }
@@ -462,6 +462,23 @@ describe('playing a downloaded episode', () => {
     await tap(relaunched.user, first.title)
 
     expect(device.files.contentsAt(relaunched.audio.src)).toEqual(firstFile)
+  })
+
+  it('plays the stored copy of the episode left ready from the last launch', async () => {
+    const { data, device, audio, user, unmount } = await setUp()
+    await startDownload(user, first.title)
+    await downloaded(first.title)
+    await tap(user, first.title)
+    act(() => audio.progressTo(300))
+    await user.click(within(screen.getByRole('region', { name: 'Mini player' })).getByRole('button', { name: 'Pause' }))
+    unmount()
+
+    const relaunched = await launch(data, device)
+    await downloaded(first.title)
+    await relaunched.user.click(within(screen.getByRole('region', { name: 'Mini player' })).getByRole('button', { name: 'Play' }))
+
+    expect(device.files.contentsAt(relaunched.audio.src)).toEqual(firstFile)
+    expect(relaunched.audio.currentTime).toBe(300)
   })
 
   it('moves on to the stored copy of the next queued episode', async () => {
