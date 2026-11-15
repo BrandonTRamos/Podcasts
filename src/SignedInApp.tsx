@@ -4,7 +4,7 @@ import { DownloadsScreen } from './DownloadsScreen'
 import type { EpisodeActions } from './EpisodeRow'
 import { EpisodeScreen } from './EpisodeScreen'
 import { LatestScreen } from './LatestScreen'
-import { FAVORITES_SECTION, LibraryScreen, type OpenSections } from './LibraryScreen'
+import { FAVORITES_SECTION, LibraryScreen, type LibraryView, type OpenSections } from './LibraryScreen'
 import { createListeningStore, resumePosition, useEpisodeStates } from './listening'
 import { readJson, writeJson } from './localCopy'
 import { MiniPlayer, NowPlayingScreen } from './NowPlaying'
@@ -61,11 +61,10 @@ function findPodcast(podcasts: LoadState<Podcast>, podcastId: string): Podcast |
 /** The screens that pulling down from the top refreshes: those a tab opens, but search, whose results are its own. */
 const PULL_TO_REFRESH: ReadonlySet<Screen['name']> = new Set(['library', 'latest', 'queue', 'downloads'])
 
-/** A screen that lists episodes, from which one can be opened. */
-type ListScreen = { name: 'podcast'; podcastId: string } | { name: 'latest' }
+/** A screen that lists episodes, from which one can be opened: the library lists those in progress. */
+type ListScreen = { name: 'podcast'; podcastId: string } | { name: 'latest' } | { name: 'library' }
 
 type Screen =
-  | { name: 'library' }
   | ListScreen
   | { name: 'queue' }
   | { name: 'search' }
@@ -105,6 +104,8 @@ export function SignedInApp({
   // Here rather than on the library, so a category opened stays open while the listener visits a podcast.
   // Favorites start open; the rest closed.
   const [openSections, setOpenSections] = useState<OpenSections>(() => new Set([FAVORITES_SECTION]))
+  // Here too, so the library opens on the same view on coming back to it.
+  const [libraryView, setLibraryView] = useState<LibraryView>('podcasts')
   const [listening] = useState(() => createListeningStore(backend, device.storage))
   const online = useOnline(device)
   // Here rather than on the library, so an import carries on while the listener goes elsewhere.
@@ -277,7 +278,9 @@ export function SignedInApp({
     onPause: player.pause,
     isPlaying: (episodeId) => playerState.episode !== null && playerState.playing && playerState.episode.id === episodeId,
     onOpen: (episode) => {
-      if (screen.name === 'podcast' || screen.name === 'latest') setScreen({ name: 'episode', episode, from: screen })
+      if (screen.name === 'podcast' || screen.name === 'latest' || screen.name === 'library') {
+        setScreen({ name: 'episode', episode, from: screen })
+      }
     },
     onQueue: (episode, where) => listening.enqueue(episode, where),
     onMarkPlayed: (episode, played) =>
@@ -330,7 +333,13 @@ export function SignedInApp({
         episode={episode}
         podcastTitle={podcastById(episode.podcastId)?.title}
         listening={listening}
-        backLabel={from.name === 'latest' ? 'Latest episodes' : (podcastById(from.podcastId)?.title ?? 'Podcast')}
+        backLabel={
+          from.name === 'latest'
+            ? 'Latest episodes'
+            : from.name === 'library'
+              ? 'In Progress'
+              : (podcastById(from.podcastId)?.title ?? 'Podcast')
+        }
         onBack={() => setScreen(from)}
         onPlay={playEpisode}
         download={downloads.get(episode.id)}
@@ -381,12 +390,15 @@ export function SignedInApp({
   } else {
     content = (
       <LibraryScreen
+        view={libraryView}
+        onSelectView={setLibraryView}
         podcasts={podcasts}
         categories={categories}
         openSections={openSections}
         onToggleSection={toggleSection}
         data={data}
         listening={listening}
+        episodeActions={episodeActions}
         onOpenPodcast={openPodcast}
         onReload={device.reload}
         onSignOut={onSignOut}

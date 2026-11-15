@@ -1,5 +1,7 @@
 import { type ChangeEvent, type FormEvent, Fragment, type RefObject, useEffect, useRef, useState } from 'react'
 import { CategoryDialog } from './CategoryDialog'
+import type { EpisodeActions } from './EpisodeRow'
+import { InProgressEpisodes } from './InProgressEpisodes'
 import { favoritesOf, FAVORITES, inListOrder, type LibrarySection, librarySections, OTHER, type Placement, placementsFor } from './categories'
 import { ChevronDownIcon, PlusIcon, StarIcon } from './Icons'
 import { type LibraryDrag, LIFTED_INSET, useLibraryDrag } from './libraryDrag'
@@ -14,6 +16,14 @@ import { failureMessage, type SubscribeFailure, useSubscribe } from './subscribi
 /** What the library's sections are open: each category's ID, `OTHER_SECTION` for Other and `FAVORITES_SECTION` for Favorites. */
 export type OpenSections = ReadonlySet<string>
 
+/** What the library shows below its title: the podcasts, or the episodes started but not finished. */
+export type LibraryView = 'podcasts' | 'inProgress'
+
+const views: { view: LibraryView; label: string }[] = [
+  { view: 'podcasts', label: 'Podcasts' },
+  { view: 'inProgress', label: 'In Progress' },
+]
+
 export const OTHER_SECTION = 'other'
 export const FAVORITES_SECTION = 'favorites'
 
@@ -21,26 +31,33 @@ export const FAVORITES_SECTION = 'favorites'
 const rowKey = (section: string, podcastId: string) => (section === FAVORITES_SECTION ? `${FAVORITES_SECTION}:${podcastId}` : podcastId)
 
 export function LibraryScreen({
+  view,
+  onSelectView,
   podcasts,
   categories,
   openSections,
   onToggleSection,
   data,
   listening,
+  episodeActions,
   onOpenPodcast,
   onReload,
   onSignOut,
   opmlImport,
   onImportOpml,
 }: {
+  view: LibraryView
+  onSelectView: (view: LibraryView) => void
   podcasts: LoadState<Podcast>
   categories: LoadState<Category>
   /** Every section starts closed, but Favorites. */
   openSections: OpenSections
   onToggleSection: (section: string) => void
   data: DataApi
-  /** Whose episodes are played, to tell which podcasts have new ones. */
+  /** Whose episodes are played, to tell which podcasts have new ones and which episodes are in progress. */
   listening: ListeningStore
+  /** What can be done with an episode in progress. */
+  episodeActions: EpisodeActions
   opmlImport: ImportState
   onImportOpml: (file: File) => void
   onOpenPodcast: (podcastId: string) => void
@@ -155,41 +172,65 @@ export function LibraryScreen({
           onClose={() => setDeleting(null)}
         />
       )}
+      <div className="segmented" role="tablist" aria-label="Library view">
+        {views.map(({ view: each, label }) => (
+          <button
+            key={each}
+            type="button"
+            role="tab"
+            aria-selected={each === view}
+            onClick={() => onSelectView(each)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <OpmlImport state={opmlImport} onImport={onImportOpml} input={opmlFile} busy={importing} />
-      {moveFailed && <p role="alert">Couldn’t move the podcast. Check your connection and try again.</p>}
-      {(podcasts.status === 'loading' || categories.status === 'loading') && <p>Loading…</p>}
-      {podcasts.status === 'failed' && <p role="alert">Couldn’t load your library.</p>}
-      {podcasts.status === 'loaded' && categories.status !== 'loading' && (
+      {view === 'inProgress' ? (
+        <InProgressEpisodes
+          data={data}
+          listening={listening}
+          podcastOf={(podcastId) => (podcasts.status === 'loaded' ? podcasts.items.find((p) => p.id === podcastId) : undefined)}
+          {...episodeActions}
+        />
+      ) : (
         <>
-          {podcasts.items.length === 0 && <p>No podcasts yet.</p>}
-          {(categoryList.length > 0 || podcasts.items.length > 0) &&
-            sections.map((section) =>
-              // With no categories, every podcast shows as one list, under no heading.
-              categoryList.length === 0 && section.key !== FAVORITES_SECTION ? (
-                <PodcastList
-                  key={section.key}
-                  label="Podcasts"
-                  section={section}
-                  newCounts={newCounts}
-                  drag={drag}
-                  bind={bind}
-                  onOpen={onOpenPodcast}
-                />
-              ) : (
-                <CategorySection
-                  key={section.key}
-                  section={section}
-                  open={openSections.has(section.key)}
-                  newCounts={newCounts}
-                  drag={drag}
-                  bind={bind}
-                  onToggle={() => onToggleSection(section.key)}
-                  onOpenPodcast={onOpenPodcast}
-                  onRename={(category) => setEditing({ action: 'rename', category })}
-                  onDelete={setDeleting}
-                />
-              ),
-            )}
+          {moveFailed && <p role="alert">Couldn’t move the podcast. Check your connection and try again.</p>}
+          {(podcasts.status === 'loading' || categories.status === 'loading') && <p>Loading…</p>}
+          {podcasts.status === 'failed' && <p role="alert">Couldn’t load your library.</p>}
+          {podcasts.status === 'loaded' && categories.status !== 'loading' && (
+            <>
+              {podcasts.items.length === 0 && <p>No podcasts yet.</p>}
+              {(categoryList.length > 0 || podcasts.items.length > 0) &&
+                sections.map((section) =>
+                  // With no categories, every podcast shows as one list, under no heading.
+                  categoryList.length === 0 && section.key !== FAVORITES_SECTION ? (
+                    <PodcastList
+                      key={section.key}
+                      label="Podcasts"
+                      section={section}
+                      newCounts={newCounts}
+                      drag={drag}
+                      bind={bind}
+                      onOpen={onOpenPodcast}
+                    />
+                  ) : (
+                    <CategorySection
+                      key={section.key}
+                      section={section}
+                      open={openSections.has(section.key)}
+                      newCounts={newCounts}
+                      drag={drag}
+                      bind={bind}
+                      onToggle={() => onToggleSection(section.key)}
+                      onOpenPodcast={onOpenPodcast}
+                      onRename={(category) => setEditing({ action: 'rename', category })}
+                      onDelete={setDeleting}
+                    />
+                  ),
+                )}
+            </>
+          )}
         </>
       )}
       {drag && <DraggedPodcast drag={drag} card={ghost} newCount={newCounts.get(drag.podcast.id) ?? 0} />}

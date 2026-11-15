@@ -1,7 +1,7 @@
 import { generateClient } from 'aws-amplify/data'
 import { getCurrentUser, signIn, signOut } from 'aws-amplify/auth'
 import { LATEST_LISTING } from '../amplify/data/latestEpisodes'
-import { newestFirst } from './episodes'
+import { isInProgress, newestFirst } from './episodes'
 import type { Schema } from '../amplify/data/resource'
 import {
   type Episode,
@@ -9,6 +9,7 @@ import {
   type Podcast,
   type PodcastSearch,
   type EpisodeStateChange,
+  type Observer,
   type SavedEpisodeState,
   type Services,
   type SignInResult,
@@ -26,19 +27,21 @@ const categoryFields = ['id', 'name'] as const
 export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
   const client = generateClient<Schema>()
 
-  /** Every queued episode's state, all pages of them. */
-  async function listQueuedStates(): Promise<SavedEpisodeState[]> {
+  type StateFilter = NonNullable<Parameters<typeof client.models.EpisodeState.list>[0]>['filter']
+
+  /** Every listening state the filter matches, all pages of them. */
+  async function listStates(filter: StateFilter): Promise<SavedEpisodeState[]> {
     const states: SavedEpisodeState[] = []
     let nextToken: string | null | undefined = null
     do {
       const page: { data: StateRecord[]; errors?: unknown[]; nextToken?: string | null } =
         await client.models.EpisodeState.list({
-          filter: { queueOrder: { attributeExists: true } },
+          filter,
           selectionSet: [...stateFields],
           limit: 1000,
           nextToken,
         })
-      if (page.errors?.length) throw new Error('Could not list the queue')
+      if (page.errors?.length) throw new Error('Could not list listening states')
       states.push(...page.data.map(toSavedEpisodeState))
       nextToken = page.nextToken
     } while (nextToken)
@@ -417,85 +420,115 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
         return toSavedEpisodeState(result.data)
       },
 
-      // Not observeQuery with a filter: its live updates are filtered too, so it
-      // would miss an episode joining or leaving the queue. Instead the queued
-      // states are listed, and every state change is watched and sorted here.
       observeQueue(observer) {
-        /** The latest state seen of each episode, queued or not, so an older event cannot undo a newer one. A deleted one stays, unqueued. */
-        const latest = new Map<string, SavedEpisodeState>()
-        const episodes = new Map<string, Episode>()
-        /** Queued, but its episode is gone with its podcast: left out until its state changes again. */
-        const gone = new Set<string>()
-        /** The latest save any live event has shown; null until the first. */
-        let asOf: string | null = null
-        let synced = false
-        let closed = false
-        const fail = () => {
-          if (!closed) observer.error()
-        }
+        return observeChosenStates(
+          () => listStates({ queueOrder: { attributeExists: true } }),
+          (state) => state.queueOrder !== null,
+          observer,
+        )
+      },
 
-        /** Keeps the state if it is the newest seen. Returns whether it changes the queue. */
-        function take(state: SavedEpisodeState): boolean {
-          const current = latest.get(state.episodeId)
-          if (current && Date.parse(current.updatedAt) > Date.parse(state.updatedAt)) return false
-          latest.set(state.episodeId, state)
-          gone.delete(state.episodeId)
-          return state.queueOrder !== null || (current?.queueOrder ?? null) !== null
-        }
-
-        const queued = () =>
-          [...latest.values()].filter((state) => state.queueOrder !== null && !gone.has(state.episodeId))
-
-        /** Sends the whole queue, once the details of every episode in it have been fetched. */
-        async function deliver(snapshotAsOf: string | null) {
-          let missing = queued().filter((state) => !episodes.has(state.episodeId))
-          while (missing.length) {
-            const found = await Promise.all(missing.map((state) => fetchEpisode(state.episodeId)))
-            if (closed) return
-            missing.forEach(({ episodeId }, i) => {
-              const episode = found[i]
-              if (episode) episodes.set(episodeId, episode)
-              else gone.add(episodeId)
-            })
-            missing = queued().filter((state) => !episodes.has(state.episodeId))
-          }
-          if (closed) return
-          observer.next({
-            entries: queued().map((state) => ({ state, episode: episodes.get(state.episodeId)! })),
-            asOf: snapshotAsOf,
-          })
-        }
-
-        function onEvent(state: SavedEpisodeState) {
-          if (asOf === null || Date.parse(state.updatedAt) > Date.parse(asOf)) asOf = state.updatedAt
-          if (take(state) && synced) deliver(asOf).catch(fail)
-        }
-        const selectionSet = [...stateFields]
-        const subscriptions = [
-          client.models.EpisodeState.onCreate({ selectionSet }).subscribe({ next: (record) => onEvent(toSavedEpisodeState(record)), error: fail }),
-          client.models.EpisodeState.onUpdate({ selectionSet }).subscribe({ next: (record) => onEvent(toSavedEpisodeState(record)), error: fail }),
-          client.models.EpisodeState.onDelete({ selectionSet }).subscribe({
-            next: (record) => onEvent({ ...toSavedEpisodeState(record), queueOrder: null }),
-            error: fail,
-          }),
-        ]
-
-        listQueuedStates()
-          .then((states) => {
-            if (closed) return
-            states.forEach(take)
-            synced = true
-            // A fresh fetch: it takes account of every save so far.
-            return deliver(null)
-          })
-          .catch(fail)
-
-        return () => {
-          closed = true
-          subscriptions.forEach((subscription) => subscription.unsubscribe())
-        }
+      observeInProgress(observer) {
+        return observeChosenStates(
+          () => listStates({ played: { eq: false }, positionSeconds: { gt: 0 } }),
+          isInProgress,
+          { next: ({ entries }) => observer.next(entries), error: () => observer.error() },
+        )
       },
     },
+  }
+
+  /**
+   * Every episode whose listening state `chosen` picks, with its details and
+   * state: all of them once `list` has fetched them, then again whenever any
+   * device saves a state that joins, leaves or changes among them. Each
+   * delivery is the whole set, with `asOf` as for `QueueSnapshot`.
+   *
+   * Not observeQuery with a filter: its live updates are filtered too, so it
+   * would miss an episode leaving. Instead the chosen states are listed, and
+   * every state change is watched and sorted here.
+   */
+  function observeChosenStates(
+    list: () => Promise<SavedEpisodeState[]>,
+    chosen: (state: SavedEpisodeState) => boolean,
+    observer: Observer<{ entries: { episode: Episode; state: SavedEpisodeState }[]; asOf: string | null }>,
+  ): () => void {
+    /** The latest state seen of each episode, chosen or not, so an older event cannot undo a newer one. */
+    const latest = new Map<string, SavedEpisodeState>()
+    const episodes = new Map<string, Episode>()
+    /** Its state was deleted, or its episode is gone with its podcast: left out until its state changes again. */
+    const leftOut = new Set<string>()
+    /** The latest save any live event has shown; null until the first. */
+    let asOf: string | null = null
+    let synced = false
+    let closed = false
+    const fail = () => {
+      if (!closed) observer.error()
+    }
+
+    const shown = (state: SavedEpisodeState) => chosen(state) && !leftOut.has(state.episodeId)
+
+    /** Keeps the state if it is the newest seen. Returns whether it changes what is shown. */
+    function take(state: SavedEpisodeState, deleted = false): boolean {
+      const current = latest.get(state.episodeId)
+      if (current && Date.parse(current.updatedAt) > Date.parse(state.updatedAt)) return false
+      const wasShown = current !== undefined && shown(current)
+      latest.set(state.episodeId, state)
+      if (deleted) leftOut.add(state.episodeId)
+      else leftOut.delete(state.episodeId)
+      return wasShown || shown(state)
+    }
+
+    const showing = () => [...latest.values()].filter(shown)
+
+    /** Sends the whole set, once the details of every episode in it have been fetched. */
+    async function deliver(snapshotAsOf: string | null) {
+      let missing = showing().filter((state) => !episodes.has(state.episodeId))
+      while (missing.length) {
+        const found = await Promise.all(missing.map((state) => fetchEpisode(state.episodeId)))
+        if (closed) return
+        missing.forEach(({ episodeId }, i) => {
+          const episode = found[i]
+          if (episode) episodes.set(episodeId, episode)
+          else leftOut.add(episodeId)
+        })
+        missing = showing().filter((state) => !episodes.has(state.episodeId))
+      }
+      if (closed) return
+      observer.next({
+        entries: showing().map((state) => ({ state, episode: episodes.get(state.episodeId)! })),
+        asOf: snapshotAsOf,
+      })
+    }
+
+    function onEvent(state: SavedEpisodeState, deleted = false) {
+      if (asOf === null || Date.parse(state.updatedAt) > Date.parse(asOf)) asOf = state.updatedAt
+      if (take(state, deleted) && synced) deliver(asOf).catch(fail)
+    }
+    const selectionSet = [...stateFields]
+    const subscriptions = [
+      client.models.EpisodeState.onCreate({ selectionSet }).subscribe({ next: (record) => onEvent(toSavedEpisodeState(record)), error: fail }),
+      client.models.EpisodeState.onUpdate({ selectionSet }).subscribe({ next: (record) => onEvent(toSavedEpisodeState(record)), error: fail }),
+      client.models.EpisodeState.onDelete({ selectionSet }).subscribe({
+        next: (record) => onEvent(toSavedEpisodeState(record), true),
+        error: fail,
+      }),
+    ]
+
+    list()
+      .then((states) => {
+        if (closed) return
+        for (const state of states) take(state)
+        synced = true
+        // A fresh fetch: it takes account of every save so far.
+        return deliver(null)
+      })
+      .catch(fail)
+
+    return () => {
+      closed = true
+      subscriptions.forEach((subscription) => subscription.unsubscribe())
+    }
   }
 }
 
