@@ -70,6 +70,12 @@ async function openShowOn(data: DataApi) {
   }
 }
 
+/** Sets the date, leaving timers real. Undone after each test. */
+function setToday(iso: string) {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(Date.parse(iso))
+}
+
 function setVisibility(state: 'hidden' | 'visible') {
   Object.defineProperty(document, 'visibilityState', { configurable: true, value: state })
   act(() => void document.dispatchEvent(new Event('visibilitychange')))
@@ -278,6 +284,7 @@ describe('played state', () => {
   })
 
   it('lets the listener mark an episode played, and unplayed again', async () => {
+    setToday('2026-11-05T09:00:00.000Z')
     const { data, podcastId, firstId } = backendWithShow()
     data.seedEpisodeState({ episodeId: firstId, podcastId, positionSeconds: 900, played: false })
     const device = await openShowOn(data)
@@ -306,6 +313,7 @@ describe('played state', () => {
   })
 
   it('shows which episodes are played, how far through part-played ones are, and which are new', async () => {
+    setToday('2026-11-14T09:00:00.000Z')
     const { data, podcastId, firstId, secondId } = backendWithShow()
     data.ingest(podcastId, [third])
     data.seedEpisodeState({ episodeId: firstId, podcastId, positionSeconds: 900, played: false })
@@ -320,6 +328,34 @@ describe('played state', () => {
     expect(within(device.row(second.title)).queryByRole('progressbar')).not.toBeInTheDocument()
     expect(within(device.row(third.title)).getByText('New')).toBeInTheDocument()
     expect(within(device.row(third.title)).queryByRole('progressbar')).not.toBeInTheDocument()
+  })
+
+  it('calls an episode new only for a week after it came out', async () => {
+    setToday('2026-11-14T09:00:00.000Z')
+    const { data, podcastId } = backendWithShow()
+    data.ingest(podcastId, [{ ...third, title: 'Undated', publishedAt: null }])
+    const device = await openShowOn(data)
+
+    expect(within(device.row(second.title)).getByText('New')).toBeInTheDocument()
+    // Eleven days old and never started: neither new nor played.
+    expect(within(device.row(first.title)).queryByText('New')).not.toBeInTheDocument()
+    expect(within(device.row(first.title)).queryByText('Played')).not.toBeInTheDocument()
+    expect(device.row(first.title)).toHaveTextContent('45 min')
+    expect(within(device.row('Undated')).queryByText('New')).not.toBeInTheDocument()
+  })
+
+  it('stops calling an episode new once it is started or played', async () => {
+    setToday('2026-11-14T09:00:00.000Z')
+    const { data, podcastId, secondId } = backendWithShow()
+    data.ingest(podcastId, [third])
+    data.seedEpisodeState({ episodeId: secondId, podcastId, positionSeconds: 60, played: false })
+    const device = await openShowOn(data)
+
+    expect(within(device.row(second.title)).queryByText('New')).not.toBeInTheDocument()
+
+    await chooseAction(device.user, device.row(third.title), 'Mark played')
+
+    expect(within(device.row(third.title)).queryByText('New')).not.toBeInTheDocument()
   })
 
   it('filters the list to unplayed episodes', async () => {
