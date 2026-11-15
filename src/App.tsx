@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { isDownloadRecord } from './downloads'
 import { forgetLibrary, withLocalCopy } from './localCopy'
 import type { Services, StoredSession } from './services'
 import { SignedInApp } from './SignedInApp'
@@ -79,8 +80,9 @@ export function App({ services }: { services: Services }) {
           await auth.signOut()
         } finally {
           // Signing out removes access from this device: what it keeps of the
-          // library goes too, with changes not yet synced.
-          forgetLibrary(device.storage)
+          // library goes too, with changes not yet synced. Downloads stay, as
+          // their files do, and so do the records that name them.
+          forgetLibrary(device.storage, isDownloadRecord)
           setSession({ status: 'signedOut' })
         }
       }}

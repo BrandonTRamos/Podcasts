@@ -149,6 +149,7 @@ button {
 .podcast nav button,
 .queue nav button,
 .latest nav button,
+.downloads nav button,
 .episode nav button {
   background: none;
   border: none;
@@ -158,13 +159,15 @@ button {
 }
 
 .episodes li,
-.queued li {
+.queued li,
+.downloads-list li {
   padding-block: 0.5rem;
   border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
 }
 
 .episodes h2,
-.queued h2 {
+.queued h2,
+.downloads-list h2 {
   font-size: 1rem;
   margin: 0;
 }
@@ -176,7 +179,8 @@ button {
 }
 
 .episodes h2 button,
-.queued h2 button {
+.queued h2 button,
+.downloads-list h2 button {
   font: inherit;
   text-align: left;
   background: none;
@@ -544,6 +548,16 @@ button {
 }
 
 .episode-downloaded {
+  font-weight: 600;
+}
+
+.downloads-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+
+.downloads-used {
   font-weight: 600;
 }
 

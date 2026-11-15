@@ -108,9 +108,12 @@ function copyOfQueue(snapshot: QueueSnapshot): QueueSnapshot {
   return { entries: snapshot.entries, asOf }
 }
 
-/** Forgets everything this device keeps of the library, changes not yet synced included, as signing out does. */
-export function forgetLibrary(storage: DeviceStorage) {
-  for (const key of storage.keys()) storage.remove(key)
+/**
+ * Forgets everything this device keeps of the library, changes not yet
+ * synced included, as signing out does: every record but those `keep` picks.
+ */
+export function forgetLibrary(storage: DeviceStorage, keep: (key: string) => boolean) {
+  for (const key of storage.keys()) if (!keep(key)) storage.remove(key)
 }
 
 export function readJson<T>(storage: DeviceStorage, key: string): T | undefined {
