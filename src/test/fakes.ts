@@ -713,6 +713,7 @@ export class FakeDeviceFiles implements DeviceFiles {
   #urls = new Map<string, string>()
   #nextUrl = 1
   #outOfSpace = false
+  #failNextRename = false
   /** Deletions waiting to happen, while `holdRemovals` holds them; null when they happen at once. */
   #heldRemovals: (() => void)[] | null = null
   /** Bumped when the app is killed: files it had open can no longer be written by it. */
@@ -756,6 +757,11 @@ export class FakeDeviceFiles implements DeviceFiles {
   }
 
   async rename(from: string, to: string) {
+    if (this.#failNextRename) {
+      this.#failNextRename = false
+      // As Safari's `move` did when given a name alone.
+      throw new DOMException("Argument 1 ('destination') to FileSystemHandle.move must be an instance of FileSystemHandle", 'TypeError')
+    }
     const bytes = this.#files.get(from)
     if (!bytes) throw new DOMException(`No file ${from}`, 'NotFoundError')
     this.#files.delete(from)
@@ -811,6 +817,11 @@ export class FakeDeviceFiles implements DeviceFiles {
   /** The app is killed: what it stored stays, and files it had open take no more from it. */
   killApp() {
     this.#launch++
+  }
+
+  /** The next rename fails, leaving the file under its old name. */
+  failNextRename() {
+    this.#failNextRename = true
   }
 
   /** Every later write fails as the device has no room left. */

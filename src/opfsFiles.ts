@@ -49,8 +49,12 @@ export interface SyncAccessHandle {
 export interface OpfsFileHandle {
   getFile(): Promise<{ size: number }>
   createSyncAccessHandle(): Promise<SyncAccessHandle>
-  /** Missing from some browsers. */
-  move?(name: string): Promise<void>
+  /**
+   * Moves the file to `name` in `destination`. Missing from some browsers.
+   * Safari has only this two-argument form; called with a name alone, it
+   * rejects with a TypeError.
+   */
+  move?(destination: OpfsDirectory, name: string): Promise<void>
 }
 
 export interface OpfsDirectory {
@@ -144,7 +148,8 @@ export function createFileServer(directory: () => Promise<OpfsDirectory>) {
     const source = await handleFor(from)
     if (!source) throw new DOMException(`No file ${from}`, 'NotFoundError')
     if (source.move) {
-      await source.move(to)
+      // The form every browser with `move` has: Safari has no `move(name)`.
+      await source.move(await directory(), to)
       return
     }
     // Without `move`, copy it across a block at a time, never whole in memory.

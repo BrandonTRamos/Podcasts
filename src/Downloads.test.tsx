@@ -242,6 +242,21 @@ describe('downloading an episode', () => {
     expect(device.files.onlyFile()).toEqual(firstFile)
   })
 
+  it('finishes a download whose whole file was stored but never renamed, when tried again', async () => {
+    const { device, user } = await setUp()
+    // As on an iPhone before ticket 19: every byte arrived, then storing it under its final name failed.
+    device.files.failNextRename()
+    await startDownload(user, first.title)
+
+    expect(await within(row(first.title)).findByText('This episode couldn’t be downloaded.')).toBeInTheDocument()
+    expect(device.files.onlyFile()).toEqual(firstFile)
+
+    await user.click(within(row(first.title)).getByRole('button', { name: 'Try again' }))
+
+    expect(await downloaded(first.title)).toBeInTheDocument()
+    expect(device.files.onlyFile()).toEqual(firstFile)
+  })
+
   it('never counts a download as done when the host sends less than the whole file', async () => {
     const { device, user } = await setUp()
     device.network.endEarly(first.enclosureUrl, 600)
