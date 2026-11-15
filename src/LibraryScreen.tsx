@@ -2,7 +2,7 @@ import { type ChangeEvent, type FormEvent, Fragment, type RefObject, useEffect, 
 import { CategoryDialog } from './CategoryDialog'
 import { inListOrder, type LibrarySection, librarySections, OTHER, type Placement, placementsFor } from './categories'
 import { ChevronDownIcon, PlusIcon } from './Icons'
-import { type LibraryDrag, useLibraryDrag } from './libraryDrag'
+import { type LibraryDrag, LIFTED_INSET, useLibraryDrag } from './libraryDrag'
 import { MoreActions } from './MoreActions'
 import type { ImportOutcome, ImportState } from './opmlImport'
 import type { Category, DataApi, Podcast } from './services'
@@ -50,7 +50,9 @@ export function LibraryScreen({
   const { moved, moveFailed, move } = useMoves(podcasts, data)
   const sections = shownSections(moved, categoryList)
 
-  const { drag, bind } = useLibraryDrag({
+  const main = useRef<HTMLElement>(null)
+  const { drag, bind, ghost } = useLibraryDrag({
+    container: main,
     podcastOf(podcastId) {
       for (const section of sections) {
         const podcast = section.podcasts.find((p) => p.id === podcastId)
@@ -61,12 +63,10 @@ export function LibraryScreen({
     onOpenSection: (section) => {
       if (!openSections.has(section)) onToggleSection(section)
     },
-    onDrop(podcast, from, target) {
+    onDrop(podcast, _from, target) {
       const section = sections.find((s) => s.key === target.section)
       if (!section) return
       const others = section.podcasts.filter((p) => p.id !== podcast.id)
-      // Put back where it was: nothing to save.
-      if (from === target.section && section.podcasts.findIndex((p) => p.id === podcast.id) === target.index) return
       move(
         placementsFor(others, podcast.id, target.index).map((placement) => ({
           ...placement,
@@ -77,7 +77,7 @@ export function LibraryScreen({
   })
 
   return (
-    <main className={drag ? 'library dragging' : 'library'}>
+    <main ref={main} className={drag ? 'library dragging' : 'library'}>
       <header>
         <div className="library-title">
           <h1>Library</h1>
@@ -160,7 +160,7 @@ export function LibraryScreen({
               ))}
         </>
       )}
-      {drag && <DraggedPodcast drag={drag} />}
+      {drag && <DraggedPodcast drag={drag} card={ghost} />}
     </main>
   )
 }
@@ -253,13 +253,14 @@ function CategorySection({
 }) {
   const { category, podcasts, key } = section
   const name = category?.name ?? OTHER
-  const targeted = drag?.target?.section === key
+  const targeted = drag?.target.section === key
   return (
     <section className="category" aria-label={name}>
       <div
-        className={targeted && (!open || podcasts.length === 0) ? 'category-heading drop-into' : 'category-heading'}
+        className={targeted && !open ? 'category-heading drop-into' : 'category-heading'}
         data-drop="heading"
         data-section={key}
+        data-flip={`heading:${key}`}
       >
         <h2>
           <button
@@ -286,8 +287,8 @@ function CategorySection({
         )}
       </div>
       {open &&
-        (podcasts.length === 0 ? (
-          <p className="category-empty" data-drop="heading" data-section={key}>
+        (podcasts.length === 0 && !targeted ? (
+          <p className="category-empty" data-drop="heading" data-section={key} data-flip={`empty:${key}`}>
             No podcasts here yet. Open a podcast to choose its category, or hold one to drag it here.
           </p>
         ) : (
@@ -314,9 +315,17 @@ function PodcastList({
   bind: BindRow
   onOpen: (podcastId: string) => void
 }) {
-  const gapAt = drag?.target?.section === key ? drag.target.index : null
+  const gapAt = drag?.target.section === key ? drag.target.index : null
   const gap = (
-    <li key="drop-gap" className="drop-gap" data-drop="gap" data-section={key} style={{ height: drag?.height }} aria-hidden="true" />
+    <li
+      key="drop-gap"
+      className="drop-gap"
+      data-drop="gap"
+      data-section={key}
+      data-flip="gap"
+      style={{ height: drag?.height }}
+      aria-hidden="true"
+    />
   )
   const others = podcasts.filter((podcast) => podcast.id !== drag?.podcast.id)
   const indexOf = new Map(others.map((podcast, index) => [podcast.id, index]))
@@ -333,6 +342,7 @@ function PodcastList({
               data-drop={held ? undefined : 'row'}
               data-section={key}
               data-index={at ?? undefined}
+              data-flip={podcast.id}
               {...bind(podcast.id)}
             >
               <PodcastRow podcast={podcast} onOpen={onOpen} />
@@ -355,22 +365,16 @@ function PodcastRow({ podcast, onOpen }: { podcast: Podcast; onOpen?: (podcastId
   )
 }
 
-/** How far the lifted podcast's card reaches past its row on each side (its padding, in `.dragged-podcast`). */
-const LIFTED_INSET = 12
-
-/** The podcast being dragged, lifted, under the finger. */
-function DraggedPodcast({ drag }: { drag: LibraryDrag }) {
+/**
+ * The podcast being dragged, lifted, under the finger. It is placed by the
+ * drag, outside rendering, through `card`.
+ */
+function DraggedPodcast({ drag, card }: { drag: LibraryDrag; card: RefObject<HTMLDivElement | null> }) {
   return (
-    <div
-      className="podcasts dragged-podcast"
-      aria-hidden="true"
-      style={{
-        top: drag.point.y - drag.grab.y,
-        left: drag.left - LIFTED_INSET,
-        width: drag.width + 2 * LIFTED_INSET,
-      }}
-    >
-      <PodcastRow podcast={drag.podcast} />
+    <div ref={card} className="dragged-podcast" aria-hidden="true" style={{ width: drag.width + 2 * LIFTED_INSET }}>
+      <div className="podcasts dragged-card">
+        <PodcastRow podcast={drag.podcast} />
+      </div>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { inListOrder, placementsFor } from './categories'
 import { HOLD_MS } from './holdToDrag'
@@ -81,24 +81,18 @@ const rowOf = (title: string) => screen.getByText(title).closest('li')!
 
 /**
  * Holds `title`'s row, then drags it over `to` (in its top half, or its
- * bottom) and lets go. The browser's hit testing and layout are stood in for:
- * jsdom has neither.
+ * bottom) and lets go. The browser's layout is stood in for: jsdom has none,
+ * so everything else lies nowhere.
  */
 async function holdAndDrag(title: string, to: HTMLElement, half: 'top' | 'bottom' = 'top') {
   const row = rowOf(title)
   vi.spyOn(to, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 100, 300, 60))
-  document.elementFromPoint = () => to
   fireEvent.mouseDown(row, { button: 0, clientX: 10, clientY: 10 })
   await act(() => new Promise((resolve) => setTimeout(resolve, HOLD_MS + 50)))
   const y = half === 'top' ? 110 : 150
   fireEvent.mouseMove(window, { clientX: 10, clientY: y })
   fireEvent.mouseUp(window, { clientX: 10, clientY: y })
 }
-
-afterEach(() => {
-  // @ts-expect-error jsdom has none; the tests stand one in.
-  delete document.elementFromPoint
-})
 
 describe('dragging a podcast in the library', () => {
   it('moves it to another place in its list, and keeps it there', async () => {
