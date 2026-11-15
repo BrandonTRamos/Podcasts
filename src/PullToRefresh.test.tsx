@@ -62,6 +62,29 @@ describe('pulling down to refresh', () => {
     expect(await screen.findByRole('button', { name: /The Other Show/ })).toBeInTheDocument()
   })
 
+  it('moves the whole screen down with the finger, and back up once let go', async () => {
+    const data = fakeDataApi()
+    data.seedPodcast(showUrl, { title: 'The Example Show' })
+    await renderSignedIn(data)
+    const library = screen.getByRole('main')
+    const offset = () => Number.parseFloat(getComputedStyle(library.closest('.pull-refresh')!).getPropertyValue('--pull'))
+    const at = (y: number) => ({ touches: [{ clientX: 150, clientY: y }] })
+
+    fireEvent.touchStart(window, at(100))
+    fireEvent.touchMove(window, at(160))
+    const partway = offset()
+    fireEvent.touchMove(window, at(260))
+
+    expect(partway).toBeGreaterThan(0)
+    expect(offset()).toBeGreaterThan(partway)
+    expect(library.closest('.pull-refresh-screen')).not.toBeNull()
+
+    fireEvent.touchEnd(window, { touches: [] })
+    await act(() => Promise.resolve())
+    await vi.waitFor(() => expect(screen.queryByText('Refreshing…')).not.toBeInTheDocument())
+    expect(offset()).toBe(0)
+  })
+
   it('does nothing when let go before pulling far enough', async () => {
     const data = fakeDataApi()
     data.seedPodcast(showUrl, { title: 'The Example Show' })

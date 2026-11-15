@@ -1444,50 +1444,44 @@ button.mini-player-open {
 }
 
 /*
- * Pull to refresh: a round badge that comes down from the top of the screen
- * with the finger, turning as it comes, and spins while the refresh runs.
+ * Pull to refresh: the whole screen follows the finger down, uncovering a
+ * spinner that turns as it comes, then rests below the spinner while the
+ * refresh runs, and slides back up.
  */
-.pull-refresh {
+.pull-refresh-spinner {
   position: fixed;
   top: env(safe-area-inset-top);
-  left: 50%;
-  z-index: 30;
-  pointer-events: none;
-  transform: translate(-50%, calc(var(--pull) - 100%));
-  opacity: 0;
-  transition:
-    transform 0.25s ease,
-    opacity 0.25s ease;
-}
-
-.pull-refresh.following,
-.pull-refresh.refreshing {
-  opacity: 1;
-}
-
-/* While the finger is down the badge keeps up with it, unsmoothed. */
-.pull-refresh.following {
-  transition: none;
-}
-
-.pull-refresh-spinner {
+  left: 0;
+  right: 0;
+  height: var(--pull);
   display: grid;
   place-items: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 50%;
-  background: var(--bg);
+  overflow: hidden;
   color: var(--muted);
-  box-shadow: var(--shadow);
+  opacity: var(--pull-shown);
+  pointer-events: none;
+  transition:
+    height 0.3s ease,
+    opacity 0.3s ease;
+}
+
+.pull-refresh-spinner .icon {
   transform: rotate(var(--pull-turn));
 }
 
-/* Far enough: letting go now refreshes. */
-.pull-refresh.armed .pull-refresh-spinner {
-  color: var(--accent);
+.pull-refresh-screen {
+  position: relative;
+  top: var(--pull);
+  transition: top 0.3s ease;
 }
 
-.pull-refresh.refreshing .pull-refresh-spinner {
+/* While the finger is down the screen keeps up with it, unsmoothed. */
+.pull-refresh.following .pull-refresh-spinner,
+.pull-refresh.following .pull-refresh-screen {
+  transition: none;
+}
+
+.pull-refresh.refreshing .pull-refresh-spinner .icon {
   animation: pull-refresh-spin 0.8s linear infinite;
 }
 
@@ -1501,10 +1495,7 @@ button.mini-player-open {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pull-refresh {
-    transition: opacity 0.25s ease;
-  }
-  .pull-refresh.refreshing .pull-refresh-spinner {
+  .pull-refresh.refreshing .pull-refresh-spinner .icon {
     animation: none;
   }
 }

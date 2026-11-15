@@ -398,21 +398,22 @@ export function SignedInApp({
 
   return (
     <div className={showingNowPlaying ? undefined : playerState.episode ? 'with-tab-bar with-mini-player' : 'with-tab-bar'}>
-      {!online && (
-        <p className="connection-notice" role="status">
-          You’re offline. Downloaded episodes still play, and what you play syncs when you’re back online.
-        </p>
-      )}
-      {online && sessionExpired && (
-        <section className="connection-notice" role="status" aria-label="Session expired">
-          <p>Sign in again to sync what you play on this device.</p>
-          <button type="button" onClick={onSignIn}>
-            Sign in
-          </button>
-        </section>
-      )}
-      {content}
-      {!showingNowPlaying && PULL_TO_REFRESH.has(screen.name) && <PullToRefresh onRefresh={refreshAll} />}
+      <PullToRefresh enabled={!showingNowPlaying && PULL_TO_REFRESH.has(screen.name)} onRefresh={refreshAll}>
+        {!online && (
+          <p className="connection-notice" role="status">
+            You’re offline. Downloaded episodes still play, and what you play syncs when you’re back online.
+          </p>
+        )}
+        {online && sessionExpired && (
+          <section className="connection-notice" role="status" aria-label="Session expired">
+            <p>Sign in again to sync what you play on this device.</p>
+            <button type="button" onClick={onSignIn}>
+              Sign in
+            </button>
+          </section>
+        )}
+        {content}
+      </PullToRefresh>
       {/* At the foot of every screen but now playing, which has the full controls and a way out of its own. */}
       {!showingNowPlaying && (
         <div className="bottom-bars">
