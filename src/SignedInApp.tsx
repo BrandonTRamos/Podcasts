@@ -6,6 +6,7 @@ import { EpisodeScreen } from './EpisodeScreen'
 import { LatestScreen } from './LatestScreen'
 import { LibraryScreen } from './LibraryScreen'
 import { createListeningStore, resumePosition, useEpisodeStates } from './listening'
+import { readJson, writeJson } from './localCopy'
 import { MiniPlayer, NowPlayingScreen } from './NowPlaying'
 import { useOnline } from './online'
 import { useOpmlImport } from './opmlImport'
@@ -14,7 +15,23 @@ import { PodcastScreen } from './PodcastScreen'
 import { QueueScreen } from './QueueScreen'
 import { SearchScreen } from './SearchScreen'
 import { type Tab, TabBar } from './TabBar'
-import type { AudioElement, DataApi, Device, Episode, MediaSessionControls, Podcast } from './services'
+import type { AudioElement, DataApi, Device, DeviceStorage, Episode, MediaSessionControls, Podcast } from './services'
+
+/** Where the episode last loaded in the player is kept, for the next launch to have it ready. */
+const LAST_EPISODE_KEY = 'lastEpisode'
+
+/** The episode last loaded on this device, if one is kept and looks whole. */
+function storedLastEpisode(storage: DeviceStorage): PlayableEpisode | undefined {
+  const episode = readJson<PlayableEpisode>(storage, LAST_EPISODE_KEY)
+  const whole =
+    typeof episode === 'object' &&
+    episode !== null &&
+    typeof episode.id === 'string' &&
+    typeof episode.podcastId === 'string' &&
+    typeof episode.title === 'string' &&
+    typeof episode.enclosureUrl === 'string'
+  return whole ? episode : undefined
+}
 
 export type LoadState<T> = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; items: T[] }
 
@@ -107,6 +124,17 @@ export function SignedInApp({
     downloads.localCopy,
     queue.length > 0,
   )
+  const loaded = playerState.episode
+
+  // The episode loaded when the app last closed is ready to play again, paused
+  // where the listener left it. Its file loads only when played.
+  const [lastEpisode] = useState(() => storedLastEpisode(device.storage))
+  useEffect(() => {
+    if (lastEpisode) player.cue(lastEpisode, resumePosition(listening.get(lastEpisode.id)) ?? 0)
+  }, [player, listening, lastEpisode])
+  useEffect(() => {
+    if (loaded) writeJson(device.storage, LAST_EPISODE_KEY, loaded)
+  }, [device.storage, loaded])
 
   // The queue is kept current for as long as the app is open, so the player
   // can move on to an episode queued on another device without fetching it then.
@@ -114,7 +142,6 @@ export function SignedInApp({
 
   // Keep the loaded episode's state current wherever the listener is, so a
   // position saved on another device reaches it.
-  const loaded = playerState.episode
   useEpisodeStates(listening, loaded?.podcastId ?? null)
   const loadedId = loaded?.id ?? null
   const loadedResumePosition = loadedId === null ? null : resumePosition(listening.get(loadedId))
@@ -156,7 +183,7 @@ export function SignedInApp({
    * in its episodes. Playback stays stopped if removing fails.
    */
   async function unsubscribe(podcastId: string) {
-    if (player.getState().episode?.podcastId === podcastId) player.stop()
+    if (player.getState().episode?.podcastId === podcastId) stopPlayer()
     await data.unsubscribe(podcastId)
     listening.forgetPodcast(podcastId)
     void downloads.removePodcast(podcastId)
@@ -165,8 +192,14 @@ export function SignedInApp({
 
   /** Deletes the episode's download, first stopping it if it is playing, as it may be playing the copy. */
   function removeDownload(episodeId: string) {
-    if (player.getState().episode?.id === episodeId) player.stop()
+    if (player.getState().episode?.id === episodeId) stopPlayer()
     void downloads.remove(episodeId)
+  }
+
+  /** Stops and unloads the player, and forgets the episode, so the next launch doesn't have it ready either. */
+  function stopPlayer() {
+    player.stop()
+    device.storage.remove(LAST_EPISODE_KEY)
   }
 
   const openPodcast = useCallback((podcastId: string) => setScreen({ name: 'podcast', podcastId }), [])

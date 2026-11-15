@@ -91,6 +91,13 @@ export interface Player {
    * where it is, unless it failed.
    */
   play(episode: PlayableEpisode, startAt?: number): void
+  /**
+   * Shows this episode as loaded, paused at `startAt` seconds, without
+   * loading its file: that waits until it is played, so it then comes from
+   * the stored copy if one has turned up since. Seeking moves where it will
+   * start. Does nothing if an episode is already loaded.
+   */
+  cue(episode: PlayableEpisode, startAt: number): void
   resume(): void
   pause(): void
   seekTo(seconds: number): void
@@ -128,6 +135,8 @@ export function createPlayer(
   let lastSaveAt = 0
   /** Where the loaded file should start, until its metadata has loaded or the listener seeks. */
   let pendingStart: number | null = null
+  /** The loaded episode was cued, and its file has not loaded: the element holds nothing yet. */
+  let cued = false
 
   function set(next: PlayerState) {
     state = next
@@ -150,7 +159,10 @@ export function createPlayer(
   const fileDuration = () => (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null)
 
   /** Where the file is, or where it is about to start if the browser has not applied that seek yet. */
-  const currentPosition = () => (pendingStart !== null && audio.currentTime === 0 ? pendingStart : audio.currentTime)
+  function currentPosition() {
+    if (cued && state.episode) return state.position
+    return pendingStart !== null && audio.currentTime === 0 ? pendingStart : audio.currentTime
+  }
 
   function save(progress: Progress = { positionSeconds: currentPosition() }) {
     if (!state.episode || state.failed) return
@@ -215,6 +227,7 @@ export function createPlayer(
   /** Loads the episode in place of whatever is loaded, and starts it. */
   function load(episode: PlayableEpisode, startAt: number) {
     loadCount++
+    cued = false
     const start = Math.max(startAt, 0)
     const duration = episode.durationSeconds
     set({ episode, playing: false, position: start, duration, failed: false, speed: state.speed })
@@ -232,6 +245,10 @@ export function createPlayer(
   }
 
   function play(episode: PlayableEpisode, startAt = 0) {
+    if (cued && state.episode && state.episode.id === episode.id) {
+      load(episode, state.position)
+      return
+    }
     if (state.episode && state.episode.id === episode.id && !state.failed) {
       attemptPlay()
       return
@@ -244,6 +261,10 @@ export function createPlayer(
 
   function seekTo(seconds: number) {
     if (!state.episode) return
+    if (cued) {
+      update({ position: Math.max(seconds, 0) })
+      return
+    }
     pendingStart = null
     // Only the file's own length bounds a seek: the feed's can be wrong.
     const position = Math.min(Math.max(seconds, 0), fileDuration() ?? Infinity)
@@ -269,8 +290,17 @@ export function createPlayer(
 
     play,
 
+    cue(episode, startAt) {
+      if (state.episode) return
+      cued = true
+      const position = Math.max(startAt, 0)
+      set({ episode, playing: false, position, duration: episode.durationSeconds, failed: false, speed: state.speed })
+      savedPosition = position
+    },
+
     resume() {
-      if (state.episode && !state.failed) attemptPlay()
+      if (cued && state.episode) load(state.episode, state.position)
+      else if (state.episode && !state.failed) attemptPlay()
     },
 
     pause() {
@@ -310,6 +340,7 @@ export function createPlayer(
 
     stop() {
       loadCount++
+      cued = false
       pendingStart = null
       audio.pause()
       audio.removeAttribute('src')
