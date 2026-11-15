@@ -103,3 +103,22 @@ export function browserMediaSession(): MediaSessionControls {
     setActionHandler: (action, handler) => attempt(() => session.setActionHandler(action, handler)),
   }
 }
+
+/** TypeScript's DOM types lack the Audio Session API. */
+type WithAudioSession = { audioSession?: { type: string } }
+
+/**
+ * Tells Safari the app plays media (its Audio Session API, iOS 16.4+). Left on
+ * its default, Safari lets go of the audio once playback pauses, and iOS hands
+ * the lock screen and headset buttons back to Apple Music within seconds: taking
+ * a Bluetooth headset off, which pauses, then pressing play started Music instead.
+ * Does nothing in browsers without it.
+ */
+export function claimPlaybackAudioSession(browser: WithAudioSession = navigator as WithAudioSession) {
+  if (!browser.audioSession) return
+  try {
+    browser.audioSession.type = 'playback'
+  } catch {
+    // Refused: the app plays as before, just without the hold on the lock screen.
+  }
+}
