@@ -3,6 +3,7 @@ import { Duration, RemovalPolicy, Stack } from 'aws-cdk-lib'
 import { Policy, PolicyStatement } from 'aws-cdk-lib/aws-iam'
 import { EventSourceMapping, FilterCriteria, FilterRule, StartingPosition } from 'aws-cdk-lib/aws-lambda'
 import { BlockPublicAccess, Bucket, BucketEncryption, HttpMethods } from 'aws-cdk-lib/aws-s3'
+import { backendFunctions, defineAlerts, deploymentType, readAlertsConfig } from './alerts/alerts'
 import { auth } from './auth/resource'
 import { data } from './data/resource'
 import { ingestFeedFunction } from './functions/ingest-feed/resource'
@@ -98,3 +99,8 @@ backend.data.resources.cfnResources.amplifyDynamoDbTables['DownloadStaging'].tim
 }
 // The listener is told of a failure and can try again; Lambda retrying it as well would copy the file again unseen.
 stageDownloadLambda.configureAsyncInvoke({ retryAttempts: 0 })
+
+// Cost and failure alerts, emailed to the owner (amplify/alerts/alerts.ts).
+// Every backend function is covered, including ones added later.
+const alerts = readAlertsConfig(process.env, deploymentType(backend.stack))
+if (alerts) defineAlerts(backend.createStack('alerts'), { ...alerts, functions: backendFunctions(backend.stack) })

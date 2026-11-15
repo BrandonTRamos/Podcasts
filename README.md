@@ -73,6 +73,8 @@ Two seams, one per deployable, run as two Vitest projects (`vitest.config.ts`):
 - **client** (`src/**/*.test.{ts,tsx}`, jsdom): renders `<App>` and drives it as a user would with Testing Library. The UI talks to the backend only through the `Services` interface in `src/services.ts`; tests pass in-memory fakes from `src/test/fakes.ts`, and production passes `amplifyServices()`.
 - **backend** (`amplify/**/*.test.ts`, node): invokes function handlers with an event. Real network access is refused by `amplify/test/setup.ts`. Tests fake outbound HTTP with `fakeHttp` and the data store with `fakeFeedStore` (both in `amplify/test/fakes.ts`; the fake store also plays the request table's stream), and use fixture feeds from `amplify/test/fixtures/`. The fake HTTP answers conditional requests with 304 as a real server would. The download stager's tests use `amplify/test/stagingFakes.ts` instead: a fake audio host that streams files made only as they are read, a fake staging store and a fake bucket. Handlers are built by factories in `amplify/feeds/`, `amplify/directory/` and `amplify/downloads/` that take the store (and, for the stager, the bucket); `amplify/functions/*/handler.ts` wires in the real ones (`amplifyFeedStore.ts` and `amplifyStagingStore.ts`, the AppSync data API; `s3StagingBucket.ts`, S3).
 
+`amplify/alerts/alerts.test.ts` (backend project) synthesizes the alerts into a CloudFormation template with the CDK's `Template` assertions and checks the budget, the alarms and the email subscription; it deploys nothing.
+
 `src/installable.test.ts` (client project) checks what a browser reads to install the app to a home screen: the manifest, the `<head>` tags and the icon files in `public/`. `src/appShell.test.ts` (client project) drives the service worker's install, activate and fetch events, with a fake Cache Storage and network, rather than rendering `<App>`.
 
 ## Feeds
@@ -117,7 +119,27 @@ There is one environment: `main` is production. Development uses the sandbox abo
 
   Build logs: AWS console → Amplify → TinCan → `main` → Deployments.
 
-No secrets live in the repo. Amplify reaches GitHub through its GitHub App, and builds run as the IAM role `AmplifyBackendDeploy-TinCan` (AWS managed policy `AmplifyBackendDeployFullAccess`).
+No secrets or personal details live in the repo; the alert address is an Amplify environment variable (see Alerts). Amplify reaches GitHub through its GitHub App, and builds run as the IAM role `AmplifyBackendDeploy-TinCan` (AWS managed policy `AmplifyBackendDeployFullAccess`).
+
+## Alerts
+
+Defined in `amplify/alerts/alerts.ts`, added to the backend at the end of `amplify/backend.ts`, and deployed by the pipeline with the rest of the backend. Both alerts email the owner through one SNS topic (`TinCan alerts`) with one email subscription.
+
+- **Cost**: an AWS Budget emails when the account's actual spend this month passes **5 US dollars**. It watches the whole account, not only TinCan's resources.
+- **Failures**: one CloudWatch alarm per backend function emails when it fails **2 or more times within 3 hours** (the function's `Errors` metric, in fixed 3-hour windows, so the hourly refresh failing three runs in a row always alerts). Every function made with `defineFunction` gets one (whether listed in `defineBackend` or only referenced by the data schema), so a function added later is covered with no further change. Amplify's own internal functions are not watched. The email names the function; its logs are in CloudWatch.
+
+Configuration, read when the backend is synthesized (for the pipeline: AWS console → Amplify → TinCan → Hosting → Environment variables (older consoles: App settings → Environment variables), then redeploy `main`):
+
+| Variable | Required | What |
+| --- | --- | --- |
+| `TINCAN_ALERT_EMAIL` | yes, for the pipeline | Address the alerts go to. Never committed. A pipeline deploy without it fails, so production never runs unwatched. |
+| `TINCAN_MONTHLY_BUDGET_USD` | no | Cost alert threshold in US dollars. Default `5`. |
+
+AWS emails a confirmation to `TINCAN_ALERT_EMAIL` after the first deploy that sets it (and again whenever the address changes). Nothing is delivered until the owner clicks **Confirm subscription** in it.
+
+To change the failure threshold, edit `FAILURE_ALERT` (`failures`, `withinHours`) in `amplify/alerts/alerts.ts` and merge.
+
+A sandbox gets no alerts unless `TINCAN_ALERT_EMAIL` is set in the shell that runs `npm run sandbox`; if it is, the sandbox gets its own copy of both alerts (a second budget on the same account).
 
 ## Create the owner's account in production
 
