@@ -359,6 +359,7 @@ export function SignedInApp({
         openSections={openSections}
         onToggleSection={toggleSection}
         data={data}
+        listening={listening}
         onOpenPodcast={openPodcast}
         onReload={device.reload}
         onSignOut={onSignOut}
