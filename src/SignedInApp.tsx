@@ -4,7 +4,7 @@ import { DownloadsScreen } from './DownloadsScreen'
 import type { EpisodeActions } from './EpisodeRow'
 import { EpisodeScreen } from './EpisodeScreen'
 import { LatestScreen } from './LatestScreen'
-import { LibraryScreen } from './LibraryScreen'
+import { LibraryScreen, type OpenSections } from './LibraryScreen'
 import { createListeningStore, resumePosition, useEpisodeStates } from './listening'
 import { readJson, writeJson } from './localCopy'
 import { MiniPlayer, NowPlayingScreen } from './NowPlaying'
@@ -15,7 +15,16 @@ import { PodcastScreen } from './PodcastScreen'
 import { QueueScreen } from './QueueScreen'
 import { SearchScreen } from './SearchScreen'
 import { type Tab, TabBar } from './TabBar'
-import type { AudioElement, DataApi, Device, DeviceStorage, Episode, MediaSessionControls, Podcast } from './services'
+import type {
+  AudioElement,
+  Category,
+  DataApi,
+  Device,
+  DeviceStorage,
+  Episode,
+  MediaSessionControls,
+  Podcast,
+} from './services'
 
 /** Where the episode last loaded in the player is kept, for the next launch to have it ready. */
 const LAST_EPISODE_KEY = 'lastEpisode'
@@ -83,6 +92,9 @@ export function SignedInApp({
   /** Now playing takes the place of the current screen; closing it goes back there. */
   const [nowPlayingOpen, setNowPlayingOpen] = useState(false)
   const [podcasts, setPodcasts] = useState<LoadState<Podcast>>({ status: 'loading' })
+  const [categories, setCategories] = useState<LoadState<Category>>({ status: 'loading' })
+  // Here rather than on the library, so a category opened stays open while the listener visits a podcast.
+  const [openSections, setOpenSections] = useState<OpenSections>(() => new Set())
   const [listening] = useState(() => createListeningStore(data, device.storage))
   const online = useOnline(device)
   // Here rather than on the library, so an import carries on while the listener goes elsewhere.
@@ -175,6 +187,25 @@ export function SignedInApp({
         error: () => setPodcasts({ status: 'failed' }),
       }),
     [data],
+  )
+
+  useEffect(
+    () =>
+      data.observeCategories({
+        next: (items) => setCategories({ status: 'loaded', items }),
+        error: () => setCategories({ status: 'failed' }),
+      }),
+    [data],
+  )
+
+  const toggleSection = useCallback(
+    (section: string) =>
+      setOpenSections((open) => {
+        const next = new Set(open)
+        if (!next.delete(section)) next.add(section)
+        return next
+      }),
+    [],
   )
 
   /**
@@ -313,6 +344,7 @@ export function SignedInApp({
         data={data}
         podcastId={screen.podcastId}
         podcast={podcastById(screen.podcastId)}
+        categories={categories.status === 'loaded' ? categories.items : undefined}
         listening={listening}
         onBack={() => setScreen({ name: 'library' })}
         onUnsubscribe={() => unsubscribe(screen.podcastId)}
@@ -323,6 +355,9 @@ export function SignedInApp({
     content = (
       <LibraryScreen
         podcasts={podcasts}
+        categories={categories}
+        openSections={openSections}
+        onToggleSection={toggleSection}
         data={data}
         onOpenPodcast={openPodcast}
         onReload={device.reload}

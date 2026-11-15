@@ -41,6 +41,17 @@ export interface Podcast {
   lastFetchedAt: string | null
   /** Why the latest refresh failed; null if it succeeded. */
   lastFetchError: FeedError | null
+  /**
+   * The category the listener put it in; null for none. One that names a
+   * category since deleted counts as none: the podcast is in Other.
+   */
+  categoryId: string | null
+}
+
+/** A group of podcasts the listener made, such as News or Movies. A podcast is in one at most. */
+export interface Category {
+  id: string
+  name: string
 }
 
 export interface Episode {
@@ -148,6 +159,22 @@ export interface Observer<T> {
 export interface DataApi {
   /** The library, kept current as podcasts are added. Returns a function that stops observing. */
   observePodcasts(observer: Observer<Podcast[]>): () => void
+  /** The listener's categories, in no particular order, kept current as they change. */
+  observeCategories(observer: Observer<Category[]>): () => void
+  /** Throws when the backend can't be reached. */
+  createCategory(name: string): Promise<Category>
+  /** Throws when the backend can't be reached. */
+  renameCategory(categoryId: string, name: string): Promise<void>
+  /**
+   * Deletes the category. Its podcasts stay in the library, in Other: each
+   * still names it, which counts as none. Throws when the backend can't be reached.
+   */
+  deleteCategory(categoryId: string): Promise<void>
+  /**
+   * Puts the podcast in the category, or in none (Other) for null. The change
+   * arrives through `observePodcasts`. Throws when the backend can't be reached.
+   */
+  setPodcastCategory(podcastId: string, categoryId: string | null): Promise<void>
   /** One podcast's episodes, in no particular order, kept current as they are ingested. */
   observeEpisodes(podcastId: string, observer: Observer<Episode[]>): () => void
   /**

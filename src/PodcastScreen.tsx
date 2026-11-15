@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react'
+import { CategoryPicker } from './CategoryPicker'
 import { type EpisodeActions, EpisodeRow } from './EpisodeRow'
 import { newestFirst } from './episodes'
 import { formatDateTime } from './format'
 import { ChevronLeftIcon } from './Icons'
 import { Artwork } from './LibraryScreen'
 import { type ListeningStore, useEpisodeStates } from './listening'
-import type { DataApi, Episode, EpisodeState, FeedError, Podcast } from './services'
+import type { Category, DataApi, Episode, EpisodeState, FeedError, Podcast } from './services'
 import type { LoadState } from './SignedInApp'
 
 export function PodcastScreen({
   data,
   podcastId,
   podcast,
+  categories,
   listening,
   onBack,
   onUnsubscribe,
@@ -21,6 +23,8 @@ export function PodcastScreen({
   podcastId: string
   /** Undefined until the library has loaded it. */
   podcast: Podcast | undefined
+  /** The listener's categories; undefined until loaded. */
+  categories: Category[] | undefined
   listening: ListeningStore
   onBack: () => void
   /** Removes the podcast from the library. Rejects if that failed. */
@@ -53,6 +57,7 @@ export function PodcastScreen({
           <div>
             <h1>{podcast.title}</h1>
             {podcast.author && <p className="podcast-author">{podcast.author}</p>}
+            {categories && <CategoryPicker podcast={podcast} categories={categories} data={data} />}
             <Unsubscribe podcastTitle={podcast.title} onUnsubscribe={onUnsubscribe} />
           </div>
         </header>

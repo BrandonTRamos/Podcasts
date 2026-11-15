@@ -19,7 +19,8 @@ import {
 
 const episodeFields = ['id', 'podcastId', 'title', 'publishedAt', 'durationSeconds', 'enclosureUrl'] as const
 const stateFields = ['id', 'podcastId', 'positionSeconds', 'played', 'queueOrder', 'updatedAt'] as const
-const podcastFields = ['id', 'title', 'author', 'artworkUrl', 'lastFetchedAt', 'lastFetchError'] as const
+const podcastFields = ['id', 'title', 'author', 'artworkUrl', 'lastFetchedAt', 'lastFetchError', 'categoryId'] as const
+const categoryFields = ['id', 'name'] as const
 
 /** Production auth and data: Cognito for auth, the AppSync data API for data. */
 export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
@@ -123,6 +124,40 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
           error: () => observer.error(),
         })
         return () => subscription.unsubscribe()
+      },
+
+      observeCategories(observer) {
+        const subscription = client.models.Category.observeQuery({ selectionSet: [...categoryFields] }).subscribe({
+          next: ({ items }) => observer.next(items.map(({ id, name }) => ({ id, name }))),
+          error: () => observer.error(),
+        })
+        return () => subscription.unsubscribe()
+      },
+
+      async createCategory(name) {
+        const { data, errors } = await client.models.Category.create({ name }, { selectionSet: [...categoryFields] })
+        throwIfErrors(errors)
+        if (!data) throw new Error('Creating the category returned no record')
+        return { id: data.id, name: data.name }
+      },
+
+      async renameCategory(categoryId, name) {
+        const { errors } = await client.models.Category.update({ id: categoryId, name }, { selectionSet: [...categoryFields] })
+        throwIfErrors(errors)
+      },
+
+      async deleteCategory(categoryId) {
+        const { errors } = await client.models.Category.delete({ id: categoryId }, { selectionSet: [...categoryFields] })
+        throwIfErrors(errors)
+      },
+
+      async setPodcastCategory(podcastId, categoryId) {
+        // A null removes the field. Every field the library shows is selected, as live updates carry only these.
+        const { errors } = await client.models.Podcast.update(
+          { id: podcastId, categoryId },
+          { selectionSet: [...podcastFields] },
+        )
+        throwIfErrors(errors)
       },
 
       // Not observeQuery: it can't query an index in order, or stop at a limit.
@@ -498,6 +533,7 @@ function toPodcast(record: {
   artworkUrl?: string | null
   lastFetchedAt?: string | null
   lastFetchError?: Podcast['lastFetchError'] | null
+  categoryId?: string | null
 }): Podcast {
   return {
     id: record.id,
@@ -506,6 +542,7 @@ function toPodcast(record: {
     artworkUrl: record.artworkUrl ?? null,
     lastFetchedAt: record.lastFetchedAt ?? null,
     lastFetchError: record.lastFetchError ?? null,
+    categoryId: record.categoryId ?? null,
   }
 }
 

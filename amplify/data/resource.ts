@@ -26,9 +26,17 @@ const schema = a
         lastFetchedAt: a.datetime(),
         // Why the latest refresh failed; absent when it succeeded.
         lastFetchError: a.ref('FeedError'),
+        // The listener's category for it, set by the client; absent for none (Other).
+        // Not a relationship: deleting a category leaves its podcasts naming it, which counts as none.
+        categoryId: a.id(),
         episodes: a.hasMany('Episode', 'podcastId'),
       })
       .secondaryIndexes((index) => [index('feedUrl')]),
+
+    // A group of podcasts the listener made, such as News or Movies.
+    Category: a.model({
+      name: a.string().required(),
+    }),
 
     FeedError: a.enum(['invalidUrl', 'unreachable', 'notAFeed', 'failed']),
 

@@ -5,6 +5,7 @@ import {
   type Device,
   type DeviceFiles,
   type DeviceStorage,
+  type Category,
   type DirectoryPodcast,
   type Episode,
   type EpisodeState,
@@ -131,6 +132,8 @@ export function fakeDataApi() {
   const directory: Omit<DirectoryPodcast, 'podcastId'>[] = []
   let directoryBroken = false
   const podcastListeners = new Set<Listener<Podcast[]>>()
+  const categories: Category[] = []
+  const categoryListeners = new Set<Listener<Category[]>>()
   const episodeListeners = new Map<string, Set<Listener<Episode[]>>>()
   const latestListeners = new Set<Listener<Episode[]>>()
   /** The podcasts asked to be refreshed, in order. */
@@ -186,6 +189,7 @@ export function fakeDataApi() {
   const everyListenerSet = (): Set<Listener<never>>[] =>
     [
       podcastListeners,
+      categoryListeners,
       latestListeners,
       queueListeners,
       ...episodeListeners.values(),
@@ -207,6 +211,7 @@ export function fakeDataApi() {
   }
 
   const notifyPodcasts = () => notify(podcastListeners, publicPodcasts())
+  const notifyCategories = () => notify(categoryListeners, categories.map((category) => ({ ...category })))
 
   function addPodcast(feedUrl: string, feed: Omit<Podcast, 'id'>) {
     const podcast = { id: `podcast-${nextId++}`, feedUrl, ...feed }
@@ -245,6 +250,35 @@ export function fakeDataApi() {
     return {
       observePodcasts(observer) {
         return listen(connection, podcastListeners, observer, publicPodcasts)
+      },
+      observeCategories(observer) {
+        return listen(connection, categoryListeners, observer, () => categories.map((category) => ({ ...category })))
+      },
+      async createCategory(name) {
+        reach(connection)
+        const category = { id: `category-${nextId++}`, name }
+        categories.push(category)
+        queueMicrotask(notifyCategories)
+        return { ...category }
+      },
+      async renameCategory(categoryId, name) {
+        reach(connection)
+        const category = categories.find((c) => c.id === categoryId)
+        if (!category) throw new Error('No such category')
+        category.name = name
+        queueMicrotask(notifyCategories)
+      },
+      async deleteCategory(categoryId) {
+        reach(connection)
+        removeWhere(categories, (category) => category.id === categoryId)
+        queueMicrotask(notifyCategories)
+      },
+      async setPodcastCategory(podcastId, categoryId) {
+        reach(connection)
+        const podcast = podcasts.find((p) => p.id === podcastId)
+        if (!podcast) throw new Error('No such podcast')
+        podcast.categoryId = categoryId
+        queueMicrotask(notifyPodcasts)
       },
       observeEpisodes(podcastId, observer) {
         return listen(connection, listenersFor(episodeListeners, podcastId), observer, () => episodesOf(podcastId))
@@ -449,14 +483,28 @@ export function fakeDataApi() {
         if (feed === undefined) settle(requestId, { status: 'unreachable' })
         else if (typeof feed === 'string') settle(requestId, { status: feed })
         else {
-          const podcastId = addPodcast(feedUrl, { ...feed, lastFetchedAt: timeAt(tick), lastFetchError: null })
+          const podcastId = addPodcast(feedUrl, { ...feed, lastFetchedAt: timeAt(tick), lastFetchError: null, categoryId: null })
           settle(requestId, { status: 'subscribed', podcastId })
         }
       }
     },
     /** A podcast already in the library. Returns its ID. */
     seedPodcast(feedUrl: string, podcast: Pick<Podcast, 'title'> & Partial<Omit<Podcast, 'id' | 'title'>>) {
-      return addPodcast(feedUrl, { author: null, artworkUrl: null, lastFetchedAt: null, lastFetchError: null, ...podcast })
+      return addPodcast(feedUrl, {
+        author: null,
+        artworkUrl: null,
+        lastFetchedAt: null,
+        lastFetchError: null,
+        categoryId: null,
+        ...podcast,
+      })
+    },
+    /** A category the listener already made. Returns its ID. */
+    seedCategory(name: string) {
+      const id = `category-${nextId++}`
+      categories.push({ id, name })
+      notifyCategories()
+      return id
     },
     /** A refresh of the podcast's feed records its outcome, as the backend does after an hourly or requested refresh. */
     recordRefresh(podcastId: string, outcome: { lastFetchedAt?: string; lastFetchError: FeedError | null }) {

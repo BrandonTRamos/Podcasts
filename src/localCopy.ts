@@ -5,7 +5,7 @@ const COPY_PREFIX = 'copy:'
 
 /**
  * The data API, with a copy of what it last showed kept on this device so the
- * library renders with no network: the podcasts, each podcast's episodes once
+ * library renders with no network: the podcasts, their categories, each podcast's episodes once
  * opened, the latest episodes, listening state and the queue.
  *
  * Each observation shows the copy at once, if there is one, then what the
@@ -88,6 +88,7 @@ export function withLocalCopy(data: DataApi, device: Pick<Device, 'storage' | 'i
   return {
     ...data,
     observePodcasts: (observer) => observeWithCopy('podcasts', data.observePodcasts, observer),
+    observeCategories: (observer) => observeWithCopy('categories', data.observeCategories, observer),
     observeEpisodes: (podcastId, observer) =>
       observeWithCopy(`episodes:${podcastId}`, (o) => data.observeEpisodes(podcastId, o), observer),
     observeLatestEpisodes: (observer) => observeWithCopy('latest', data.observeLatestEpisodes, observer),
