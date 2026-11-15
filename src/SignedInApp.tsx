@@ -12,6 +12,7 @@ import { useOnline } from './online'
 import { useOpmlImport } from './opmlImport'
 import { type PlayableEpisode, type SaveProgress, type TakeNext, usePlayer } from './player'
 import { PodcastScreen } from './PodcastScreen'
+import { PullToRefresh } from './PullToRefresh'
 import { QueueScreen } from './QueueScreen'
 import { SearchScreen } from './SearchScreen'
 import { type Tab, TabBar } from './TabBar'
@@ -57,6 +58,9 @@ function findPodcast(podcasts: LoadState<Podcast>, podcastId: string): Podcast |
   return podcasts.status === 'loaded' ? podcasts.items.find((p) => p.id === podcastId) : undefined
 }
 
+/** The screens that pulling down from the top refreshes: those a tab opens, but search, whose results are its own. */
+const PULL_TO_REFRESH: ReadonlySet<Screen['name']> = new Set(['library', 'latest', 'queue', 'downloads'])
+
 /** A screen that lists episodes, from which one can be opened. */
 type ListScreen = { name: 'podcast'; podcastId: string } | { name: 'latest' }
 
@@ -70,7 +74,7 @@ type Screen =
   | { name: 'episode'; episode: Episode; from: ListScreen }
 
 export function SignedInApp({
-  data,
+  data: backend,
   audio,
   mediaSession,
   device,
@@ -88,6 +92,11 @@ export function SignedInApp({
   /** Takes the listener to sign in again. */
   onSignIn?: () => void
 }) {
+  // A fresh copy of the data API after each refresh, so every screen's live
+  // observations, which start over when it changes, fetch again whatever
+  // they missed (as while iOS had the app suspended).
+  const [refreshed, setRefreshed] = useState<{ of: DataApi; data: DataApi } | null>(null)
+  const data = refreshed?.of === backend ? refreshed.data : backend
   const [screen, setScreen] = useState<Screen>({ name: 'library' })
   /** Now playing takes the place of the current screen; closing it goes back there. */
   const [nowPlayingOpen, setNowPlayingOpen] = useState(false)
@@ -96,10 +105,10 @@ export function SignedInApp({
   // Here rather than on the library, so a category opened stays open while the listener visits a podcast.
   // Favorites start open; the rest closed.
   const [openSections, setOpenSections] = useState<OpenSections>(() => new Set([FAVORITES_SECTION]))
-  const [listening] = useState(() => createListeningStore(data, device.storage))
+  const [listening] = useState(() => createListeningStore(backend, device.storage))
   const online = useOnline(device)
   // Here rather than on the library, so an import carries on while the listener goes elsewhere.
-  const opmlImport = useOpmlImport(data)
+  const opmlImport = useOpmlImport(backend)
   const saveProgress = useCallback<SaveProgress>(
     (episode, { positionSeconds, played }) =>
       listening.update(episode.id, episode.podcastId, played ? { positionSeconds, played } : { positionSeconds }),
@@ -127,7 +136,7 @@ export function SignedInApp({
     if (!episode) return null
     return { episode: toPlayable(episode), startAt: resumePosition(listening.get(episode.id)) ?? 0 }
   }, [listening, toPlayable])
-  const downloads = useDownloads(device, data)
+  const downloads = useDownloads(device, backend)
   const queue = listening.queue()
   const { player, state: playerState } = usePlayer(
     audio,
@@ -237,6 +246,23 @@ export function SignedInApp({
   const openPodcast = useCallback((podcastId: string) => setScreen({ name: 'podcast', podcastId }), [])
 
   const podcastById = (podcastId: string) => findPodcast(podcasts, podcastId)
+
+  /**
+   * Catches up on everything: what other devices saved, and the library and
+   * episodes as the backend has them, then asks for every podcast's feed to be
+   * fetched now rather than at the next hourly refresh. New episodes arrive
+   * as each refresh finds them. Throws if any podcast couldn't be asked, or
+   * at once when offline, leaving what is shown as it is.
+   */
+  async function refreshAll() {
+    if (!device.isOnline()) throw new Error('Offline')
+    listening.refresh()
+    setRefreshed({ of: backend, data: { ...backend } })
+    const current = podcastsRef.current
+    const podcastIds = current.status === 'loaded' ? current.items.map((podcast) => podcast.id) : []
+    const asked = await Promise.allSettled(podcastIds.map((podcastId) => backend.refreshPodcast(podcastId)))
+    if (asked.some((result) => result.status === 'rejected')) throw new Error('Some podcasts could not be refreshed')
+  }
 
   /** Plays the episode now; if it was queued, it leaves the queue. */
   function playEpisode(episode: Episode) {
@@ -386,6 +412,7 @@ export function SignedInApp({
         </section>
       )}
       {content}
+      {!showingNowPlaying && PULL_TO_REFRESH.has(screen.name) && <PullToRefresh onRefresh={refreshAll} />}
       {/* At the foot of every screen but now playing, which has the full controls and a way out of its own. */}
       {!showingNowPlaying && (
         <div className="bottom-bars">
