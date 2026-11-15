@@ -549,6 +549,15 @@ input.switch:checked::after {
   min-width: 0;
 }
 
+.episode-row-with-artwork {
+  grid-template-columns: auto 1fr auto;
+  column-gap: 0.75rem;
+}
+
+.episode-row-with-artwork > .artwork {
+  align-self: start;
+}
+
 .episode-row h2,
 .queued h2,
 .downloads-list h3 {

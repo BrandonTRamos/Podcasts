@@ -2,19 +2,19 @@ import { useEffect, useState } from 'react'
 import { type EpisodeActions, EpisodeRow } from './EpisodeRow'
 import { newestFirst } from './episodes'
 import { type ListeningStore, useEpisodeStatesOfEach } from './listening'
-import type { DataApi, Episode } from './services'
+import type { DataApi, Episode, Podcast } from './services'
 import type { LoadState } from './SignedInApp'
 
 /** The newest episodes across every subscription, newest first, kept current as refreshes find new ones. */
 export function LatestScreen({
   data,
   listening,
-  podcastTitleOf,
+  podcastOf,
   ...actions
 }: {
   data: Pick<DataApi, 'observeLatestEpisodes'>
   listening: ListeningStore
-  podcastTitleOf: (podcastId: string) => string | undefined
+  podcastOf: (podcastId: string) => Pick<Podcast, 'title' | 'artworkUrl'> | undefined
 } & EpisodeActions) {
   const [episodes, setEpisodes] = useState<LoadState<Episode>>({ status: 'loading' })
   const [statesArrived, setStatesArrived] = useState(false)
@@ -42,15 +42,19 @@ export function LatestScreen({
   else {
     content = (
       <ol className="episodes" aria-label="Latest episodes">
-        {newestFirst(episodes.items).map((episode) => (
-          <EpisodeRow
-            key={episode.id}
-            episode={episode}
-            state={listening.get(episode.id)}
-            podcastTitle={podcastTitleOf(episode.podcastId)}
-            {...actions}
-          />
-        ))}
+        {newestFirst(episodes.items).map((episode) => {
+          const podcast = podcastOf(episode.podcastId)
+          return (
+            <EpisodeRow
+              key={episode.id}
+              episode={episode}
+              state={listening.get(episode.id)}
+              podcastTitle={podcast?.title}
+              artworkUrl={podcast?.artworkUrl ?? null}
+              {...actions}
+            />
+          )
+        })}
       </ol>
     )
   }
