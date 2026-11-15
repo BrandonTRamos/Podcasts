@@ -8,9 +8,11 @@ import {
   LATEST_EPISODES_LIMIT,
   type Podcast,
   type PodcastSearch,
+  type EpisodeStateChange,
   type SavedEpisodeState,
   type Services,
   type SignInResult,
+  type StoredSession,
   type SubscribeStart,
 } from './services'
 
@@ -41,6 +43,32 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
     return states
   }
 
+  /**
+   * Updates an episode's listening state unless the change it holds was made
+   * after this one, in one conditional write. The model client can't send a
+   * condition, so this is the generated mutation, called directly. Its
+   * selection set holds every field, as live updates of it carry only these.
+   */
+  async function updateIfNotOutdone(
+    input: { id: string; changedAt: string } & EpisodeStateChange,
+  ): Promise<{ data: StateRecord | null; errors?: readonly { message: string; errorType?: string }[] }> {
+    try {
+      const result = (await client.graphql({
+        query: UPDATE_EPISODE_STATE,
+        variables: {
+          input,
+          condition: { or: [{ changedAt: { attributeExists: false } }, { changedAt: { le: input.changedAt } }] },
+        },
+      })) as { data?: { updateEpisodeState?: StateRecord | null } }
+      return { data: result.data?.updateEpisodeState ?? null }
+    } catch (error) {
+      // A GraphQL error rejects with the whole result.
+      const errors = (error as { errors?: { message: string; errorType?: string }[] } | null)?.errors
+      if (errors) return { data: null, errors }
+      throw error
+    }
+  }
+
   /** One episode's details, or null if it no longer exists. */
   async function fetchEpisode(id: string): Promise<Episode | null> {
     const { data, errors } = await client.models.Episode.get({ id }, { selectionSet: [...episodeFields] })
@@ -50,12 +78,18 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
 
   return {
     auth: {
-      async currentUser() {
+      async storedSession(): Promise<StoredSession> {
         try {
           const user = await getCurrentUser()
-          return { email: user.signInDetails?.loginId ?? user.username }
-        } catch {
-          return null
+          return { status: 'signedIn', user: { email: user.signInDetails?.loginId ?? user.username } }
+        } catch (error) {
+          // No tokens stored, or Cognito refused to renew them for good (Amplify then clears them).
+          const name = error instanceof Error ? error.name : ''
+          if (name === 'UserUnAuthenticatedException' || SESSION_ENDED.some((ended) => name.startsWith(ended))) {
+            return { status: 'signedOut' }
+          }
+          // The tokens have expired and renewing them failed for now, as it does with no network.
+          return { status: 'unconfirmed' }
         }
       },
 
@@ -252,10 +286,11 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
         return () => subscription.unsubscribe()
       },
 
-      async saveEpisodeState(episodeId, podcastId, change): Promise<SavedEpisodeState> {
-        // Most saves are to an episode already started, so try updating first. Each
-        // call fails its condition when the record is (or is not) there yet.
-        const update = () => client.models.EpisodeState.update({ id: episodeId, ...change })
+      async saveEpisodeState(episodeId, podcastId, change, changedAt): Promise<SavedEpisodeState> {
+        // Most saves are to an episode already started, so try updating first. An
+        // update fails its condition when the record is not there yet, or holds a
+        // change made later than this one; a create, when the record is there.
+        const update = () => updateIfNotOutdone({ id: episodeId, ...change, changedAt })
         let result = await update()
         if (!result.data && failedCondition(result.errors)) {
           const { queueOrder, ...rest } = change
@@ -267,9 +302,16 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
             ...rest,
             // Left out rather than null when not queued, as an update leaves it.
             ...(queueOrder != null && { queueOrder }),
+            changedAt,
           })
-          // Another device created it in the meantime.
-          if (!result.data && failedCondition(result.errors)) result = await update()
+          if (!result.data && failedCondition(result.errors)) {
+            // It is there: either another device created it in the meantime, or it holds a later change.
+            result = await update()
+            if (!result.data && failedCondition(result.errors)) {
+              // The later change wins: this one is dropped, and the state as it stands is the answer.
+              result = await client.models.EpisodeState.get({ id: episodeId }, { selectionSet: [...stateFields] })
+            }
+          }
         }
         if (result.errors?.length || !result.data) {
           throw new Error(result.errors?.map((e) => e.message).join('; ') ?? 'No record saved')
@@ -358,6 +400,31 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
     },
   }
 }
+
+/** Errors renewing a session that mean it is over: Amplify clears its tokens on these. */
+const SESSION_ENDED = [
+  'NotAuthorizedException',
+  'TokenRevokedException',
+  'UserNotFoundException',
+  'PasswordResetRequiredException',
+  'UserNotConfirmedException',
+  'RefreshTokenReuseException',
+]
+
+const UPDATE_EPISODE_STATE = /* GraphQL */ `
+  mutation UpdateEpisodeState($input: UpdateEpisodeStateInput!, $condition: ModelEpisodeStateConditionInput) {
+    updateEpisodeState(input: $input, condition: $condition) {
+      id
+      podcastId
+      positionSeconds
+      played
+      queueOrder
+      changedAt
+      createdAt
+      updatedAt
+    }
+  }
+`
 
 interface StateRecord {
   id: string

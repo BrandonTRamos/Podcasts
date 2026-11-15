@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
@@ -141,12 +141,17 @@ describe('refreshing a podcast on demand', () => {
   })
 
   it('stops checking once the backend has had time to answer, as for a feed found unchanged', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
     const data = fakeDataApi()
     data.seedPodcast(showUrl, { ...show, lastFetchedAt: '2026-11-14T09:00:00.000Z' })
-    const { user } = await renderSignedIn(data, { advanceTimers: vi.advanceTimersByTime })
+    const { user } = await renderSignedIn(data)
     await openShow(user)
-    await user.click(within(feedStatus()).getByRole('button', { name: 'Refresh' }))
+    // From here the clock moves only when told, and the tap is handled, its
+    // request answered and the check started, all within act, so the check's
+    // timer starts now rather than some unknown time later.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    await act(async () => {
+      fireEvent.click(within(feedStatus()).getByRole('button', { name: 'Refresh' }))
+    })
 
     // An unchanged feed writes nothing, so no update comes; the check ends on its own.
     act(() => void vi.advanceTimersByTime(29_000))

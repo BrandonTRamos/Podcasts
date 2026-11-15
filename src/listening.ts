@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
-import type { DataApi, Episode, EpisodeState, EpisodeStateChange, SavedEpisodeState } from './services'
+import { readJson, writeJson } from './localCopy'
+import type { DataApi, DeviceStorage, Episode, EpisodeState, EpisodeStateChange, SavedEpisodeState } from './services'
 
 export type ListeningStatus = 'loading' | 'loaded' | 'failed'
 
@@ -16,7 +17,11 @@ export function resumePosition(state: EpisodeState | undefined): number | null {
  * This device's copy of the listener's place in each episode, what they have
  * played, and the queue. Changes made here show at once and are saved in the
  * background; saves from other devices arrive through the data API. Each save
- * changes only the fields it names, and of two saves the later wins.
+ * changes only the fields it names. Of two changes to an episode, the one made
+ * later wins, wherever it was made and whenever it reached the backend.
+ *
+ * A change not yet saved, as one made offline, is kept on this device, through
+ * relaunches, and sent again by `sendUnsynced` until the backend has it.
  *
  * The queue is the episodes whose state has a queue order, lowest first.
  * Editing it never waits on the network, so the player can take the next
@@ -31,8 +36,13 @@ export interface ListeningStore {
   watch(podcastId: string): () => void
   /** Whether a watched podcast's states have arrived. */
   status(podcastId: string): ListeningStatus
-  /** Fetches every watched podcast's states, and the queue, afresh, catching saves whose live update was missed. */
+  /**
+   * Fetches every watched podcast's states, and the queue, afresh, catching
+   * saves whose live update was missed, and sends changes not yet saved.
+   */
   refresh(): void
+  /** Sends every change made here that the backend does not have yet: the network may be back. */
+  sendUnsynced(): void
   /** Keeps the queue current, whatever podcasts it holds. Returns a function that stops watching. */
   watchQueue(): () => void
   /** Whether the watched queue has arrived. */
@@ -61,15 +71,25 @@ export interface ListeningStore {
 
 /** A change made on this device that the backend does not have yet. */
 interface LocalChange {
-  write: number
   podcastId: string
   change: EpisodeStateChange
-  /** Its save failed. It stays until a later save from anywhere replaces it. */
-  failed: boolean
+  /** When the listener made it (ISO 8601). */
+  changedAt: string
+  /** It is on its way to the backend. */
+  sending: boolean
+}
+
+/** Where changes not yet saved are kept on the device, with the details of episodes they queue. */
+const UNSYNCED_KEY = 'unsynced'
+
+interface StoredUnsynced {
+  changes: { episodeId: string; podcastId: string; change: EpisodeStateChange; changedAt: string }[]
+  episodes: Episode[]
 }
 
 export function createListeningStore(
   data: Pick<DataApi, 'observeEpisodeStates' | 'saveEpisodeState' | 'observeQueue'>,
+  storage: DeviceStorage,
 ): ListeningStore {
   /** As last saved, by any device. */
   const saved = new Map<string, SavedEpisodeState>()
@@ -83,24 +103,37 @@ export function createListeningStore(
   /** Podcasts unsubscribed from: nothing more is kept or saved for their episodes. */
   const forgotten = new Set<string>()
   let version = 0
-  let writes = 0
+
+  // Changes made in an earlier launch that never reached the backend.
+  const unsynced = readJson<StoredUnsynced>(storage, UNSYNCED_KEY)
+  for (const { episodeId, podcastId, change, changedAt } of unsynced?.changes ?? []) {
+    local.set(episodeId, [...(local.get(episodeId) ?? []), { podcastId, change, changedAt, sending: false }])
+  }
+  for (const episode of unsynced?.episodes ?? []) episodes.set(episode.id, episode)
 
   function changed() {
     version++
     listeners.forEach((listener) => listener())
   }
 
-  /** Keeps whichever of the two saves is later. A later one also replaces changes here whose save failed. */
+  /** Keeps the changes not yet saved on the device, with the details of any episode they queue. */
+  function storeUnsynced() {
+    const changes: StoredUnsynced['changes'] = []
+    const queued: Episode[] = []
+    for (const [episodeId, entries] of local) {
+      for (const { podcastId, change, changedAt } of entries) changes.push({ episodeId, podcastId, change, changedAt })
+      const episode = episodes.get(episodeId)
+      if (episode) queued.push(episode)
+    }
+    if (changes.length) writeJson(storage, UNSYNCED_KEY, { changes, episodes: queued } satisfies StoredUnsynced)
+    else storage.remove(UNSYNCED_KEY)
+  }
+
+  /** Keeps whichever of the two saves is later. */
   function keepLatest(state: SavedEpisodeState) {
     if (forgotten.has(state.podcastId)) return
     const current = saved.get(state.episodeId)
-    const time = Date.parse(state.updatedAt)
-    if (current && Date.parse(current.updatedAt) > time) return
-    if (!current || time > Date.parse(current.updatedAt)) {
-      const unsaved = local.get(state.episodeId)?.filter((change) => !change.failed)
-      if (unsaved?.length) local.set(state.episodeId, unsaved)
-      else local.delete(state.episodeId)
-    }
+    if (current && Date.parse(current.updatedAt) > Date.parse(state.updatedAt)) return
     saved.set(state.episodeId, state)
   }
 
@@ -165,21 +198,49 @@ export function createListeningStore(
 
   function update(episodeId: string, podcastId: string, change: EpisodeStateChange) {
     if (forgotten.has(podcastId)) return
-    const entry: LocalChange = { write: ++writes, podcastId, change, failed: false }
-    local.set(episodeId, [...(local.get(episodeId) ?? []), entry])
+    const entry: LocalChange = { podcastId, change, changedAt: new Date().toISOString(), sending: false }
+    // An earlier change still waiting whose every field this one sets again
+    // is outdone by it either way, so only this one need be sent.
+    const earlier = (local.get(episodeId) ?? []).filter(
+      (other) => other.sending || !Object.keys(other.change).every((field) => field in change),
+    )
+    local.set(episodeId, [...earlier, entry])
+    storeUnsynced()
     changed()
-    data.saveEpisodeState(episodeId, podcastId, change).then(
+    sendNext(episodeId)
+  }
+
+  /**
+   * Sends the episode's oldest change waiting, unless one of its changes is
+   * already on its way, then the next once that is saved. One at a time,
+   * oldest first: the backend keeps the latest change to the whole state, so
+   * a later change landing first would make an earlier one lose, even one to
+   * another field. Once saved, or outdone by a later change, what the backend
+   * holds replaces the change; if it can't be sent, it and those after it wait.
+   */
+  function sendNext(episodeId: string) {
+    const entries = local.get(episodeId)
+    if (!entries?.length || entries.some((entry) => entry.sending)) return
+    const [entry] = entries
+    entry.sending = true
+    data.saveEpisodeState(episodeId, entry.podcastId, entry.change, entry.changedAt).then(
       (result) => {
         const rest = local.get(episodeId)?.filter((other) => other !== entry)
         if (rest?.length) local.set(episodeId, rest)
         else local.delete(episodeId)
         keepLatest(result)
+        storeUnsynced()
         changed()
+        sendNext(episodeId)
       },
       () => {
-        entry.failed = true
+        entry.sending = false
       },
     )
+  }
+
+  function sendUnsynced() {
+    for (const episodeId of [...local.keys()]) sendNext(episodeId)
   }
 
   /** Queued episodes with their places, in order. */
@@ -246,7 +307,10 @@ export function createListeningStore(
 
     status: (podcastId) => watches.get(podcastId)?.status ?? 'loading',
 
+    sendUnsynced,
+
     refresh() {
+      sendUnsynced()
       for (const [podcastId, watch] of watches) {
         watch.stop()
         watch.stop = observe(podcastId)
@@ -295,6 +359,7 @@ export function createListeningStore(
       for (const [episodeId, state] of saved) if (state.podcastId === podcastId) saved.delete(episodeId)
       for (const [episodeId, changes] of local) if (changes[0].podcastId === podcastId) local.delete(episodeId)
       for (const [episodeId, episode] of episodes) if (episode.podcastId === podcastId) episodes.delete(episodeId)
+      storeUnsynced()
       changed()
     },
 

@@ -331,10 +331,12 @@ export function createDownloadManager(device: Device): DownloadManager {
         resumeInterrupted()
       }
       document.addEventListener('visibilitychange', onVisibilityChange)
-      window.addEventListener('online', resumeInterrupted)
+      const stopWatching = device.watchConnectivity(() => {
+        if (device.isOnline()) resumeInterrupted()
+      })
       return () => {
         document.removeEventListener('visibilitychange', onVisibilityChange)
-        window.removeEventListener('online', resumeInterrupted)
+        stopWatching()
       }
     },
 

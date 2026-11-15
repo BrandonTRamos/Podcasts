@@ -16,6 +16,8 @@ export interface EpisodeActions {
   onDownload: (episode: Episode) => void
   /** Its download on this device. */
   downloadOf: (episodeId: string) => DownloadState
+  /** Whether it can't play now: the device is offline and it is not downloaded. */
+  unavailable: (episodeId: string) => boolean
 }
 
 /**
@@ -33,20 +35,23 @@ export function EpisodeRow({
   onMarkPlayed,
   onDownload,
   downloadOf,
+  unavailable: unavailableNow,
 }: {
   episode: Episode
   state: EpisodeState | undefined
   podcastTitle?: string
 } & EpisodeActions) {
   const played = state?.played ?? false
+  const unavailable = unavailableNow(episode.id)
   return (
     <li>
       <h2>
-        <button type="button" onClick={() => onPlay(episode)}>
+        <button type="button" onClick={() => onPlay(episode)} disabled={unavailable}>
           {episode.title}
         </button>
       </h2>
       <EpisodeMeta episode={episode} podcastTitle={podcastTitle} />
+      {unavailable && <UnavailableOffline />}
       <div className="episode-state">
         <ListeningProgress episode={episode} state={state} />
         {state?.queueOrder != null && <span className="episode-queued">Queued</span>}
@@ -68,6 +73,11 @@ export function EpisodeRow({
       <DownloadControl download={downloadOf(episode.id)} onDownload={() => onDownload(episode)} />
     </li>
   )
+}
+
+/** Marks an episode that can't play while the device is offline, as it is not downloaded. */
+export function UnavailableOffline() {
+  return <p className="episode-unavailable">Not available offline</p>
 }
 
 /** An episode's podcast (when given), date and duration, those it has, run together. */

@@ -6,6 +6,7 @@ import { LatestScreen } from './LatestScreen'
 import { LibraryScreen } from './LibraryScreen'
 import { createListeningStore, resumePosition, useEpisodeStates } from './listening'
 import { MiniPlayer, NowPlayingScreen } from './NowPlaying'
+import { useOnline } from './online'
 import { useOpmlImport } from './opmlImport'
 import { type PlayableEpisode, type SaveProgress, type TakeNext, usePlayer } from './player'
 import { PodcastScreen } from './PodcastScreen'
@@ -36,18 +37,25 @@ export function SignedInApp({
   mediaSession,
   device,
   onSignOut,
+  sessionExpired = false,
+  onSignIn,
 }: {
   data: DataApi
   audio: AudioElement
   mediaSession: MediaSessionControls
   device: Device
   onSignOut: () => Promise<void>
+  /** The session has expired and can't be renewed: nothing syncs until the listener signs in again. */
+  sessionExpired?: boolean
+  /** Takes the listener to sign in again. */
+  onSignIn?: () => void
 }) {
   const [screen, setScreen] = useState<Screen>({ name: 'library' })
   /** Now playing takes the place of the current screen; closing it goes back there. */
   const [nowPlayingOpen, setNowPlayingOpen] = useState(false)
   const [podcasts, setPodcasts] = useState<LoadState<Podcast>>({ status: 'loading' })
-  const [listening] = useState(() => createListeningStore(data))
+  const [listening] = useState(() => createListeningStore(data, device.storage))
+  const online = useOnline(device)
   // Here rather than on the library, so an import carries on while the listener goes elsewhere.
   const opmlImport = useOpmlImport(data)
   const saveProgress = useCallback<SaveProgress>(
@@ -102,6 +110,15 @@ export function SignedInApp({
     if (loadedId !== null && loadedResumePosition !== null) player.adoptSavedPosition(loadedId, loadedResumePosition)
   }, [player, loadedId, loadedResumePosition])
 
+  // Changes made offline, in this launch or an earlier one, go to the backend
+  // as soon as it may be reachable.
+  useEffect(() => {
+    listening.sendUnsynced()
+    return device.watchConnectivity(() => {
+      if (device.isOnline()) listening.sendUnsynced()
+    })
+  }, [listening, device])
+
   // Live updates can be missed while the app is in the background (iOS
   // suspends it), so catch up on what other devices saved when it comes back.
   useEffect(() => {
@@ -143,6 +160,8 @@ export function SignedInApp({
     listening.dequeue(episode.id)
   }
 
+  const unavailable = (episodeId: string) => !online && downloads.get(episodeId).status !== 'downloaded'
+
   const episodeActions: EpisodeActions = {
     onPlay: playEpisode,
     onOpen: (episode) => {
@@ -153,6 +172,7 @@ export function SignedInApp({
       listening.update(episode.id, episode.podcastId, played ? { played } : { played, positionSeconds: 0 }),
     onDownload: downloads.download,
     downloadOf: downloads.get,
+    unavailable,
   }
 
   function openQueue() {
@@ -181,6 +201,7 @@ export function SignedInApp({
         onMove={(episodeId, index) => listening.moveInQueue(episodeId, index)}
         onRemove={(episodeId) => listening.dequeue(episodeId)}
         downloaded={(episodeId) => downloads.get(episodeId).status === 'downloaded'}
+        unavailable={unavailable}
       />
     )
   } else if (screen.name === 'episode') {
@@ -197,6 +218,7 @@ export function SignedInApp({
         onPlay={playEpisode}
         download={downloads.get(episode.id)}
         onDownload={downloads.download}
+        unavailable={unavailable(episode.id)}
       />
     )
   } else if (screen.name === 'latest') {
@@ -248,6 +270,19 @@ export function SignedInApp({
 
   return (
     <div className={playerState.episode ? 'with-mini-player' : undefined}>
+      {!online && (
+        <p className="connection-notice" role="status">
+          You’re offline. Downloaded episodes still play, and what you play syncs when you’re back online.
+        </p>
+      )}
+      {online && sessionExpired && (
+        <section className="connection-notice" role="status" aria-label="Session expired">
+          <p>Sign in again to sync what you play on this device.</p>
+          <button type="button" onClick={onSignIn}>
+            Sign in
+          </button>
+        </section>
+      )}
       {content}
       {/* On every screen, now playing included, where tapping it to open now playing changes nothing. */}
       {playerState.episode && (

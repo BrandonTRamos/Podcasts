@@ -1,47 +1,86 @@
-import { useEffect, useState } from 'react'
-import type { Services, User } from './services'
+import { useEffect, useMemo, useState } from 'react'
+import { forgetLibrary, withLocalCopy } from './localCopy'
+import type { Services, StoredSession } from './services'
 import { SignedInApp } from './SignedInApp'
 import { SignInScreen } from './SignInScreen'
 
-type Session = { status: 'loading' } | { status: 'signedOut' } | { status: 'signedIn'; user: User }
+type Session =
+  | { status: 'loading' }
+  | { status: 'signedOut' }
+  | { status: 'signedIn' }
+  /**
+   * Expired, with no network to renew it. The app opens on what this device
+   * holds, as local playback never needs a session, and checks again once online.
+   */
+  | { status: 'unconfirmed' }
+  /** Found expired for good once back online. The app stays open, asking the listener to sign in again. */
+  | { status: 'expired' }
 
 export function App({ services }: { services: Services }) {
+  const { auth, device } = services
   const [session, setSession] = useState<Session>({ status: 'loading' })
+  const data = useMemo(() => withLocalCopy(services.data, device), [services.data, device])
 
   useEffect(() => {
     let cancelled = false
-    services.auth
-      .currentUser()
-      .catch(() => null)
-      .then((user) => {
-        if (!cancelled) setSession(user ? { status: 'signedIn', user } : { status: 'signedOut' })
+    auth
+      .storedSession()
+      .catch((): StoredSession => ({ status: 'signedOut' }))
+      .then((stored) => {
+        if (!cancelled) setSession({ status: stored.status })
       })
     return () => {
       cancelled = true
     }
-  }, [services.auth])
+  }, [auth])
+
+  // Once the network is back, renew the session, or find it can't be. Also
+  // on returning to the foreground, as the browser can think it online when
+  // nothing is reachable (a captive network), and so never say it came back.
+  useEffect(() => {
+    if (session.status !== 'unconfirmed') return
+    let cancelled = false
+    const check = () => {
+      if (!device.isOnline() || document.visibilityState === 'hidden') return
+      auth
+        .storedSession()
+        .catch((): StoredSession => ({ status: 'unconfirmed' }))
+        .then((stored) => {
+          if (cancelled) return
+          if (stored.status === 'signedIn') setSession({ status: 'signedIn' })
+          else if (stored.status === 'signedOut') setSession({ status: 'expired' })
+        })
+    }
+    const stop = device.watchConnectivity(check)
+    document.addEventListener('visibilitychange', check)
+    return () => {
+      cancelled = true
+      stop()
+      document.removeEventListener('visibilitychange', check)
+    }
+  }, [session.status, auth, device])
 
   if (session.status === 'loading') return <p>Loading…</p>
 
   if (session.status === 'signedOut') {
-    return (
-      <SignInScreen
-        signIn={services.auth.signIn}
-        onSignedIn={(user) => setSession({ status: 'signedIn', user })}
-      />
-    )
+    return <SignInScreen signIn={auth.signIn} onSignedIn={() => setSession({ status: 'signedIn' })} />
   }
 
   return (
     <SignedInApp
-      data={services.data}
+      data={data}
       audio={services.audio}
       mediaSession={services.mediaSession}
-      device={services.device}
+      device={device}
+      sessionExpired={session.status === 'expired'}
+      onSignIn={() => setSession({ status: 'signedOut' })}
       onSignOut={async () => {
         try {
-          await services.auth.signOut()
+          await auth.signOut()
         } finally {
+          // Signing out removes access from this device: what it keeps of the
+          // library goes too, with changes not yet synced.
+          forgetLibrary(device.storage)
           setSession({ status: 'signedOut' })
         }
       }}

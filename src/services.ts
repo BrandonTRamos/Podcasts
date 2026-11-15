@@ -12,9 +12,19 @@ export interface User {
 
 export type SignInResult = { ok: true; user: User } | { ok: false; message: string }
 
+/** The session stored on this device, as far as can be told. */
+export type StoredSession =
+  | { status: 'signedIn'; user: User }
+  | { status: 'signedOut' }
+  /**
+   * A session is stored, but whether it still holds can't be told: it has
+   * expired, and renewing it needs the network. The listener stays in.
+   */
+  | { status: 'unconfirmed' }
+
 export interface AuthService {
-  /** The signed-in user from a stored session, or null when signed out. */
-  currentUser(): Promise<User | null>
+  /** The session stored on this device. Needs no network unless it has expired. */
+  storedSession(): Promise<StoredSession>
   signIn(email: string, password: string): Promise<SignInResult>
   signOut(): Promise<void>
 }
@@ -161,11 +171,21 @@ export interface DataApi {
    */
   observeEpisodeStates(podcastId: string, observer: Observer<SavedEpisodeState[]>): () => void
   /**
-   * Changes only the given fields of an episode's listening state, so a change
-   * made elsewhere to another field survives. An episode with no state yet
-   * starts at the beginning, unplayed. Returns the whole state as saved.
+   * Changes only the given fields of an episode's listening state, so an
+   * earlier change made elsewhere to another field survives. An episode with
+   * no state yet starts at the beginning, unplayed. `changedAt` is when the
+   * listener made the change (ISO 8601), which may be long before it is sent,
+   * as for one made offline. The most recent change to an episode wins,
+   * wherever it was made: if the backend holds one made later, this whole
+   * change is dropped, even the fields the later one left alone. Returns the
+   * whole state as saved, the later change's when this one lost.
    */
-  saveEpisodeState(episodeId: string, podcastId: string, change: EpisodeStateChange): Promise<SavedEpisodeState>
+  saveEpisodeState(
+    episodeId: string,
+    podcastId: string,
+    change: EpisodeStateChange,
+    changedAt: string,
+  ): Promise<SavedEpisodeState>
   /**
    * Every queued episode, whatever its podcast, with its details and listening
    * state: all of them once fetched, then again whenever any device changes the
@@ -262,13 +282,33 @@ export interface ScreenHold {
 }
 
 /**
- * The device's own facilities that downloading episodes uses: its file
- * storage, the network, and the screen. `device.ts` implements them with
- * browser APIs; tests substitute fakes.
+ * Small text records kept on this device across launches, apart from other
+ * devices: the local copy of the library and changes not yet synced. Keys are
+ * the app's own; nothing else stores under them.
+ */
+export interface DeviceStorage {
+  /** The value stored under the key, or null when there is none. */
+  get(key: string): string | null
+  /** Throws when the device has no room for it. */
+  set(key: string, value: string): void
+  remove(key: string): void
+  /** Every key with something stored. */
+  keys(): string[]
+}
+
+/**
+ * The device's own facilities: its file storage, small records, the network,
+ * and the screen. `device.ts` implements them with browser APIs; tests
+ * substitute fakes.
  */
 export interface Device {
   files: DeviceFiles
+  storage: DeviceStorage
   fetch: Fetch
+  /** Whether the device has a network connection, as the browser judges it. False means certainly offline. */
+  isOnline(): boolean
+  /** Calls the listener whenever the device goes online or offline. Returns a function that stops it. */
+  watchConnectivity(listener: () => void): () => void
   /** Keeps the screen on until released. Rejects where the browser can't or won't. */
   keepScreenOn(): Promise<ScreenHold>
   /** Asks the browser not to clear stored files when space runs low. Resolves to whether it agreed. */

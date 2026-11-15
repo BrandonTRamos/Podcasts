@@ -1,14 +1,25 @@
 import { createFileClient } from './opfsFiles'
-import type { Device, DeviceFiles, ScreenHold } from './services'
+import type { Device, DeviceFiles, DeviceStorage, ScreenHold } from './services'
 
 /**
- * The browser's own facilities, as the download manager uses them: the Origin
- * Private File System, `fetch`, the screen wake lock and storage persistence.
+ * The browser's own facilities: the Origin Private File System, local
+ * storage, `fetch` and the browser's view of the network, the screen wake
+ * lock and storage persistence.
  */
 export function browserDevice(): Device {
   return {
     files: originPrivateFiles(),
+    storage: localStorageRecords('tincan.device.'),
     fetch: (url, init) => fetch(url, init),
+    isOnline: () => navigator.onLine,
+    watchConnectivity(listener) {
+      window.addEventListener('online', listener)
+      window.addEventListener('offline', listener)
+      return () => {
+        window.removeEventListener('online', listener)
+        window.removeEventListener('offline', listener)
+      }
+    },
     async keepScreenOn(): Promise<ScreenHold> {
       if (!('wakeLock' in navigator)) throw new Error('No screen wake lock in this browser')
       return navigator.wakeLock.request('screen')
@@ -16,6 +27,40 @@ export function browserDevice(): Device {
     async persistStorage() {
       if (!navigator.storage?.persist) return false
       return (await navigator.storage.persisted()) || navigator.storage.persist()
+    },
+  }
+}
+
+/**
+ * Records in `localStorage` under keys starting with `prefix`, apart from
+ * anything else the app keeps there. Storage can be unavailable (private
+ * browsing, or blocked): reads then find nothing.
+ */
+function localStorageRecords(prefix: string): DeviceStorage {
+  const storage = () => {
+    try {
+      return window.localStorage
+    } catch {
+      return null
+    }
+  }
+  return {
+    get: (key) => storage()?.getItem(prefix + key) ?? null,
+    set(key, value) {
+      const store = storage()
+      if (!store) throw new Error('No local storage')
+      store.setItem(prefix + key, value)
+    },
+    remove: (key) => storage()?.removeItem(prefix + key),
+    keys() {
+      const store = storage()
+      if (!store) return []
+      const keys: string[] = []
+      for (let i = 0; i < store.length; i++) {
+        const key = store.key(i)
+        if (key?.startsWith(prefix)) keys.push(key.slice(prefix.length))
+      }
+      return keys
     },
   }
 }

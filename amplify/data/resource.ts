@@ -53,8 +53,10 @@ const schema = a
 
     // The listener's place in an episode, whether they have heard it, and
     // where it is in the queue, synced across devices. One per episode, created
-    // the first time it is saved; `updatedAt` (kept by the data API) settles
-    // which of two saves wins.
+    // the first time it is saved. A save carries when its change was made, and
+    // is kept only if no later change is held, so the most recent change wins
+    // even when an older one, made offline, arrives after it. `updatedAt`
+    // (kept by the data API) orders the saves the backend kept.
     EpisodeState: a.model({
       // The episode's ID.
       id: a.id().required(),
@@ -64,6 +66,9 @@ const schema = a
       // Queued episodes play lowest first. Absent when not queued: saving null
       // removes the attribute. Fractional, so a move is one write.
       queueOrder: a.float(),
+      // When the change last kept was made, by the device's clock (ISO 8601).
+      // Absent on states saved before it was recorded: any change then wins.
+      changedAt: a.datetime(),
     }),
 
     SubscribeStatus: a.enum([
