@@ -2,6 +2,7 @@ import { type ClientSchema, a, defineData } from '@aws-amplify/backend'
 import { ingestFeedFunction } from '../functions/ingest-feed/resource'
 import { refreshFeedsFunction } from '../functions/refresh-feeds/resource'
 import { searchPodcastsFunction } from '../functions/search-podcasts/resource'
+import { stageDownloadFunction } from '../functions/stage-download/resource'
 import { subscribeFunction } from '../functions/subscribe/resource'
 import { unsubscribeFunction } from '../functions/unsubscribe/resource'
 
@@ -127,6 +128,32 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(refreshFeedsFunction).async()),
 
+    DownloadStagingStatus: a.enum(['preparing', 'ready', 'unavailable', 'failed']),
+
+    // A temporary copy of an episode's file, made for a publisher whose host
+    // doesn't let a web page download it directly. Its ID is chosen by the
+    // client, which watches it for the outcome.
+    DownloadStaging: a.model({
+      id: a.id().required(),
+      episodeId: a.id().required(),
+      status: a.ref('DownloadStagingStatus').required(),
+      // Where the copy is in the private staging bucket, once ready. The bucket deletes it within a day.
+      objectKey: a.string(),
+      // A short-lived link to the copy, once ready, and when it stops working.
+      url: a.string(),
+      urlExpiresAt: a.datetime(),
+      // DynamoDB deletes the record a day after it was made (time to live, set in backend.ts).
+      expiresAt: a.integer().required(),
+    }),
+
+    // Returns at once; the copy is made in the background. The client learns
+    // the outcome by watching the `DownloadStaging` record with `requestId`.
+    stageDownload: a
+      .mutation()
+      .arguments({ requestId: a.id().required(), episodeId: a.id().required() })
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(stageDownloadFunction).async()),
+
     // A podcast as the public directory lists it. Its feed URL is public.
     DirectoryPodcast: a.customType({
       title: a.string().required(),
@@ -161,6 +188,7 @@ const schema = a
     allow.resource(ingestFeedFunction),
     allow.resource(refreshFeedsFunction),
     allow.resource(searchPodcastsFunction),
+    allow.resource(stageDownloadFunction),
   ])
 
 export type Schema = ClientSchema<typeof schema>

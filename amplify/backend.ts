@@ -1,12 +1,14 @@
 import { defineBackend } from '@aws-amplify/backend'
-import { Stack } from 'aws-cdk-lib'
+import { Duration, RemovalPolicy, Stack } from 'aws-cdk-lib'
 import { Policy, PolicyStatement } from 'aws-cdk-lib/aws-iam'
 import { EventSourceMapping, FilterCriteria, FilterRule, StartingPosition } from 'aws-cdk-lib/aws-lambda'
+import { BlockPublicAccess, Bucket, BucketEncryption, HttpMethods } from 'aws-cdk-lib/aws-s3'
 import { auth } from './auth/resource'
 import { data } from './data/resource'
 import { ingestFeedFunction } from './functions/ingest-feed/resource'
 import { refreshFeedsFunction } from './functions/refresh-feeds/resource'
 import { searchPodcastsFunction } from './functions/search-podcasts/resource'
+import { stageDownloadFunction } from './functions/stage-download/resource'
 import { subscribeFunction } from './functions/subscribe/resource'
 import { unsubscribeFunction } from './functions/unsubscribe/resource'
 
@@ -18,6 +20,7 @@ const backend = defineBackend({
   ingestFeedFunction,
   refreshFeedsFunction,
   searchPodcastsFunction,
+  stageDownloadFunction,
 })
 
 const { cfnUserPool, cfnIdentityPool } = backend.auth.resources.cfnResources
@@ -60,3 +63,38 @@ streamMapping.node.addDependency(streamPolicy)
 // A failed run is not retried: the next hourly run is the retry. Lambda's
 // default of two retries would fetch every feed again for one failing podcast.
 backend.refreshFeedsFunction.resources.lambda.configureAsyncInvoke({ retryAttempts: 0 })
+
+// Download fallback: a private bucket for temporary copies of episodes whose
+// hosts block direct download. Reachable only through the presigned links the
+// stager makes; every copy is deleted within a day of its making.
+const stageDownloadLambda = backend.stageDownloadFunction.resources.lambda
+const stagingBucket = new Bucket(Stack.of(stageDownloadLambda), 'DownloadStagingBucket', {
+  blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+  encryption: BucketEncryption.S3_MANAGED,
+  enforceSSL: true,
+  lifecycleRules: [{ expiration: Duration.days(1), abortIncompleteMultipartUploadAfter: Duration.days(1) }],
+  // The app downloads a copy straight from the bucket, resuming with range requests.
+  cors: [
+    {
+      allowedOrigins: ['https://main.d1s9jkcv1hp6j9.amplifyapp.com', 'http://localhost:5173'],
+      allowedMethods: [HttpMethods.GET, HttpMethods.HEAD],
+      allowedHeaders: ['Range'],
+      exposedHeaders: ['Content-Length', 'Content-Range', 'ETag'],
+      maxAge: 3600,
+    },
+  ],
+  removalPolicy: RemovalPolicy.DESTROY,
+  autoDeleteObjects: true,
+})
+stagingBucket.grantPut(stageDownloadLambda)
+// The hourly run deletes copies older than a day (stageDownload.ts); the lifecycle rule is the backstop.
+stagingBucket.grantDelete(stageDownloadLambda)
+// Presigned links act as the function's role, so it must be able to read the copies.
+stagingBucket.grantRead(stageDownloadLambda)
+backend.stageDownloadFunction.addEnvironment('STAGING_BUCKET', stagingBucket.bucketName)
+backend.data.resources.cfnResources.amplifyDynamoDbTables['DownloadStaging'].timeToLiveAttribute = {
+  attributeName: 'expiresAt',
+  enabled: true,
+}
+// The listener is told of a failure and can try again; Lambda retrying it as well would copy the file again unseen.
+stageDownloadLambda.configureAsyncInvoke({ retryAttempts: 0 })

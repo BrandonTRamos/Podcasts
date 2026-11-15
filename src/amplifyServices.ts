@@ -12,6 +12,7 @@ import {
   type SavedEpisodeState,
   type Services,
   type SignInResult,
+  type StagingState,
   type StoredSession,
   type SubscribeStart,
 } from './services'
@@ -274,6 +275,51 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
         return () => subscription.unsubscribe()
       },
 
+      stageDownload(episodeId, observer) {
+        // The client names the request, so it can watch for the outcome before asking.
+        const requestId = crypto.randomUUID()
+        const selectionSet = ['id', 'status', 'url', 'urlExpiresAt'] as const
+        let stopped = false
+        let delivered: string | null = null
+        let subscription: { unsubscribe(): void } | undefined
+        const stop = () => {
+          stopped = true
+          clearInterval(poll)
+          subscription?.unsubscribe()
+        }
+        const deliver = (staging: StagingRecord | null | undefined) => {
+          if (stopped || !staging) return
+          const state = toStagingState(staging)
+          const key = JSON.stringify(state)
+          if (key === delivered) return
+          delivered = key
+          observer.next(state)
+        }
+        subscription = client.models.DownloadStaging.observeQuery({
+          filter: { id: { eq: requestId } },
+          selectionSet: [...selectionSet],
+        }).subscribe({
+          next: ({ items }) => deliver(items[0]),
+          error: () => stopped || observer.error(),
+        })
+        // A live update can be missed (one landing before the subscription is
+        // up, or while it reconnects), so the record is also read every so often.
+        const poll = setInterval(() => {
+          client.models.DownloadStaging.get({ id: requestId }, { selectionSet: [...selectionSet] }).then(
+            ({ data }) => deliver(data),
+            () => {},
+          )
+        }, STAGING_POLL_MS)
+        // Returns at once: the copy is made in the background.
+        client.mutations.stageDownload({ requestId, episodeId }).then(
+          ({ errors }) => {
+            if (errors?.length && !stopped) observer.error()
+          },
+          () => stopped || observer.error(),
+        )
+        return stop
+      },
+
       observeEpisodeStates(podcastId, observer) {
         const subscription = client.models.EpisodeState.observeQuery({
           filter: { podcastId: { eq: podcastId } },
@@ -497,4 +543,14 @@ async function signInClearingStaleSession(email: string, password: string) {
     await signOut()
     return signIn({ username: email, password })
   }
+}
+
+/** How often a staging request is read while its copy is prepared, in case a live update is missed. */
+const STAGING_POLL_MS = 10_000
+
+type StagingRecord = Pick<Schema['DownloadStaging']['type'], 'status' | 'url' | 'urlExpiresAt'>
+
+function toStagingState({ status, url, urlExpiresAt }: StagingRecord): StagingState {
+  if (status !== 'ready') return { status }
+  return url && urlExpiresAt ? { status, url, expiresAt: urlExpiresAt } : { status: 'failed' }
 }

@@ -14,6 +14,11 @@ export function normaliseFeedUrl(input: string): string | null {
   return url.href
 }
 
+/** Whether the text is an http or https URL: the only kind fetched server-side. */
+export function isHttpUrl(input: string): boolean {
+  return normaliseFeedUrl(input) !== null
+}
+
 // Plain, JSON-escaped (https:\/\/) and percent-encoded (https%3A%2F%2F) forms.
 const URL_PATTERN = /https?(?::(?:\\?\/){2}|%3A%2F%2F)[^\s"'<>]*/gi
 

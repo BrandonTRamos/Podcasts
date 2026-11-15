@@ -20,7 +20,9 @@ import {
   type QueueSnapshot,
   type SavedEpisodeState,
   type ScreenHold,
+  type SettledStaging,
   type SignInResult,
+  type StagingState,
   type StoredSession,
   type SubscribeRequestState,
   type SubscribeStart,
@@ -136,6 +138,10 @@ export function fakeDataApi() {
   const stateListeners = new Map<string, Set<Listener<SavedEpisodeState[]>>>()
   const requestListeners = new Map<string, Set<Listener<SubscribeRequestState>>>()
   const queueListeners = new Set<Listener<QueueSnapshot>>()
+  /** Temporary copies asked for and not yet settled, oldest first, each with who is watching it. */
+  const stagings: { episodeId: string; listener: Listener<StagingState> }[] = []
+  /** Every episode a temporary copy was asked for, in order. */
+  const stagingRequests: string[] = []
   let failNext = false
   let offline = false
   /** Saves that have reached the backend but not been applied, while `holdSaves` holds them. */
@@ -313,6 +319,17 @@ export function fakeDataApi() {
       observeQueue(observer) {
         return listen(connection, queueListeners, observer, () => ({ entries: queue(), asOf: null }))
       },
+      stageDownload(episodeId, observer) {
+        const listener = { connection, observer }
+        const staging = { episodeId, listener }
+        queueMicrotask(() => {
+          if (offline || connection.offline) return observer.error()
+          stagingRequests.push(episodeId)
+          stagings.push(staging)
+          observer.next({ status: 'preparing' })
+        })
+        return () => removeWhere(stagings, (pending) => pending === staging)
+      },
     }
   }
 
@@ -324,6 +341,10 @@ export function fakeDataApi() {
         listeners.delete(listener)
         listener.observer.error()
       }
+    }
+    for (const staging of stagings.filter(({ listener }) => !connection || listener.connection === connection)) {
+      removeWhere(stagings, (pending) => pending === staging)
+      staging.listener.observer.error()
     }
   }
 
@@ -405,6 +426,20 @@ export function fakeDataApi() {
     /** The network comes back: requests and new observations work again. */
     goOnline() {
       offline = false
+    },
+    /**
+     * Settles every temporary copy being prepared, as the backend's stager
+     * does once it has copied the file or failed to.
+     */
+    finishStaging(outcome: SettledStaging) {
+      for (const { listener } of stagings.splice(0)) {
+        const { connection, observer } = listener
+        if (!offline && !connection.offline && !connection.asleep) observer.next(outcome)
+      }
+    },
+    /** The episodes a temporary copy has been asked for, oldest first. */
+    stagingRequests(): readonly string[] {
+      return stagingRequests
     },
     /** Runs the background check of every pending subscribe, as the backend does. */
     finishSubscribing() {
@@ -808,6 +843,7 @@ interface HostedFile {
 export class FakeNetwork {
   chunkSize = 100
   #files = new Map<string, HostedFile>()
+  #refused = new Set<string>()
   #offline = false
   #throttled = false
   /** Bytes that may yet be sent while throttled. */
@@ -822,6 +858,11 @@ export class FakeNetwork {
   /** Puts an audio file on a host. */
   host(url: string, bytes: Uint8Array, { cors = true, ranges = true }: { cors?: boolean; ranges?: boolean } = {}) {
     this.#files.set(url, { bytes, cors, ranges, endsAt: null })
+  }
+
+  /** The host refuses every later request for the file, as S3 does once a link has stopped working. */
+  refuse(url: string) {
+    this.#refused.add(url)
   }
 
   /** The host stops part way through the file the next time it sends it, closing the response as if it had all been sent. */
@@ -873,6 +914,7 @@ export class FakeNetwork {
     if (mode === 'no-cors') return new Response(null)
     if (!file) return new Response(null, { status: 404 })
     if (!file.cors) throw new TypeError('Failed to fetch')
+    if (this.#refused.has(url)) return new Response(null, { status: 403 })
     const from = range && file.ranges ? Number(/^bytes=(\d+)-$/.exec(range)![1]) : 0
     if (from >= file.bytes.length && from > 0) return new Response(null, { status: 416 })
     const end = file.endsAt ?? file.bytes.length

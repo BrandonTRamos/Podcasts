@@ -4,11 +4,13 @@ import { formatSize } from './format'
 const failureMessages: Record<DownloadFailure, string> = {
   unavailable: 'This episode couldn’t be downloaded: its publisher’s host didn’t send the file.',
   noSpace: 'Not enough space on this device to download this episode.',
+  notPrepared: 'This episode couldn’t be prepared for download. Its publisher doesn’t allow direct downloads, and making a copy failed.',
   other: 'This episode couldn’t be downloaded.',
 }
 
 /**
- * An episode's download: a button to start it, its progress while it runs, a
+ * An episode's download: a button to start it, word while a copy is prepared
+ * for a host that blocks direct download, its progress while it runs, a
  * button to resume it once interrupted, a badge once it is stored, and word
  * when its stored file has gone.
  */
@@ -25,7 +27,7 @@ export function DownloadControl({ download, onDownload }: { download: DownloadSt
     case 'downloading':
       return (
         <div className="episode-download">
-          <DownloadProgress bytes={download.bytes} total={download.total} />
+          {download.preparing ? <DownloadPreparing /> : <DownloadProgress bytes={download.bytes} total={download.total} />}
         </div>
       )
     case 'interrupted':
@@ -51,12 +53,6 @@ export function DownloadControl({ download, onDownload }: { download: DownloadSt
           <button type="button" onClick={onDownload}>
             Download again
           </button>
-        </div>
-      )
-    case 'blocked':
-      return (
-        <div className="episode-download">
-          <p role="alert">This episode can’t be downloaded yet: its publisher doesn’t allow direct downloads.</p>
         </div>
       )
     case 'failed':
@@ -85,6 +81,16 @@ export function DownloadProgress({ bytes, total }: { bytes: number; total: numbe
     <span className="download-progress">
       <progress aria-label="Download progress" max={total} value={Math.min(bytes, total)} />
       <span>{percentOf(bytes, total)}%</span>
+    </span>
+  )
+}
+
+/** Says the backend is preparing a copy to download, as the publisher's host blocks direct download. */
+export function DownloadPreparing() {
+  return (
+    <span className="download-progress" role="status">
+      <progress aria-label="Preparing download" />
+      <span>Preparing download…</span>
     </span>
   )
 }

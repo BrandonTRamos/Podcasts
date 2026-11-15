@@ -87,7 +87,7 @@ export function SignedInApp({
     if (!episode) return null
     return { episode: toPlayable(episode), startAt: resumePosition(listening.get(episode.id)) ?? 0 }
   }, [listening, toPlayable])
-  const downloads = useDownloads(device)
+  const downloads = useDownloads(device, data)
   const queue = listening.queue()
   const { player, state: playerState } = usePlayer(
     audio,
