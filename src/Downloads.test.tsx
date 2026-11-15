@@ -31,12 +31,12 @@ const firstFile = audioFile(1000)
  * A backend holding one show with two episodes, the first of whose files is
  * on a host that allows direct download, and a device to download it to.
  */
-async function setUp({ ranges = true, cors = true }: { ranges?: boolean; cors?: boolean } = {}) {
+async function setUp({ ranges = true }: { ranges?: boolean } = {}) {
   const data = fakeDataApi()
   const podcastId = data.seedPodcast('https://feeds.example.com/show.xml', show)
   data.ingest(podcastId, [first, second])
   const device = new FakeDevice()
-  device.network.host(first.enclosureUrl, firstFile, { ranges, cors })
+  device.network.host(first.enclosureUrl, firstFile, { ranges })
   const auth = fakeAuth(owner)
   await auth.signIn(owner.email, owner.password)
   return { data, device, ...(await launch(data, device)) }
@@ -375,17 +375,6 @@ describe('downloading an episode', () => {
     expect(device.files.onlyFile()).toEqual(firstFile)
   })
 
-  it('tells the listener when the publisher blocks direct download', async () => {
-    const { device, user } = await setUp({ cors: false })
-
-    await startDownload(user, first.title)
-
-    expect(await within(row(first.title)).findByText(/can’t be downloaded yet/)).toBeInTheDocument()
-    expect(within(row(first.title)).queryByText('Downloaded')).not.toBeInTheDocument()
-    expect(within(row(first.title)).queryByRole('button', { name: 'Resume download' })).not.toBeInTheDocument()
-    expect(device.screenKeptOn()).toBe(false)
-  })
-
   it('says the download was interrupted, not blocked, when there is no connection', async () => {
     const { device, user } = await setUp()
     device.network.dropConnection()
@@ -393,7 +382,7 @@ describe('downloading an episode', () => {
     await startDownload(user, first.title)
 
     expect(await within(row(first.title)).findByRole('button', { name: 'Resume download' })).toBeInTheDocument()
-    expect(within(row(first.title)).queryByText(/can’t be downloaded yet/)).not.toBeInTheDocument()
+    expect(within(row(first.title)).queryByText(/Preparing download/)).not.toBeInTheDocument()
   })
 
   it('says when the device has no room for the file', async () => {

@@ -1,4 +1,4 @@
-import { DownloadProgress } from './DownloadControl'
+import { DownloadPreparing, DownloadProgress } from './DownloadControl'
 import { type StoredDownload, storedBytes } from './downloads'
 import { formatSize } from './format'
 import type { Episode } from './services'
@@ -56,7 +56,11 @@ export function DownloadsScreen({
                 <li key={episodeId}>
                   <DownloadHeading episode={episode} podcastTitleOf={podcastTitleOf} />
                   <div className="episode-download">
-                    <DownloadProgress bytes={state.bytes} total={state.total} />
+                    {state.status === 'downloading' && state.preparing ? (
+                      <DownloadPreparing />
+                    ) : (
+                      <DownloadProgress bytes={state.bytes} total={state.total} />
+                    )}
                     {state.status === 'interrupted' && (
                       <>
                         <span>Download interrupted</span>

@@ -21,6 +21,7 @@ import {
   type SavedEpisodeState,
   type ScreenHold,
   type SignInResult,
+  type StagingState,
   type StoredSession,
   type SubscribeRequestState,
   type SubscribeStart,
@@ -136,6 +137,10 @@ export function fakeDataApi() {
   const stateListeners = new Map<string, Set<Listener<SavedEpisodeState[]>>>()
   const requestListeners = new Map<string, Set<Listener<SubscribeRequestState>>>()
   const queueListeners = new Set<Listener<QueueSnapshot>>()
+  /** Temporary copies asked for and not yet settled, oldest first, each with who is watching it. */
+  const stagings: { episodeId: string; listener: Listener<StagingState> }[] = []
+  /** Every episode a temporary copy was asked for, in order. */
+  const stagingRequests: string[] = []
   let failNext = false
   let offline = false
   /** Saves that have reached the backend but not been applied, while `holdSaves` holds them. */
@@ -313,6 +318,17 @@ export function fakeDataApi() {
       observeQueue(observer) {
         return listen(connection, queueListeners, observer, () => ({ entries: queue(), asOf: null }))
       },
+      stageDownload(episodeId, observer) {
+        const listener = { connection, observer }
+        const staging = { episodeId, listener }
+        queueMicrotask(() => {
+          if (offline || connection.offline) return observer.error()
+          stagingRequests.push(episodeId)
+          stagings.push(staging)
+          observer.next({ status: 'preparing' })
+        })
+        return () => removeWhere(stagings, (pending) => pending === staging)
+      },
     }
   }
 
@@ -324,6 +340,10 @@ export function fakeDataApi() {
         listeners.delete(listener)
         listener.observer.error()
       }
+    }
+    for (const staging of stagings.filter(({ listener }) => !connection || listener.connection === connection)) {
+      removeWhere(stagings, (pending) => pending === staging)
+      staging.listener.observer.error()
     }
   }
 
@@ -405,6 +425,20 @@ export function fakeDataApi() {
     /** The network comes back: requests and new observations work again. */
     goOnline() {
       offline = false
+    },
+    /**
+     * Settles every temporary copy being prepared, as the backend's stager
+     * does once it has copied the file or failed to.
+     */
+    finishStaging(outcome: Exclude<StagingState, { status: 'preparing' }>) {
+      for (const { listener } of stagings.splice(0)) {
+        const { connection, observer } = listener
+        if (!offline && !connection.offline && !connection.asleep) observer.next(outcome)
+      }
+    },
+    /** The episodes a temporary copy has been asked for, oldest first. */
+    stagingRequests(): readonly string[] {
+      return stagingRequests
     },
     /** Runs the background check of every pending subscribe, as the backend does. */
     finishSubscribing() {

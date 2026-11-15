@@ -274,6 +274,40 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
         return () => subscription.unsubscribe()
       },
 
+      stageDownload(episodeId, observer) {
+        // The client names the request, so it can watch for the outcome before asking.
+        const requestId = crypto.randomUUID()
+        let stopped = false
+        const subscription = client.models.DownloadStaging.observeQuery({
+          filter: { id: { eq: requestId } },
+          selectionSet: ['id', 'status', 'url', 'urlExpiresAt'],
+        }).subscribe({
+          next: ({ items }) => {
+            const staging = items[0]
+            if (!staging) return
+            const { status, url, urlExpiresAt } = staging
+            if (status === 'ready') {
+              if (url && urlExpiresAt) observer.next({ status, url, expiresAt: urlExpiresAt })
+              else observer.next({ status: 'failed' })
+            } else {
+              observer.next({ status })
+            }
+          },
+          error: () => observer.error(),
+        })
+        // Returns at once: the copy is made in the background.
+        client.mutations.stageDownload({ requestId, episodeId }).then(
+          ({ errors }) => {
+            if (errors?.length && !stopped) observer.error()
+          },
+          () => stopped || observer.error(),
+        )
+        return () => {
+          stopped = true
+          subscription.unsubscribe()
+        }
+      },
+
       observeEpisodeStates(podcastId, observer) {
         const subscription = client.models.EpisodeState.observeQuery({
           filter: { podcastId: { eq: podcastId } },

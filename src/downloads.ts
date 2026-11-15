@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { readJson, writeJson } from './localCopy'
-import type { Device, Episode, ScreenHold } from './services'
+import type { DataApi, Device, Episode, ScreenHold, StagingState } from './services'
 
 /** Why a download stopped short, other than being interrupted. */
 export type DownloadFailure =
@@ -8,22 +8,26 @@ export type DownloadFailure =
   | 'unavailable'
   /** The device has no room left for it. */
   | 'noSpace'
+  /** The host blocks direct download, and the backend couldn't prepare a copy to download instead. */
+  | 'notPrepared'
   /** Anything else: storage misbehaved, or the host sent more than it said it would. */
   | 'other'
 
 /** An episode's download, as this device knows it. */
 export type DownloadState =
   | { status: 'none' }
-  /** `bytes` are stored so far, of `total` if the host said how many there are. */
-  | { status: 'downloading'; bytes: number; total: number | null }
+  /**
+   * `bytes` are stored so far, of `total` if the host said how many there are.
+   * `preparing` while the backend makes a copy to download from, as the host
+   * blocks direct download.
+   */
+  | { status: 'downloading'; bytes: number; total: number | null; preparing?: boolean }
   /** Stopped part way, with `bytes` stored, to resume from there. */
   | { status: 'interrupted'; bytes: number; total: number | null }
   /** The whole file, of `bytes`, is stored and its size checked. */
   | { status: 'downloaded'; bytes: number }
   /** It was downloaded, but its file has gone since: the OS cleared it, most likely to free space. */
   | { status: 'lost' }
-  /** The publisher's host doesn't let a web page download it directly. */
-  | { status: 'blocked' }
   | { status: 'failed'; reason: DownloadFailure }
 
 /** An episode this device holds something of, or has lost the download of. */
@@ -57,6 +61,10 @@ export function storedBytes(state: DownloadState): number {
  * whose host can't send part of a file starts again. An episode counts as
  * downloaded only once its whole file is stored and its size matches what the
  * host said it would send.
+ *
+ * When the publisher's host doesn't let a web page download its files, the
+ * backend prepares a temporary copy, which is then downloaded in the same
+ * way. The link to it is kept for resuming while it works.
  *
  * Which episodes are downloaded is this device's own state. Each download is
  * recorded, with its episode, apart from the files; at launch the records
@@ -136,6 +144,15 @@ const UNKNOWN_SIZE_STEP = 1_000_000
  */
 export const STALL_MS = 30_000
 
+/**
+ * Longest to wait for the backend to prepare a copy: past this, its stager
+ * (which stops at 15 minutes) has certainly failed without saying.
+ */
+export const STAGING_TIMEOUT_MS = 16 * 60 * 1000
+
+/** A link to a prepared copy is used to resume only while it has at least this long left to work. */
+const LINK_MARGIN_MS = 5 * 60 * 1000
+
 /** Where each episode's download is recorded in device storage. */
 const RECORD_PREFIX = 'download:'
 
@@ -148,7 +165,10 @@ interface DownloadRecord {
 /** Whether a device storage key holds a download's record, which outlasts signing out as the file does. */
 export const isDownloadRecord = (key: string) => key.startsWith(RECORD_PREFIX)
 
-export function createDownloadManager(device: Device): DownloadManager {
+/** What prepares temporary copies of episodes whose hosts block direct download: the backend. */
+export type DownloadStager = Pick<DataApi, 'stageDownload'>
+
+export function createDownloadManager(device: Device, stager: DownloadStager): DownloadManager {
   const { storage } = device
   /** Every episode's download other than those with none, in the order they were first known. */
   const states = new Map<string, DownloadState>()
@@ -160,6 +180,8 @@ export function createDownloadManager(device: Device): DownloadManager {
   const running = new Map<string, { abort: AbortController; settled: Promise<void> }>()
   /** Downloads being deleted, each with what settles once it is done. A download asked for meanwhile waits for it. */
   const removing = new Map<string, Promise<void>>()
+  /** Links to copies the backend prepared, by episode, kept to resume from, with when they stop working (ms). */
+  const links = new Map<string, { url: string; expiresAt: number }>()
   /** Interrupted since launch: resumed when the app is back in the foreground or online. */
   const interrupted = new Map<string, Episode>()
   const listeners = new Set<() => void>()
@@ -299,6 +321,7 @@ export function createDownloadManager(device: Device): DownloadManager {
    */
   async function discard(episodeId: string) {
     copies.delete(episodeId)
+    links.delete(episodeId)
     interrupted.delete(episodeId)
     try {
       for (const name of await device.files.list()) {
@@ -361,7 +384,15 @@ export function createDownloadManager(device: Device): DownloadManager {
     const stored = existing ? ((await device.files.size(existing.name)) ?? 0) : 0
     const knownTotal = existing?.total ?? null
     if (signal.aborted) return { status: 'none' }
-    let response = await request(enclosureUrl, stored, signal)
+    let source = enclosureUrl
+    let response = await request(source, stored, signal)
+    if (response === 'blocked') {
+      // Download a copy the backend prepares instead.
+      const copy = await preparedCopy(id, { bytes: stored, total: knownTotal }, signal)
+      if (typeof copy !== 'string') return copy
+      source = copy
+      response = await request(source, stored, signal)
+    }
     // The host has no more to send, or its file is no longer the size it was:
     // what is stored doesn't match it, so start again.
     if (
@@ -370,12 +401,14 @@ export function createDownloadManager(device: Device): DownloadManager {
         (response.status === 206 && knownTotal !== null && totalSize(response, stored) !== knownTotal))
     ) {
       void response.body?.cancel().catch(() => {})
-      response = await request(enclosureUrl, 0, signal)
+      response = await request(source, 0, signal)
     }
-    if (response === 'blocked') return { status: 'blocked' }
+    if (response === 'blocked') return { status: 'failed', reason: 'other' }
     if (response === 'unreachable') return { status: 'interrupted', bytes: stored, total: knownTotal }
     if (!response.ok) {
       void response.body?.cancel().catch(() => {})
+      // A link that has stopped working: a fresh copy is prepared next time.
+      if (source !== enclosureUrl) links.delete(id)
       return { status: 'failed', reason: 'unavailable' }
     }
 
@@ -432,6 +465,51 @@ export function createDownloadManager(device: Device): DownloadManager {
     }
     await device.files.rename(partial, fileName(id))
     return (await adoptStoredCopy(id)) ?? { status: 'failed', reason: 'other' }
+  }
+
+  /**
+   * A link to a copy of the episode's file that the backend has prepared:
+   * the one prepared earlier if it still works, or else a fresh one, waited
+   * for while the listener is told it is being prepared. When there is none,
+   * says how the download stands instead.
+   */
+  async function preparedCopy(
+    episodeId: string,
+    stored: { bytes: number; total: number | null },
+    signal: AbortSignal,
+  ): Promise<string | DownloadState> {
+    const known = links.get(episodeId)
+    if (known && known.expiresAt - Date.now() > LINK_MARGIN_MS) return known.url
+    links.delete(episodeId)
+    set(episodeId, { status: 'downloading', ...stored, preparing: true })
+    const outcome = await new Promise<Exclude<StagingState, { status: 'preparing' }> | 'cut'>((resolve) => {
+      let settled = false
+      let stop: (() => void) | undefined
+      const finish = (result: Exclude<StagingState, { status: 'preparing' }> | 'cut') => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        signal.removeEventListener('abort', onAbort)
+        stop?.()
+        resolve(result)
+      }
+      const onAbort = () => finish('cut')
+      const timer = setTimeout(() => finish({ status: 'failed' }), STAGING_TIMEOUT_MS)
+      signal.addEventListener('abort', onAbort)
+      stop = stager.stageDownload(episodeId, {
+        next: (state) => {
+          if (state.status !== 'preparing') finish(state)
+        },
+        // The backend can't be reached: try again once it may be.
+        error: () => finish('cut'),
+      })
+      if (settled) stop()
+    })
+    if (outcome === 'cut') return { status: 'interrupted', ...stored }
+    if (outcome.status === 'unavailable') return { status: 'failed', reason: 'unavailable' }
+    if (outcome.status === 'failed') return { status: 'failed', reason: 'notPrepared' }
+    links.set(episodeId, { url: outcome.url, expiresAt: Date.parse(outcome.expiresAt) })
+    return outcome.url
   }
 
   /** The episode's part-downloaded file, if it has one. */
@@ -583,8 +661,8 @@ function decode(name: string): string | null {
 }
 
 /** A download manager for this device, for the life of the calling component, re-rendering it as downloads change. */
-export function useDownloads(device: Device): DownloadManager {
-  const [downloads] = useState(() => createDownloadManager(device))
+export function useDownloads(device: Device, stager: DownloadStager): DownloadManager {
+  const [downloads] = useState(() => createDownloadManager(device, stager))
   useSyncExternalStore(downloads.subscribe, downloads.getVersion)
   useEffect(() => downloads.watchDevice(), [downloads])
   return downloads
