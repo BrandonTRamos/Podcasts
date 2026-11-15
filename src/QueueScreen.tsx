@@ -1,3 +1,4 @@
+import { DownloadedBadge } from './DownloadControl'
 import { formatDuration } from './format'
 import type { ListeningStatus } from './listening'
 import type { Episode } from './services'
@@ -52,7 +53,7 @@ export function QueueScreen({
                     {podcastTitle && episode.durationSeconds !== null && ' · '}
                     {episode.durationSeconds !== null && formatDuration(episode.durationSeconds)}
                   </p>
-                  {downloaded(episode.id) && <span className="episode-downloaded">Downloaded</span>}
+                  {downloaded(episode.id) && <DownloadedBadge />}
                 </div>
                 <div className="queued-actions">
                   <button

@@ -580,18 +580,24 @@ export class FakeDeviceFiles implements DeviceFiles {
   async openForAppend(name: string, { fresh = false }: { fresh?: boolean } = {}): Promise<FileAppender> {
     if (fresh || !this.#files.has(name)) this.#files.set(name, new Uint8Array())
     let open = true
+    let broken = false
     return {
       write: async (chunk) => {
-        if (!open) throw new TypeError('The file is closed')
-        if (this.#outOfSpace) throw new DOMException('No space left', 'QuotaExceededError')
+        if (!open || broken) throw new TypeError('The file is closed')
+        if (this.#outOfSpace) {
+          broken = true
+          throw new DOMException('No space left', 'QuotaExceededError')
+        }
         const before = this.#files.get(name) ?? new Uint8Array()
         const after = new Uint8Array(before.length + chunk.length)
         after.set(before)
         after.set(chunk, before.length)
         this.#files.set(name, after)
       },
+      // As with a real writable stream, one that failed a write fails to close too.
       close: async () => {
         open = false
+        if (broken) throw new TypeError('The file failed to write')
       },
     }
   }
@@ -620,15 +626,10 @@ export class FakeDeviceFiles implements DeviceFiles {
     return name === undefined ? undefined : this.#files.get(name)
   }
 
-  /** The bytes stored for an episode, complete or not, in whichever file holds them. */
-  storedFor(episodeId: string): Uint8Array | undefined {
-    const name = [...this.#files.keys()].find((file) => file.includes(encodeURIComponent(episodeId)))
-    return name === undefined ? undefined : this.#files.get(name)
-  }
-
-  /** How many files are stored. */
-  count() {
-    return this.#files.size
+  /** The bytes of the one file stored, complete or not; undefined when there is none. Throws if there are several. */
+  onlyFile(): Uint8Array | undefined {
+    if (this.#files.size > 1) throw new Error(`${this.#files.size} files are stored, not one`)
+    return [...this.#files.values()][0]
   }
 
   /** Every later write fails as the device has no room left. */

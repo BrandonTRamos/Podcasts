@@ -7,7 +7,8 @@ export type DownloadFailure =
   | 'unavailable'
   /** The device has no room left for it. */
   | 'noSpace'
-  | 'failed'
+  /** Anything else: storage misbehaved, or the host sent more than it said it would. */
+  | 'other'
 
 /** An episode's download, as this device knows it. */
 export type DownloadState =
@@ -65,6 +66,13 @@ const partialName = (episodeId: string) => fileName(episodeId) + PARTIAL
 
 /** Progress is shown to the whole percent; when the size is unknown, to the megabyte. */
 const UNKNOWN_SIZE_STEP = 1_000_000
+
+/**
+ * A download that receives nothing for this long counts as interrupted, so it
+ * can be resumed: a connection can hang rather than fail, as after iOS
+ * suspends the app.
+ */
+export const STALL_MS = 30_000
 
 export function createDownloadManager(device: Device): DownloadManager {
   const states = new Map<string, DownloadState>()
@@ -146,7 +154,7 @@ export function createDownloadManager(device: Device): DownloadManager {
     void transfer(episode, known.total)
       .catch((error: unknown): DownloadState => ({
         status: 'failed',
-        reason: error instanceof DOMException && error.name === 'QuotaExceededError' ? 'noSpace' : 'failed',
+        reason: error instanceof DOMException && error.name === 'QuotaExceededError' ? 'noSpace' : 'other',
       }))
       .then((outcome) => {
         running.delete(id)
@@ -159,16 +167,25 @@ export function createDownloadManager(device: Device): DownloadManager {
   /** Fetches what is missing of the episode's file into storage, and says how that ended. */
   async function transfer({ id, enclosureUrl }: Downloadable, knownTotal: number | null): Promise<DownloadState> {
     await scanned
-    if (copies.has(id)) return { status: 'downloaded' }
+    // Asked for before the launch scan had found it stored.
+    if (copies.has(id) || (await adoptStoredCopy(id))) return { status: 'downloaded' }
     const partial = partialName(id)
     const stored = (await device.files.size(partial)) ?? 0
     let response = await request(enclosureUrl, stored)
-    // The host has no more to send: what is stored doesn't match its file, so start again.
-    if (typeof response !== 'string' && response.status === 416) response = await request(enclosureUrl, 0)
+    // The host has no more to send, or its file is no longer the size it was:
+    // what is stored doesn't match it, so start again.
+    if (
+      typeof response !== 'string' &&
+      (response.status === 416 ||
+        (response.status === 206 && knownTotal !== null && totalSize(response, stored) !== knownTotal))
+    ) {
+      void response.body?.cancel().catch(() => {})
+      response = await request(enclosureUrl, 0)
+    }
     if (response === 'blocked') return { status: 'blocked' }
     if (response === 'unreachable') return { status: 'interrupted', bytes: stored, total: knownTotal }
     if (!response.ok) {
-      void response.body?.cancel()
+      void response.body?.cancel().catch(() => {})
       return { status: 'failed', reason: 'unavailable' }
     }
 
@@ -180,13 +197,12 @@ export function createDownloadManager(device: Device): DownloadManager {
     let shown = progressStep(bytes, total)
     set(id, { status: 'downloading', bytes, total })
     let cut = false
+    let failed = false
     const reader = response.body?.getReader()
     try {
       while (reader) {
-        let chunk: ReadableStreamReadResult<Uint8Array>
-        try {
-          chunk = await reader.read()
-        } catch {
+        const chunk = await readWithin(reader, STALL_MS)
+        if (chunk === 'cut') {
           cut = true
           break
         }
@@ -200,10 +216,13 @@ export function createDownloadManager(device: Device): DownloadManager {
         }
       }
     } catch (error) {
+      failed = true
       void reader?.cancel().catch(() => {})
       throw error
     } finally {
-      await file.close()
+      // After a failed write closing may fail too; the write's error is the one to report.
+      if (failed) await file.close().catch(() => {})
+      else await file.close()
     }
 
     // Check what actually reached storage, not what was sent to it.
@@ -212,13 +231,17 @@ export function createDownloadManager(device: Device): DownloadManager {
     if (cut || size < expected) return { status: 'interrupted', bytes: size, total }
     if (size > expected) {
       await device.files.remove(partial)
-      return { status: 'failed', reason: 'failed' }
+      return { status: 'failed', reason: 'other' }
     }
     await device.files.rename(partial, fileName(id))
-    const url = await device.files.playbackUrl(fileName(id))
-    if (!url) return { status: 'failed', reason: 'failed' }
-    copies.set(id, url)
-    return { status: 'downloaded' }
+    return (await adoptStoredCopy(id)) ? { status: 'downloaded' } : { status: 'failed', reason: 'other' }
+  }
+
+  /** Plays the episode's stored file from now on, if it has one. Says whether it does. */
+  async function adoptStoredCopy(episodeId: string) {
+    const url = await device.files.playbackUrl(fileName(episodeId))
+    if (url) copies.set(episodeId, url)
+    return url !== null
   }
 
   /**
@@ -292,8 +315,31 @@ function totalSize(response: Response, offset: number): number | null {
   return length !== null && /^\d+$/.test(length.trim()) ? offset + Number(length) : null
 }
 
+/** How much of the file is stored, to the whole percent, of a known size. */
+export function percentOf(bytes: number, total: number) {
+  return Math.floor((Math.min(bytes, total) / total) * 100)
+}
+
 function progressStep(bytes: number, total: number | null) {
-  return total ? Math.floor((bytes / total) * 100) : Math.floor(bytes / UNKNOWN_SIZE_STEP)
+  return total ? percentOf(bytes, total) : Math.floor(bytes / UNKNOWN_SIZE_STEP)
+}
+
+/** The next chunk, or 'cut' when the connection fails or nothing arrives within `ms`, which gives up on it. */
+async function readWithin(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  ms: number,
+): Promise<ReadableStreamReadResult<Uint8Array> | 'cut'> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const stalled = new Promise<'cut'>((resolve) => {
+    timer = setTimeout(() => resolve('cut'), ms)
+  })
+  try {
+    const result = await Promise.race([reader.read().catch((): 'cut' => 'cut'), stalled])
+    if (result === 'cut') void reader.cancel().catch(() => {})
+    return result
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 function decode(name: string): string | null {

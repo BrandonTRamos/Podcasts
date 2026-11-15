@@ -151,8 +151,8 @@ export function SignedInApp({
     onQueue: (episode, where) => listening.enqueue(episode, where),
     onMarkPlayed: (episode, played) =>
       listening.update(episode.id, episode.podcastId, played ? { played } : { played, positionSeconds: 0 }),
-    onDownload: (episode) => downloads.download(episode),
-    downloadOf: (episodeId) => downloads.get(episodeId),
+    onDownload: downloads.download,
+    downloadOf: downloads.get,
   }
 
   function openQueue() {
@@ -196,7 +196,7 @@ export function SignedInApp({
         onBack={() => setScreen(from)}
         onPlay={playEpisode}
         download={downloads.get(episode.id)}
-        onDownload={(episode) => downloads.download(episode)}
+        onDownload={downloads.download}
       />
     )
   } else if (screen.name === 'latest') {

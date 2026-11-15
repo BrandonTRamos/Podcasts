@@ -19,13 +19,6 @@ export function browserDevice(): Device {
   }
 }
 
-/**
- * Writes are committed to the file this often. A writable stream keeps what
- * it is given in a swap file until it is closed, so a page killed mid-download
- * loses at most this much.
- */
-const COMMIT_EVERY_BYTES = 4_000_000
-
 /** Files in the Origin Private File System's root folder. */
 function originPrivateFiles(): DeviceFiles {
   const root = () => navigator.storage.getDirectory()
@@ -55,23 +48,14 @@ function originPrivateFiles(): DeviceFiles {
 
     async openForAppend(name, { fresh = false } = {}): Promise<FileAppender> {
       const file = await (await root()).getFileHandle(name, { create: true })
-      const open = async (keepExistingData: boolean) => {
-        const writable = await file.createWritable({ keepExistingData })
-        if (keepExistingData) await writable.seek((await file.getFile()).size)
-        return writable
-      }
-      let writable = await open(!fresh)
-      let uncommitted = 0
+      // A writable stream keeps what it is given in a swap file until closed.
+      // Reopening it copies the whole file again, so one is kept for the
+      // whole download: a page killed part way loses what that run fetched,
+      // while an interrupted fetch closes it and keeps everything.
+      const writable = await file.createWritable({ keepExistingData: !fresh })
+      if (!fresh) await writable.seek((await file.getFile()).size)
       return {
-        async write(chunk) {
-          await writable.write(chunk as Uint8Array<ArrayBuffer>)
-          uncommitted += chunk.length
-          if (uncommitted >= COMMIT_EVERY_BYTES) {
-            await writable.close()
-            writable = await open(true)
-            uncommitted = 0
-          }
-        },
+        write: (chunk) => writable.write(chunk as Uint8Array<ArrayBuffer>),
         close: () => writable.close(),
       }
     },

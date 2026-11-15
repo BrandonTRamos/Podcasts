@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
+import { STALL_MS } from './downloads'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
@@ -33,12 +34,12 @@ const firstFile = audioFile(1000)
 async function setUp({ ranges = true, cors = true }: { ranges?: boolean; cors?: boolean } = {}) {
   const data = fakeDataApi()
   const podcastId = data.seedPodcast('https://feeds.example.com/show.xml', show)
-  const [firstId] = data.ingest(podcastId, [first, second])
+  data.ingest(podcastId, [first, second])
   const device = new FakeDevice()
   device.network.host(first.enclosureUrl, firstFile, { ranges, cors })
   const auth = fakeAuth(owner)
   await auth.signIn(owner.email, owner.password)
-  return { data, device, firstId, ...(await launch(data, device)) }
+  return { data, device, ...(await launch(data, device)) }
 }
 
 /** Opens the app, already signed in, at the show's page, as a fresh launch of it on this device would. */
@@ -79,11 +80,12 @@ function setVisibility(state: 'hidden' | 'visible') {
 
 afterEach(() => {
   Reflect.deleteProperty(document, 'visibilityState')
+  vi.useRealTimers()
 })
 
 describe('downloading an episode', () => {
   it('shows progress while the file arrives, storing it on the device as it comes', async () => {
-    const { device, firstId, user } = await setUp()
+    const { device, user } = await setUp()
     device.network.throttle()
 
     await startDownload(user, first.title)
@@ -94,13 +96,13 @@ describe('downloading an episode', () => {
     expect(progress).toHaveAttribute('value', '250')
     expect(progress).toHaveAttribute('max', '1000')
     // What has arrived is already on the device, not held back in memory.
-    expect(device.files.storedFor(firstId)).toEqual(firstFile.subarray(0, 250))
+    expect(device.files.onlyFile()).toEqual(firstFile.subarray(0, 250))
     expect(within(row(first.title)).queryByText('Downloaded')).not.toBeInTheDocument()
 
     device.network.unthrottle()
 
     expect(await downloaded(first.title)).toBeInTheDocument()
-    expect(device.files.storedFor(firstId)).toEqual(firstFile)
+    expect(device.files.onlyFile()).toEqual(firstFile)
     expect(within(row(first.title)).queryByRole('progressbar', { name: 'Download progress' })).not.toBeInTheDocument()
     expect(within(row(second.title)).queryByText('Downloaded')).not.toBeInTheDocument()
   })
@@ -141,7 +143,7 @@ describe('downloading an episode', () => {
   })
 
   it('resumes an interrupted download from where it stopped', async () => {
-    const { device, firstId, user } = await setUp()
+    const { device, user } = await setUp()
     device.network.throttle()
     await startDownload(user, first.title)
     device.network.deliver(400)
@@ -153,7 +155,7 @@ describe('downloading an episode', () => {
     expect(within(row(first.title)).getByText(/interrupted/i)).toBeInTheDocument()
     expect(within(row(first.title)).queryByText('Downloaded')).not.toBeInTheDocument()
     await waitFor(() => expect(device.screenKeptOn()).toBe(false))
-    expect(device.files.storedFor(firstId)).toEqual(firstFile.subarray(0, 400))
+    expect(device.files.onlyFile()).toEqual(firstFile.subarray(0, 400))
 
     device.network.reconnect()
     device.network.unthrottle()
@@ -161,11 +163,11 @@ describe('downloading an episode', () => {
 
     expect(await downloaded(first.title)).toBeInTheDocument()
     expect(device.network.requests.at(-1)).toMatchObject({ url: first.enclosureUrl, range: 'bytes=400-' })
-    expect(device.files.storedFor(firstId)).toEqual(firstFile)
+    expect(device.files.onlyFile()).toEqual(firstFile)
   })
 
   it('resumes by itself when the app comes back to the foreground', async () => {
-    const { device, firstId, user } = await setUp()
+    const { device, user } = await setUp()
     device.network.throttle()
     await startDownload(user, first.title)
     device.network.deliver(400)
@@ -180,11 +182,51 @@ describe('downloading an episode', () => {
 
     expect(await downloaded(first.title)).toBeInTheDocument()
     expect(device.network.requests.at(-1)).toMatchObject({ range: 'bytes=400-' })
-    expect(device.files.storedFor(firstId)).toEqual(firstFile)
+    expect(device.files.onlyFile()).toEqual(firstFile)
+  })
+
+  it('counts a download that stops arriving as interrupted, so it can be resumed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
+    const { device, user } = await setUp()
+    device.network.throttle()
+    await startDownload(user, first.title)
+    device.network.deliver(400)
+    await within(row(first.title)).findByText('40%')
+
+    act(() => void vi.advanceTimersByTime(STALL_MS))
+
+    const resume = await within(row(first.title)).findByRole('button', { name: 'Resume download' })
+    await waitFor(() => expect(device.screenKeptOn()).toBe(false))
+    device.network.unthrottle()
+    await user.click(resume)
+
+    expect(await downloaded(first.title)).toBeInTheDocument()
+    expect(device.network.requests.at(-1)).toMatchObject({ range: 'bytes=400-' })
+    expect(device.files.onlyFile()).toEqual(firstFile)
+  })
+
+  it('starts again from the beginning when the file on the host has changed size since', async () => {
+    const { device, user } = await setUp()
+    device.network.throttle()
+    await startDownload(user, first.title)
+    device.network.deliver(400)
+    await within(row(first.title)).findByText('40%')
+    device.network.dropConnection()
+    const resume = await within(row(first.title)).findByRole('button', { name: 'Resume download' })
+
+    // The publisher replaced the file, as with a re-edit or a different ad break.
+    const replacement = audioFile(1200).reverse()
+    device.network.host(first.enclosureUrl, replacement)
+    device.network.reconnect()
+    device.network.unthrottle()
+    await user.click(resume)
+
+    expect(await downloaded(first.title)).toBeInTheDocument()
+    expect(device.files.onlyFile()).toEqual(replacement)
   })
 
   it('starts again from the beginning when the host can’t send part of a file', async () => {
-    const { device, firstId, user } = await setUp({ ranges: false })
+    const { device, user } = await setUp({ ranges: false })
     device.network.throttle()
     await startDownload(user, first.title)
     device.network.deliver(400)
@@ -197,11 +239,11 @@ describe('downloading an episode', () => {
     await user.click(resume)
 
     expect(await downloaded(first.title)).toBeInTheDocument()
-    expect(device.files.storedFor(firstId)).toEqual(firstFile)
+    expect(device.files.onlyFile()).toEqual(firstFile)
   })
 
   it('never counts a download as done when the host sends less than the whole file', async () => {
-    const { device, firstId, user } = await setUp()
+    const { device, user } = await setUp()
     device.network.endEarly(first.enclosureUrl, 600)
 
     await startDownload(user, first.title)
@@ -213,11 +255,11 @@ describe('downloading an episode', () => {
     await user.click(resume)
 
     expect(await downloaded(first.title)).toBeInTheDocument()
-    expect(device.files.storedFor(firstId)).toEqual(firstFile)
+    expect(device.files.onlyFile()).toEqual(firstFile)
   })
 
   it('shows a part-downloaded episode as unfinished after a relaunch, and resumes it', async () => {
-    const { data, device, firstId, user, unmount } = await setUp()
+    const { data, device, user, unmount } = await setUp()
     device.network.throttle()
     await startDownload(user, first.title)
     device.network.deliver(400)
@@ -236,7 +278,7 @@ describe('downloading an episode', () => {
 
     expect(await downloaded(first.title)).toBeInTheDocument()
     expect(device.network.requests.at(-1)).toMatchObject({ range: 'bytes=400-' })
-    expect(device.files.storedFor(firstId)).toEqual(firstFile)
+    expect(device.files.onlyFile()).toEqual(firstFile)
   })
 
   it('still shows a finished download as downloaded after a relaunch', async () => {
@@ -280,14 +322,14 @@ describe('downloading an episode', () => {
   })
 
   it('downloads from the episode’s own screen', async () => {
-    const { device, firstId, user } = await setUp()
+    const { device, user } = await setUp()
     await user.click(within(row(first.title)).getByRole('button', { name: 'Show notes' }))
     await screen.findByRole('heading', { level: 1, name: first.title })
 
     await user.click(screen.getByRole('button', { name: 'Download' }))
 
     expect(await screen.findByText('Downloaded')).toBeInTheDocument()
-    expect(device.files.storedFor(firstId)).toEqual(firstFile)
+    expect(device.files.onlyFile()).toEqual(firstFile)
   })
 
   it('tells the listener when the publisher blocks direct download', async () => {

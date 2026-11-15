@@ -1,10 +1,10 @@
-import type { DownloadFailure, DownloadState } from './downloads'
+import { type DownloadFailure, type DownloadState, percentOf } from './downloads'
 import { formatMegabytes } from './format'
 
 const failureMessages: Record<DownloadFailure, string> = {
   unavailable: 'This episode couldn’t be downloaded: its publisher’s host didn’t send the file.',
   noSpace: 'Not enough space on this device to download this episode.',
-  failed: 'This episode couldn’t be downloaded.',
+  other: 'This episode couldn’t be downloaded.',
 }
 
 /**
@@ -40,7 +40,7 @@ export function DownloadControl({ download, onDownload }: { download: DownloadSt
     case 'downloaded':
       return (
         <div className="episode-download">
-          <span className="episode-downloaded">Downloaded</span>
+          <DownloadedBadge />
         </div>
       )
     case 'blocked':
@@ -73,7 +73,12 @@ function DownloadProgress({ bytes, total }: { bytes: number; total: number | nul
   return (
     <span className="download-progress">
       <progress aria-label="Download progress" max={total} value={Math.min(bytes, total)} />
-      <span>{Math.floor((Math.min(bytes, total) / total) * 100)}%</span>
+      <span>{percentOf(bytes, total)}%</span>
     </span>
   )
+}
+
+/** Marks an episode whose whole file is stored on this device. */
+export function DownloadedBadge() {
+  return <span className="episode-downloaded">Downloaded</span>
 }
