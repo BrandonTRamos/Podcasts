@@ -12,14 +12,12 @@ import type { Episode } from './services'
 export function DownloadsScreen({
   downloads,
   podcastTitleOf,
-  onBack,
   onPlay,
   onDownload,
   onRemove,
 }: {
   downloads: StoredDownload[]
   podcastTitleOf: (podcastId: string) => string | undefined
-  onBack: () => void
   onPlay: (episode: Episode) => void
   /** Downloads it, again or from where it stopped. */
   onDownload: (episode: Episode) => void
@@ -33,11 +31,6 @@ export function DownloadsScreen({
 
   return (
     <main className="downloads">
-      <nav>
-        <button type="button" onClick={onBack} aria-label="Back to library">
-          ‹ Library
-        </button>
-      </nav>
       <h1>Downloads</h1>
       {downloads.length === 0 ? (
         <p>Nothing is downloaded to this device.</p>
@@ -144,15 +137,15 @@ function DownloadHeading({
   const podcastTitle = episode && podcastTitleOf(episode.podcastId)
   return (
     <>
-      <h2>
+      <h3>
         {episode && onPlay ? (
-          <button type="button" onClick={() => onPlay(episode)}>
+          <button type="button" className="plain" onClick={() => onPlay(episode)}>
             {episode.title}
           </button>
         ) : (
           (episode?.title ?? 'Unknown episode')
         )}
-      </h2>
+      </h3>
       {podcastTitle && (
         <p className="episode-meta">
           <span>{podcastTitle}</span>

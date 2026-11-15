@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { chooseAction } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const showUrl = 'https://feeds.example.com/show.xml'
@@ -254,7 +255,7 @@ describe('the latest episodes', () => {
     const { user } = await renderSignedIn(data)
     await openLatest(user)
 
-    await user.click(within((await latestItems())[1]).getByRole('button', { name: 'Add to queue' }))
+    await chooseAction(user, (await latestItems())[1], 'Add to queue')
 
     expect(within((await latestItems())[1]).getByText('Queued')).toBeInTheDocument()
   })
@@ -266,7 +267,7 @@ describe('the latest episodes', () => {
     await openLatest(user)
 
     expect(await screen.findByText('No episodes yet.')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Back to library' }))
+    await user.click(screen.getByRole('button', { name: 'Library' }))
     expect(await screen.findByRole('heading', { name: 'Library' })).toBeInTheDocument()
   })
 

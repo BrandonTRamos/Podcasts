@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import type { DataApi } from './services'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { chooseAction } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const feedUrl = 'https://feeds.example.com/show.xml'
@@ -232,7 +233,7 @@ describe('following the listener between devices', () => {
     act(() => phone.audio.progressTo(600))
     data.sleep()
     const desktop = await openShowOn(data.anotherDevice())
-    await desktop.user.click(within(desktop.row(first.title)).getByRole('button', { name: 'Mark played' }))
+    await chooseAction(desktop.user, desktop.row(first.title), 'Mark played')
 
     await phone.user.click(within(phone.miniPlayer()).getByRole('button', { name: 'Pause' }))
 
@@ -281,12 +282,12 @@ describe('played state', () => {
     data.seedEpisodeState({ episodeId: firstId, podcastId, positionSeconds: 900, played: false })
     const device = await openShowOn(data)
 
-    await device.user.click(within(device.row(first.title)).getByRole('button', { name: 'Mark played' }))
+    await chooseAction(device.user, device.row(first.title), 'Mark played')
 
     expect(within(device.row(first.title)).getByText('Played')).toBeInTheDocument()
     expect(data.savedState(firstId)).toMatchObject({ played: true })
 
-    await device.user.click(within(device.row(first.title)).getByRole('button', { name: 'Mark unplayed' }))
+    await chooseAction(device.user, device.row(first.title), 'Mark unplayed')
 
     expect(within(device.row(first.title)).getByText('New')).toBeInTheDocument()
     expect(within(device.row(first.title)).queryByText('Played')).not.toBeInTheDocument()
@@ -298,7 +299,7 @@ describe('played state', () => {
     const device = await openShowOn(data)
     data.failNextRequest()
 
-    await device.user.click(within(device.row(first.title)).getByRole('button', { name: 'Mark played' }))
+    await chooseAction(device.user, device.row(first.title), 'Mark played')
     await act(async () => {})
 
     expect(within(device.row(first.title)).getByText('Played')).toBeInTheDocument()
@@ -336,7 +337,7 @@ describe('played state', () => {
 
     expect(titles()).toEqual([third.title, first.title])
 
-    await device.user.click(within(device.row(third.title)).getByRole('button', { name: 'Mark played' }))
+    await chooseAction(device.user, device.row(third.title), 'Mark played')
     expect(titles()).toEqual([first.title])
 
     await device.user.click(device.ui.getByRole('checkbox', { name: 'Unplayed only' }))

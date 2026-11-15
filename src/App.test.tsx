@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
@@ -18,6 +18,41 @@ async function signIn(user: ReturnType<typeof userEvent.setup>, email: string, p
   await user.type(screen.getByLabelText('Password'), password)
   await user.click(screen.getByRole('button', { name: 'Sign in' }))
 }
+
+describe('reloading', () => {
+  it('reloads the app from the library, so a newly deployed version shows without closing the installed app', async () => {
+    const auth = fakeAuth(owner)
+    await auth.signIn(owner.email, owner.password)
+    const device = new FakeDevice()
+    render(<App services={{ auth, data: fakeDataApi(), audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device }} />)
+
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Reload app' }))
+
+    expect(device.reloads).toBe(1)
+  })
+})
+
+describe('getting around', () => {
+  it('reaches every section from the tabs at the foot of the screen, and marks the one it is on', async () => {
+    const { user } = renderApp()
+    await signIn(user, owner.email, owner.password)
+    await screen.findByRole('heading', { name: 'Library' })
+
+    for (const [tab, heading] of [
+      ['Latest', 'Latest episodes'],
+      ['Queue', 'Queue'],
+      ['Downloads', 'Downloads'],
+      ['Search', 'Search'],
+      ['Library', 'Library'],
+    ]) {
+      const tabs = screen.getByRole('navigation', { name: 'Sections' })
+      await user.click(within(tabs).getByRole('button', { name: tab }))
+
+      expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
+      expect(within(tabs).getByRole('button', { name: tab })).toHaveAttribute('aria-current', 'page')
+    }
+  })
+})
 
 describe('access', () => {
   it('shows a signed-out visitor the sign-in screen, with no way to sign up', async () => {

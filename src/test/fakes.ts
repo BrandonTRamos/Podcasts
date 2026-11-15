@@ -1015,6 +1015,8 @@ export class FakeDevice implements Device {
   readonly fetch: Fetch = (url, init) => this.network.fetch(url, init)
   /** How many times the app asked for persistent storage. */
   persistRequests = 0
+  /** How many times the app reloaded itself. */
+  reloads = 0
   #holds = new Set<{ released: boolean }>()
   #online = true
   #connectivityListeners = new Set<() => void>()
@@ -1055,6 +1057,10 @@ export class FakeDevice implements Device {
   async persistStorage() {
     this.persistRequests++
     return true
+  }
+
+  readonly reload = () => {
+    this.reloads++
   }
 
   /** Whether anything is keeping the screen on. */

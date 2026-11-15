@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { DownloadControl } from './DownloadControl'
 import type { DownloadState } from './downloads'
 import { EpisodeMeta, UnavailableOffline } from './EpisodeRow'
+import { ChevronLeftIcon, PlayIcon } from './Icons'
 import { type ListeningStore, useEpisodeStates } from './listening'
 import type { DataApi, Episode } from './services'
 import { ShowNotes, type ShowNotesState } from './ShowNotes'
@@ -50,8 +51,9 @@ export function EpisodeScreen({
   return (
     <main className="episode">
       <nav>
-        <button type="button" onClick={onBack} aria-label={`Back to ${backLabel}`}>
-          ‹ {backLabel}
+        <button type="button" className="back" onClick={onBack} aria-label={`Back to ${backLabel}`}>
+          <ChevronLeftIcon size={22} />
+          {backLabel}
         </button>
       </nav>
       <header>
@@ -59,10 +61,11 @@ export function EpisodeScreen({
         <EpisodeMeta episode={episode} podcastTitle={podcastTitle} />
         <button
           type="button"
-          className="episode-play"
+          className="primary episode-play"
           onClick={() => onPlay(episode)}
           disabled={statesStatus === 'loading' || unavailable}
         >
+          <PlayIcon size={18} />
           Play
         </button>
         {unavailable && <UnavailableOffline />}

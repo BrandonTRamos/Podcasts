@@ -337,6 +337,11 @@ export interface Device {
   keepScreenOn(): Promise<ScreenHold>
   /** Asks the browser not to clear stored files when space runs low. Resolves to whether it agreed. */
   persistStorage(): Promise<boolean>
+  /**
+   * Loads the app afresh, as a browser's reload button does. The installed app
+   * has no such button, and a reload is what shows a version deployed since it opened.
+   */
+  reload(): void
 }
 
 export interface Services {

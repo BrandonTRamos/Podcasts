@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { STAGING_TIMEOUT_MS } from './downloads'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { chooseAction } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = { title: 'The Example Show', artworkUrl: 'https://cdn.example.com/show/artwork.jpg' }
@@ -63,7 +64,7 @@ describe('downloading an episode whose host blocks direct download', () => {
     const { data, device, audio, user, episodeId } = await setUp()
     device.network.throttle()
 
-    await user.click(within(row()).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(), 'Download')
 
     expect(await preparing()).toBeInTheDocument()
     expect(data.stagingRequests()).toEqual([episodeId])
@@ -85,7 +86,7 @@ describe('downloading an episode whose host blocks direct download', () => {
   it('resumes an interrupted download from the same copy, without preparing another', async () => {
     const { data, device, user } = await setUp()
     device.network.throttle()
-    await user.click(within(row()).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(), 'Download')
     await preparing()
     act(() => data.finishStaging({ status: 'ready', url: stagedUrl, expiresAt: later }))
     device.network.deliver(400)
@@ -111,7 +112,7 @@ describe('downloading an episode whose host blocks direct download', () => {
     const freshUrl = 'https://tincan-staging.s3.amazonaws.com/staged/request-2?X-Amz-Signature=def'
     device.network.host(freshUrl, file)
     device.network.throttle()
-    await user.click(within(row()).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(), 'Download')
     await preparing()
     act(() => data.finishStaging({ status: 'ready', url: stagedUrl, expiresAt: later }))
     device.network.deliver(400)
@@ -134,7 +135,7 @@ describe('downloading an episode whose host blocks direct download', () => {
   it('prepares a fresh copy to resume from once the link to the last one has expired', async () => {
     const { data, device, user } = await setUp()
     device.network.throttle()
-    await user.click(within(row()).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(), 'Download')
     await preparing()
     act(() => data.finishStaging({ status: 'ready', url: stagedUrl, expiresAt: new Date(Date.now() + 1000).toISOString() }))
     device.network.deliver(400)
@@ -155,7 +156,7 @@ describe('downloading an episode whose host blocks direct download', () => {
 
   it('says clearly when the copy can’t be prepared, and lets the listener try again', async () => {
     const { data, user } = await setUp()
-    await user.click(within(row()).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(), 'Download')
     await preparing()
 
     act(() => data.finishStaging({ status: 'failed' }))
@@ -169,7 +170,7 @@ describe('downloading an episode whose host blocks direct download', () => {
 
   it('says when the publisher’s host wouldn’t send the file to be copied', async () => {
     const { data, user } = await setUp()
-    await user.click(within(row()).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(), 'Download')
     await preparing()
 
     act(() => data.finishStaging({ status: 'unavailable' }))
@@ -180,7 +181,7 @@ describe('downloading an episode whose host blocks direct download', () => {
   it('gives up waiting for a copy that never arrives', async () => {
     const { user } = await setUp()
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
-    await user.click(within(row()).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(), 'Download')
     await preparing()
 
     act(() => void vi.advanceTimersByTime(STAGING_TIMEOUT_MS))
@@ -190,7 +191,7 @@ describe('downloading an episode whose host blocks direct download', () => {
 
   it('counts the download as interrupted when the backend can’t be reached while preparing', async () => {
     const { data, user } = await setUp()
-    await user.click(within(row()).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(), 'Download')
     await preparing()
 
     act(() => data.disconnect())
@@ -200,7 +201,7 @@ describe('downloading an episode whose host blocks direct download', () => {
 
   it('stops preparing when the listener cancels the download', async () => {
     const { data, device, user } = await setUp()
-    await user.click(within(row()).getByRole('button', { name: 'Download' }))
+    await chooseAction(user, row(), 'Download')
     await preparing()
 
     await user.click(screen.getByRole('button', { name: 'Back to library' }))

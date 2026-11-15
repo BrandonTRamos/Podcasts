@@ -1,47 +1,245 @@
+/*
+ * TinCan's look: the navy and cream of its icon on a plain page, in the
+ * system font. Dark follows the device, with the cream leading on navy.
+ */
 :root {
   font-family: system-ui, -apple-system, sans-serif;
   color-scheme: light dark;
-  line-height: 1.5;
+  line-height: 1.4;
+  --bg: #ffffff;
+  --ink: #14263d;
+  --muted: #56636f;
+  --line: #e3e9ee;
+  --fill: #eef2f5;
+  --accent: #1f3a5f;
+  --on-accent: #f4e9cd;
+  --track: #c5cfd8;
+  --shadow: 0 8px 28px rgb(20 38 61 / 0.18);
+  /* The page's side gutter, and how wide a screen gets on a big display. */
+  --gutter: 1.25rem;
+  --page: 40rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1826;
+    --ink: #eef2f5;
+    --muted: #a9b6c2;
+    --line: #24364c;
+    --fill: #1a2a3f;
+    --accent: #f4e9cd;
+    --on-accent: #1f3a5f;
+    --track: #56636f;
+    --shadow: 0 8px 28px rgb(0 0 0 / 0.5);
+  }
 }
 
 body {
   margin: 0;
+  background: var(--bg);
+  color: var(--ink);
 }
 
 main {
-  max-width: 40rem;
+  max-width: var(--page);
   margin: 0 auto;
-  padding: 1rem;
+  padding: 0.75rem var(--gutter) 1.5rem;
+  box-sizing: border-box;
+}
+
+h1 {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 2rem;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+p {
+  margin: 0.5rem 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+.icon {
+  display: block;
+  flex: none;
+}
+
+/* Controls. A button is a small pill unless a class says otherwise. */
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 2.25rem;
+  padding: 0 0.875rem;
+  border: 0;
+  border-radius: 1.375rem;
+  background: var(--fill);
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button.primary {
+  min-height: 2.75rem;
+  padding: 0 1.125rem;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 0.9375rem;
+}
+
+button.outline {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+/* A button that reads as text: its words in the accent colour, on nothing. */
+button.text-button {
+  min-height: 2.75rem;
+  padding: 0 0.25rem;
+  background: none;
+  font-size: 1rem;
+}
+
+button.icon-button {
+  width: 2.75rem;
+  height: 2.75rem;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: none;
+}
+
+/* A button that is its content: a title, a row. */
+button.plain {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  text-align: left;
+  white-space: normal;
+}
+
+input[type='url'],
+input[type='search'],
+input[type='email'],
+input[type='password'] {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 2.75rem;
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: 0.625rem;
+  background: var(--fill);
+  color: var(--ink);
+  /* At least 16px, below which iOS zooms the page in when a field is focused. */
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+input::placeholder {
+  color: var(--muted);
+}
+
+label {
+  display: grid;
+  gap: 0.375rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+progress {
+  appearance: none;
+  height: 0.25rem;
+  border: 0;
+  border-radius: 0.125rem;
+  background: var(--line);
+  overflow: hidden;
+}
+
+progress::-webkit-progress-bar {
+  background: var(--line);
+}
+
+progress::-webkit-progress-value {
+  background: var(--accent);
+}
+
+progress::-moz-progress-bar {
+  background: var(--accent);
+}
+
+[role='alert'] {
+  color: var(--ink);
+  font-size: 0.875rem;
+}
+
+/* A screen's way back, at its top. */
+main > nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2.75rem;
+  margin: -0.25rem 0 0.25rem -0.375rem;
+}
+
+button.back {
+  min-height: 2.75rem;
+  padding: 0 0.5rem 0 0;
+  gap: 0.125rem;
+  background: none;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+/* Sign in */
+.sign-in {
+  max-width: 24rem;
+  padding-top: 3rem;
 }
 
 .sign-in form {
   display: grid;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
-.sign-in label {
-  display: grid;
-  gap: 0.25rem;
+.sign-in button {
+  margin-top: 0.5rem;
 }
 
-.sign-in input {
-  font: inherit;
-  padding: 0.5rem 0.75rem;
-}
-
-button {
-  font: inherit;
-  padding: 0.5rem 0.75rem;
-}
-
+/* Library */
 .library header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
 }
 
 .library header h1 {
-  margin-right: auto;
+  margin: 0.25rem auto 0.25rem 0;
 }
 
 .add-podcast {
@@ -49,32 +247,48 @@ button {
   grid-template-columns: 1fr auto;
   gap: 0.5rem;
   align-items: end;
-  margin-block: 1rem;
-}
-
-.add-podcast label {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.add-podcast input {
-  font: inherit;
-  padding: 0.5rem 0.75rem;
-  min-width: 0;
+  margin-block: 0.5rem 0.75rem;
 }
 
 .add-podcast p {
   grid-column: 1 / -1;
   margin: 0;
+  font-size: 0.875rem;
 }
 
 .opml-import {
-  margin-block: 1rem;
+  margin-block: 0.75rem 1.25rem;
+  font-size: 0.875rem;
 }
 
 .opml-import label {
-  display: grid;
-  gap: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--ink);
+  font-size: 0.9375rem;
+  font-weight: 400;
+}
+
+/* The file input is its button alone: the app clears the chosen file at once, so there is never a name to show. */
+.opml-import input[type='file'] {
+  width: 7rem;
+  color: transparent;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.opml-import input[type='file']::file-selector-button {
+  min-height: 2.25rem;
+  padding: 0 0.875rem;
+  border: 0;
+  border-radius: 1.375rem;
+  background: var(--fill);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .opml-import p,
@@ -83,7 +297,10 @@ button {
 }
 
 .podcasts,
-.episodes {
+.episodes,
+.queued,
+.downloads-list,
+.search-results {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -94,15 +311,11 @@ button {
   grid-template-columns: auto 1fr;
   grid-template-rows: auto auto;
   column-gap: 0.75rem;
+  align-content: center;
   align-items: center;
   width: 100%;
-  text-align: left;
-  background: none;
-  border: none;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
-  padding: 0.5rem 0;
-  color: inherit;
-  cursor: pointer;
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--line);
 }
 
 .podcasts .artwork {
@@ -110,19 +323,28 @@ button {
 }
 
 .podcast-title {
+  align-self: end;
   font-weight: 600;
 }
 
 .podcast-author {
-  opacity: 0.7;
+  align-self: start;
   margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
 }
 
 .artwork {
   display: block;
-  border-radius: 0.375rem;
+  flex: none;
+  border-radius: 0.5rem;
   object-fit: cover;
-  background: color-mix(in srgb, currentColor 12%, transparent);
+  background: var(--fill);
+}
+
+.artwork-mini {
+  width: 2.5rem;
+  height: 2.5rem;
 }
 
 .artwork-small {
@@ -135,59 +357,74 @@ button {
   height: 7rem;
 }
 
+.artwork-hero {
+  width: 100%;
+  max-width: 24rem;
+  height: auto;
+  aspect-ratio: 1;
+  margin-inline: auto;
+  border-radius: 0.75rem;
+}
+
+/* Podcast */
 .podcast header {
   display: flex;
   gap: 1rem;
-  align-items: center;
-  margin-block: 1rem;
+  align-items: flex-start;
+  margin-block: 0.25rem 0.75rem;
 }
 
-.podcast h1 {
-  margin: 0;
+.podcast header h1 {
+  margin: 0.125rem 0 0;
+  font-size: 1.375rem;
+  letter-spacing: -0.01em;
 }
 
-.podcast nav button,
-.queue nav button,
-.latest nav button,
-.downloads nav button,
-.episode nav button {
-  background: none;
-  border: none;
-  padding-inline: 0;
-  color: inherit;
-  cursor: pointer;
-}
-
-.episodes li,
-.queued li,
-.downloads-list li {
-  padding-block: 0.5rem;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
-}
-
-.episodes h2,
-.queued h2,
-.downloads-list h2 {
+.podcast header .podcast-author {
   font-size: 1rem;
-  margin: 0;
 }
 
-.episode-meta {
-  margin: 0;
-  opacity: 0.7;
+.unsubscribe {
+  margin-top: 0.625rem;
+}
+
+.unsubscribe p {
+  margin: 0.5rem 0 0;
   font-size: 0.875rem;
 }
 
-.episodes h2 button,
-.queued h2 button,
-.downloads-list h2 button {
-  font: inherit;
-  text-align: left;
-  background: none;
-  border: none;
-  padding: 0;
-  color: inherit;
-  cursor: pointer;
+/* Asking first: a sheet over the screen's foot, clear of the bars there. */
+.unsubscribe[role='alertdialog'] {
+  position: fixed;
+  z-index: 20;
+  inset-inline: max(0.75rem, calc((100% - var(--page)) / 2 + 0.75rem));
+  bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  margin: 0;
+  padding: 1.25rem;
+  border-radius: 1rem;
+  background: var(--bg);
+  box-shadow:
+    var(--shadow),
+    0 0 0 1px var(--line);
+}
+
+.unsubscribe h2 {
+  margin: 0 0 0.25rem;
+}
+
+.unsubscribe[role='alertdialog'] p {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.unsubscribe[role='alertdialog'] button {
+  min-height: 2.75rem;
+  padding: 0 1.125rem;
+}
+
+.unsubscribe button + button {
+  margin-inline-start: 0.5rem;
 }
 
 .feed-health {
@@ -195,69 +432,217 @@ button {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.25rem 0.75rem;
-  font-size: 0.875rem;
+  gap: 0 0.75rem;
+  margin-bottom: 0.5rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
 }
 
 .feed-health p {
   margin: 0;
 }
 
-.feed-health p[role] {
-  flex-basis: 100%;
+/* When it last refreshed takes the room there is, wrapping beside the button. */
+.feed-health p:first-child {
+  flex: 1 1 12rem;
 }
 
-.feed-health button {
+.feed-health p[role] {
+  flex-basis: 100%;
+  margin-bottom: 0.5rem;
+}
+
+.feed-health button.text-button {
   font-size: 0.875rem;
-  padding: 0.25rem 0.5rem;
+}
+
+.episodes-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ink);
 }
 
 .episode-filter {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-block: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 400;
 }
 
-.episode-state {
-  display: flex;
+/* A checkbox drawn as a switch. */
+input.switch {
+  appearance: none;
+  position: relative;
+  width: 2.75rem;
+  height: 1.625rem;
+  margin: 0;
+  border-radius: 0.8125rem;
+  background: var(--track);
+  cursor: pointer;
+}
+
+input.switch::after {
+  content: '';
+  position: absolute;
+  top: 0.125rem;
+  left: 0.125rem;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 50%;
+  background: #fff;
+  transition: translate 0.15s;
+}
+
+input.switch:checked {
+  background: var(--accent);
+}
+
+input.switch:checked::after {
+  translate: 1.125rem;
+}
+
+/* Episodes in a list */
+.episode-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  font-size: 0.875rem;
+  column-gap: 0.5rem;
+  padding-block: 0.875rem;
+  border-bottom: 1px solid var(--line);
 }
 
-.episode-state button {
-  font-size: 0.875rem;
-  padding: 0.25rem 0.5rem;
+.episode-row-main {
+  min-width: 0;
 }
 
-.episode-queue {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 0.25rem;
-}
-
-.episode-queue button,
-.queued-actions button {
-  font-size: 0.875rem;
-  padding: 0.25rem 0.5rem;
-}
-
-.episode-queued {
+.episode-row h2,
+.queued h2,
+.downloads-list h3 {
+  margin: 0;
+  font-size: 1rem;
   font-weight: 600;
 }
 
-.queued {
-  list-style: none;
-  padding: 0;
+.episode-row-played h2 {
+  color: var(--muted);
+  font-weight: 500;
 }
 
+.episode-meta {
+  margin: 0 0 0.125rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.episode-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.375rem;
+  margin-top: 0.5rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+/* A dot between each of the line's facts. */
+.episode-line > span + span::before {
+  content: '·';
+  margin-right: 0.375rem;
+}
+
+button.play-circle {
+  width: 2rem;
+  height: 2rem;
+  min-height: 0;
+  margin-right: 0.25rem;
+  padding: 0;
+  border-radius: 50%;
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.episode-new {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.episode-progress,
+.download-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.episode-progress progress,
+.download-progress progress {
+  width: 3.5rem;
+}
+
+.episode-unavailable {
+  margin: 0.375rem 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.more-actions .icon-button {
+  margin-right: -0.75rem;
+  color: var(--muted);
+}
+
+.more-actions-panel {
+  position: absolute;
+  z-index: 5;
+  /* Below its button, which sits half way down the row. */
+  top: calc(50% + 1.375rem);
+  right: 0;
+  display: grid;
+  min-width: 12rem;
+  padding: 0.375rem;
+  border-radius: 0.875rem;
+  background: var(--bg);
+  box-shadow:
+    var(--shadow),
+    0 0 0 1px var(--line);
+  /* Room to scroll clear of the bars at the foot of the screen. */
+  scroll-margin-bottom: 10rem;
+}
+
+.more-actions-panel button {
+  justify-content: flex-start;
+  min-height: 2.75rem;
+  border-radius: 0.625rem;
+  background: none;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.episode-download {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.episode-download p {
+  margin: 0;
+}
+
+/* Queue */
 .queued li {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
+  padding-block: 0.75rem;
+  border-bottom: 1px solid var(--line);
 }
 
 .queued-episode {
@@ -265,168 +650,57 @@ button {
   min-width: 0;
 }
 
+.queued .episode-meta {
+  margin: 0.125rem 0 0;
+}
+
+.queued .episode-downloaded {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
 .queued-actions {
   display: flex;
-  gap: 0.25rem;
-}
-
-.episode-new {
-  font-weight: 600;
-}
-
-.episode-played {
-  opacity: 0.7;
-}
-
-.episode-progress {
-  display: flex;
   align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
 }
 
-.episode-progress progress {
-  width: 6rem;
+.queued-actions .icon-button {
+  width: 2.5rem;
 }
 
-.artwork-hero {
-  width: min(18rem, 70vw);
-  height: min(18rem, 70vw);
-  margin-inline: auto;
+/* Downloads */
+.downloads-used {
+  margin: 0 0 1rem;
+  color: var(--muted);
 }
 
-/* Room at the foot of each screen so the mini player hides nothing. */
-.with-mini-player main {
-  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+.downloads section > h2 {
+  margin-top: 1.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ink);
 }
 
-.mini-player {
-  position: fixed;
-  inset-inline: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem max(1rem, calc((100% - 40rem) / 2 + 1rem));
-  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
-  background: Canvas;
-  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
-}
-
-.mini-player-open {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  text-align: left;
-  background: none;
-  border: none;
-  padding: 0;
-  color: inherit;
-  cursor: pointer;
-}
-
-.mini-player-title {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mini-player .player-error {
-  flex: 1;
+.downloads section > p {
+  color: var(--muted);
   font-size: 0.875rem;
 }
 
-.player-error {
-  margin: 0;
+.downloads-list li {
+  padding-block: 0.75rem;
+  border-bottom: 1px solid var(--line);
 }
 
-.play-pause {
-  min-width: 3rem;
-}
-
-.now-playing {
-  display: grid;
-  gap: 0.75rem;
-  text-align: center;
-}
-
-.now-playing nav {
-  display: flex;
+.downloads-list .episode-download {
   justify-content: space-between;
 }
 
-.now-playing nav button {
-  background: none;
-  border: none;
-  padding-inline: 0;
-  color: inherit;
-  cursor: pointer;
-}
-
-.now-playing h1 {
-  font-size: 1.25rem;
-  margin: 0;
-}
-
-.seek-bar {
-  width: 100%;
-}
-
-.seek-times {
-  display: flex;
-  justify-content: space-between;
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.7;
-  font-size: 0.875rem;
-}
-
-.transport {
-  display: flex;
-  justify-content: center;
-  gap: 1.5rem;
-}
-
-.speed {
-  justify-self: center;
-  font: inherit;
-  font-variant-numeric: tabular-nums;
-}
-
-.search nav button {
-  background: none;
-  border: none;
-  padding-inline: 0;
-  color: inherit;
-  cursor: pointer;
-}
-
+/* Search */
 .search-form {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0.5rem;
   align-items: end;
-  margin-block: 1rem;
-}
-
-.search-form label {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.search-form input {
-  font: inherit;
-  padding: 0.5rem 0.75rem;
-  min-width: 0;
-}
-
-.search-results {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+  margin-block: 0.5rem 1rem;
 }
 
 .search-results li {
@@ -435,8 +709,8 @@ button {
   grid-template-rows: auto auto;
   column-gap: 0.75rem;
   align-items: center;
-  padding-block: 0.5rem;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  padding-block: 0.625rem;
+  border-bottom: 1px solid var(--line);
 }
 
 .search-results .artwork {
@@ -444,8 +718,14 @@ button {
 }
 
 .search-results h2 {
+  align-self: end;
   font-size: 1rem;
-  margin: 0;
+}
+
+.search-results button.primary {
+  min-height: 2.25rem;
+  padding: 0 0.875rem;
+  font-size: 0.875rem;
 }
 
 .search-result-action {
@@ -454,25 +734,34 @@ button {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.875rem;
 }
 
 .search-results p[role='alert'] {
   grid-column: 2 / -1;
-  margin: 0;
-  font-size: 0.875rem;
+  margin: 0.25rem 0 0;
 }
 
+/* One episode */
 .episode header {
-  margin-block: 1rem;
+  margin-block: 0.25rem 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
 }
 
 .episode h1 {
-  margin: 0 0 0.25rem;
+  margin: 0 0 0.375rem;
   font-size: 1.5rem;
+  letter-spacing: -0.01em;
+}
+
+.episode .episode-meta {
+  font-size: 0.875rem;
 }
 
 .episode-play {
-  margin-top: 0.75rem;
+  margin-top: 0.875rem;
 }
 
 .show-notes {
@@ -492,73 +781,271 @@ button {
 .show-notes blockquote {
   margin-inline: 1rem 0;
   padding-left: 0.75rem;
-  border-left: 3px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-left: 3px solid var(--line);
 }
 
 .show-notes-empty {
-  opacity: 0.7;
+  color: var(--muted);
 }
 
-.unsubscribe {
-  margin-block: 1rem;
+/* The bars at the foot of every screen but now playing: the mini player, when something is loaded, over the tabs. */
+.bottom-bars {
+  position: fixed;
+  z-index: 10;
+  inset-inline: 0;
+  bottom: 0;
+  background: var(--bg);
 }
 
-.unsubscribe[role='alertdialog'] {
-  padding: 0.75rem 1rem;
-  border: 1px solid currentColor;
-  border-radius: 0.5rem;
+/* Room at the foot of each screen so the bars hide nothing. */
+.with-tab-bar main {
+  padding-bottom: calc(5rem + env(safe-area-inset-bottom));
 }
 
-.unsubscribe h2 {
-  font-size: 1rem;
-  margin: 0 0 0.5rem;
+.with-mini-player main {
+  padding-bottom: calc(9.5rem + env(safe-area-inset-bottom));
 }
 
-.unsubscribe button + button {
-  margin-inline-start: 0.5rem;
-}
-
-.episode-download {
+.mini-player {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
   gap: 0.5rem;
-  margin-top: 0.25rem;
-  font-size: 0.875rem;
+  box-sizing: border-box;
+  max-width: calc(var(--page) - 1.5rem);
+  margin: 0 auto 0.5rem;
+  padding: 0.5rem;
+  border-radius: 0.875rem;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
-.episode-download button {
-  font-size: 0.875rem;
-  padding: 0.25rem 0.5rem;
+@media (max-width: 40rem) {
+  .mini-player {
+    margin-inline: 0.75rem;
+  }
 }
 
-.episode-download p {
+.mini-player button {
+  background: none;
+  color: inherit;
+}
+
+button.mini-player-open {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  padding: 0;
+  border-radius: 0.5rem;
+  font-weight: 400;
+  text-align: left;
+}
+
+.mini-player-text {
+  display: grid;
+  min-width: 0;
+}
+
+.mini-player-title {
+  overflow: hidden;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-player-podcast {
+  overflow: hidden;
+  font-size: 0.8125rem;
+  opacity: 0.8;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-player .play-pause {
+  width: 2.75rem;
+  height: 2.75rem;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.mini-player .player-error {
+  flex: 1;
+  color: inherit;
+  font-size: 0.8125rem;
+}
+
+.player-error {
   margin: 0;
 }
 
-.download-progress {
+.tab-bar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 0.25rem 0.25rem env(safe-area-inset-bottom);
+  border-top: 1px solid var(--line);
+}
+
+.tab-bar button {
+  flex-direction: column;
+  gap: 0.125rem;
+  min-height: 3.25rem;
+  padding: 0;
+  border-radius: 0.5rem;
+  background: none;
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+
+.tab-bar button[aria-current='page'] {
+  color: var(--accent);
+}
+
+/* Now playing */
+.now-playing {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding-inline: 1.5rem;
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+}
+
+.now-playing > nav {
+  margin-left: -0.75rem;
+}
+
+.now-playing-titles {
+  margin-top: 1.5rem;
+}
+
+.now-playing-titles .podcast-author {
+  font-size: 1rem;
+}
+
+.now-playing h1 {
+  margin: 0.125rem 0 0;
+  font-size: 1.375rem;
+  letter-spacing: -0.01em;
+}
+
+.now-playing > .player-error {
+  margin-top: 0.75rem;
+}
+
+.seek {
+  margin-top: 1.25rem;
+}
+
+.seek-bar {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 1.5rem;
+  margin: 0;
+  background: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.seek-bar::-webkit-slider-runnable-track {
+  height: 0.375rem;
+  border-radius: 0.1875rem;
+  background: var(--line);
+}
+
+.seek-bar::-webkit-slider-thumb {
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: -0.3125rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.seek-bar::-moz-range-track {
+  height: 0.375rem;
+  border-radius: 0.1875rem;
+  background: var(--line);
+}
+
+.seek-bar::-moz-range-progress {
+  height: 0.375rem;
+  border-radius: 0.1875rem;
+  background: var(--accent);
+}
+
+.seek-bar::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.seek-bar:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.seek-times {
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.transport {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: center;
+  gap: 2.25rem;
+  margin-top: 1.5rem;
 }
 
-.download-progress progress {
-  width: 6rem;
+.transport .icon-button {
+  width: 3.25rem;
+  height: 3.25rem;
 }
 
-.episode-downloaded {
-  font-weight: 600;
-}
-
-.downloads-list {
-  list-style: none;
+.transport .play-pause {
+  width: 4.5rem;
+  height: 4.5rem;
+  min-height: 0;
   padding: 0;
-  margin: 0 0 1rem;
+  border-radius: 50%;
+  background: none;
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
-.downloads-used {
-  font-weight: 600;
+.now-playing-extras {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 1.5rem;
+}
+
+/* The speed picker reads as its value alone, like the text button beside it. */
+.speed {
+  appearance: none;
+  min-height: 2.75rem;
+  padding: 0 0.5rem 0 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.now-playing-extras .text-button {
+  gap: 0.5rem;
 }
 
 /* Offline, or the session needs signing in again: shown above every screen. */
@@ -567,6 +1054,7 @@ button {
   padding: 0.5rem 1rem;
   background: #fdf3d8;
   color: #4a3b00;
+  font-size: 0.875rem;
   text-align: center;
 }
 
@@ -579,10 +1067,4 @@ button {
     background: #3d3416;
     color: #f5e7b8;
   }
-}
-
-.episode-unavailable {
-  margin: 0;
-  font-size: 0.875rem;
-  opacity: 0.75;
 }

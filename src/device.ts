@@ -28,6 +28,7 @@ export function browserDevice(): Device {
       if (!navigator.storage?.persist) return false
       return (await navigator.storage.persisted()) || navigator.storage.persist()
     },
+    reload: () => window.location.reload(),
   }
 }
 

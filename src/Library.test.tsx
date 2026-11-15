@@ -175,3 +175,30 @@ describe('browsing a podcast', () => {
     expect(await libraryItems()).toHaveLength(1)
   })
 })
+
+describe('an episode’s other actions', () => {
+  it('stay behind its More actions button until asked for, and go away once one is chosen or dismissed', async () => {
+    const data = fakeDataApi()
+    const podcastId = data.seedPodcast(feedUrl, show)
+    data.ingest(podcastId, [{ title: 'Episode 1', publishedAt: '2026-11-03T08:00:00.000Z', durationSeconds: 2700 }])
+    const { user } = await renderSignedIn(data)
+    await user.click(await screen.findByRole('button', { name: /The Example Show/ }))
+    const [row] = await episodeItems()
+    const more = within(row).getByRole('button', { name: 'More actions' })
+    expect(within(row).queryByRole('button', { name: 'Add to queue' })).not.toBeInTheDocument()
+
+    await user.click(more)
+
+    for (const name of ['Mark played', 'Show notes', 'Play next', 'Add to queue', 'Download']) {
+      expect(within(row).getByRole('button', { name })).toBeInTheDocument()
+    }
+    await user.keyboard('{Escape}')
+    expect(within(row).queryByRole('button', { name: 'Add to queue' })).not.toBeInTheDocument()
+
+    await user.click(more)
+    await user.click(within(row).getByRole('button', { name: 'Add to queue' }))
+
+    expect(row).toHaveTextContent('Queued')
+    expect(within(row).queryByRole('button', { name: 'Add to queue' })).not.toBeInTheDocument()
+  })
+})

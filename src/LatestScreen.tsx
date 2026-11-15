@@ -10,13 +10,11 @@ export function LatestScreen({
   data,
   listening,
   podcastTitleOf,
-  onBack,
   ...actions
 }: {
   data: Pick<DataApi, 'observeLatestEpisodes'>
   listening: ListeningStore
   podcastTitleOf: (podcastId: string) => string | undefined
-  onBack: () => void
 } & EpisodeActions) {
   const [episodes, setEpisodes] = useState<LoadState<Episode>>({ status: 'loading' })
   const [statesArrived, setStatesArrived] = useState(false)
@@ -59,11 +57,6 @@ export function LatestScreen({
 
   return (
     <main className="latest">
-      <nav>
-        <button type="button" onClick={onBack} aria-label="Back to library">
-          ‹ Library
-        </button>
-      </nav>
       <h1>Latest episodes</h1>
       {statesStatus === 'failed' && <p role="alert">Couldn’t load what you’ve played.</p>}
       {content}

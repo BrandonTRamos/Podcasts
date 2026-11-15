@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { chooseAction } from './test/ui'
 
 // Unsubscribing: a show leaves the library, with its episodes and the listener's place in them.
 
@@ -135,12 +136,12 @@ describe('unsubscribing from a podcast', () => {
     await play(user, elsewhere.title)
     await user.click(screen.getByRole('button', { name: 'Back to library' }))
     await openShow(user, show.title)
-    await user.click(
-      within(
-        within(screen.getByRole('list', { name: 'Episodes' }))
-          .getAllByRole('listitem')
-          .find((item) => within(item).queryByRole('heading', { name: second.title }))!,
-      ).getByRole('button', { name: 'Play next' }),
+    await chooseAction(
+      user,
+      within(screen.getByRole('list', { name: 'Episodes' }))
+        .getAllByRole('listitem')
+        .find((item) => within(item).queryByRole('heading', { name: second.title }))!,
+      'Play next',
     )
 
     await unsubscribe(user)

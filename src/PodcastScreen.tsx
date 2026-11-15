@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { type EpisodeActions, EpisodeRow } from './EpisodeRow'
 import { newestFirst } from './episodes'
 import { formatDateTime } from './format'
+import { ChevronLeftIcon } from './Icons'
 import { Artwork } from './LibraryScreen'
 import { type ListeningStore, useEpisodeStates } from './listening'
 import type { DataApi, Episode, EpisodeState, FeedError, Podcast } from './services'
@@ -41,8 +42,9 @@ export function PodcastScreen({
   return (
     <main className="podcast">
       <nav>
-        <button type="button" onClick={onBack} aria-label="Back to library">
-          ‹ Library
+        <button type="button" className="back" onClick={onBack} aria-label="Back to library">
+          <ChevronLeftIcon size={22} />
+          Library
         </button>
       </nav>
       {podcast ? (
@@ -51,13 +53,13 @@ export function PodcastScreen({
           <div>
             <h1>{podcast.title}</h1>
             {podcast.author && <p className="podcast-author">{podcast.author}</p>}
+            <Unsubscribe podcastTitle={podcast.title} onUnsubscribe={onUnsubscribe} />
           </div>
         </header>
       ) : (
         <p>Loading…</p>
       )}
       {podcast && <FeedHealth podcast={podcast} refresh={(id) => data.refreshPodcast(id)} />}
-      {podcast && <Unsubscribe podcastTitle={podcast.title} onUnsubscribe={onUnsubscribe} />}
       {/* Wait for the listening state too, so an episode tapped at once still resumes. */}
       {(episodes.status === 'loading' || statesStatus === 'loading') && podcast && <p>Loading episodes…</p>}
       {episodes.status === 'failed' && <p role="alert">Couldn’t load the episodes.</p>}
@@ -94,10 +96,18 @@ function EpisodeList({
   const shown = newestFirst(episodes).filter((episode) => !unplayedOnly || !stateOf(episode.id)?.played)
   return (
     <>
-      <label className="episode-filter">
-        <input type="checkbox" checked={unplayedOnly} onChange={(e) => onUnplayedOnlyChange(e.target.checked)} />
-        Unplayed only
-      </label>
+      <div className="episodes-heading">
+        <h2>Episodes</h2>
+        <label className="episode-filter">
+          Unplayed only
+          <input
+            type="checkbox"
+            className="switch"
+            checked={unplayedOnly}
+            onChange={(e) => onUnplayedOnlyChange(e.target.checked)}
+          />
+        </label>
+      </div>
       {shown.length === 0 ? (
         <p>No unplayed episodes.</p>
       ) : (
@@ -166,7 +176,12 @@ function FeedHealth({ podcast, refresh }: { podcast: Podcast; refresh: (podcastI
         )}
         <span className="feed-schedule"> · checked hourly</span>
       </p>
-      <button type="button" onClick={() => void handleRefresh()} disabled={request.status === 'sending' || checking}>
+      <button
+        type="button"
+        className="text-button"
+        onClick={() => void handleRefresh()}
+        disabled={request.status === 'sending' || checking}
+      >
         Refresh
       </button>
       {lastFetchError && <p role="alert">{feedErrorMessages[lastFetchError]}</p>}
@@ -195,7 +210,7 @@ function Unsubscribe({ podcastTitle, onUnsubscribe }: { podcastTitle: string; on
       <section className="unsubscribe" role="alertdialog" aria-labelledby="unsubscribe-title" aria-describedby="unsubscribe-detail">
         <h2 id="unsubscribe-title">Unsubscribe from {podcastTitle}?</h2>
         <p id="unsubscribe-detail">Its episodes and your place in them will be removed from your library and queue.</p>
-        <button type="button" onClick={() => void handleConfirm()} disabled={step === 'sending'}>
+        <button type="button" className="primary" onClick={() => void handleConfirm()} disabled={step === 'sending'}>
           Unsubscribe
         </button>
         <button type="button" onClick={() => setStep('idle')} disabled={step === 'sending'}>
@@ -208,7 +223,7 @@ function Unsubscribe({ podcastTitle, onUnsubscribe }: { podcastTitle: string; on
 
   return (
     <section className="unsubscribe">
-      <button type="button" onClick={() => setStep('confirming')}>
+      <button type="button" className="outline" onClick={() => setStep('confirming')}>
         Unsubscribe
       </button>
       {step === 'failed' && <p role="alert">Couldn’t unsubscribe. Check your connection and try again.</p>}
