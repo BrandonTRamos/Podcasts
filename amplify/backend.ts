@@ -2,6 +2,7 @@ import { defineBackend } from '@aws-amplify/backend'
 import { Stack } from 'aws-cdk-lib'
 import { Policy, PolicyStatement } from 'aws-cdk-lib/aws-iam'
 import { EventSourceMapping, FilterCriteria, FilterRule, StartingPosition } from 'aws-cdk-lib/aws-lambda'
+import { backendFunctions, defineAlerts, deploymentType, readAlertsConfig } from './alerts/alerts'
 import { auth } from './auth/resource'
 import { data } from './data/resource'
 import { ingestFeedFunction } from './functions/ingest-feed/resource'
@@ -60,3 +61,8 @@ streamMapping.node.addDependency(streamPolicy)
 // A failed run is not retried: the next hourly run is the retry. Lambda's
 // default of two retries would fetch every feed again for one failing podcast.
 backend.refreshFeedsFunction.resources.lambda.configureAsyncInvoke({ retryAttempts: 0 })
+
+// Cost and failure alerts, emailed to the owner (amplify/alerts/alerts.ts).
+// Every backend function is covered, including ones added later.
+const alerts = readAlertsConfig(process.env, deploymentType(backend.stack))
+if (alerts) defineAlerts(backend.createStack('alerts'), { ...alerts, functions: backendFunctions(backend.stack) })
