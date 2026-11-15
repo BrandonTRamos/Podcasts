@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import type { DataApi } from './services'
-import { FakeAudio, fakeAuth, fakeDataApi, FakeMediaSession } from './test/fakes'
+import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const feedUrl = 'https://feeds.example.com/show.xml'
@@ -44,7 +44,7 @@ async function openShowOn(data: DataApi) {
   await auth.signIn(owner.email, owner.password)
   const audio = new FakeAudio()
   const container = document.body.appendChild(document.createElement('div'))
-  render(<App services={{ auth, data, audio, mediaSession: new FakeMediaSession() }} />, { container })
+  render(<App services={{ auth, data, audio, mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />, { container })
   const ui = within(container)
   const user = userEvent.setup()
   await user.click(await ui.findByRole('button', { name: /The Example Show/ }))

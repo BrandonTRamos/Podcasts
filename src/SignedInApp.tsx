@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useDownloads } from './downloads'
 import type { EpisodeActions } from './EpisodeRow'
 import { EpisodeScreen } from './EpisodeScreen'
 import { LatestScreen } from './LatestScreen'
@@ -10,7 +11,7 @@ import { type PlayableEpisode, type SaveProgress, type TakeNext, usePlayer } fro
 import { PodcastScreen } from './PodcastScreen'
 import { QueueScreen } from './QueueScreen'
 import { SearchScreen } from './SearchScreen'
-import type { AudioElement, DataApi, Episode, MediaSessionControls, Podcast } from './services'
+import type { AudioElement, DataApi, Device, Episode, MediaSessionControls, Podcast } from './services'
 
 export type LoadState<T> = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; items: T[] }
 
@@ -33,11 +34,13 @@ export function SignedInApp({
   data,
   audio,
   mediaSession,
+  device,
   onSignOut,
 }: {
   data: DataApi
   audio: AudioElement
   mediaSession: MediaSessionControls
+  device: Device
   onSignOut: () => Promise<void>
 }) {
   const [screen, setScreen] = useState<Screen>({ name: 'library' })
@@ -74,8 +77,16 @@ export function SignedInApp({
     if (!episode) return null
     return { episode: toPlayable(episode), startAt: resumePosition(listening.get(episode.id)) ?? 0 }
   }, [listening, toPlayable])
+  const downloads = useDownloads(device)
   const queue = listening.queue()
-  const { player, state: playerState } = usePlayer(audio, mediaSession, saveProgress, takeNext, queue.length > 0)
+  const { player, state: playerState } = usePlayer(
+    audio,
+    mediaSession,
+    saveProgress,
+    takeNext,
+    downloads.localCopy,
+    queue.length > 0,
+  )
 
   // The queue is kept current for as long as the app is open, so the player
   // can move on to an episode queued on another device without fetching it then.
@@ -140,6 +151,8 @@ export function SignedInApp({
     onQueue: (episode, where) => listening.enqueue(episode, where),
     onMarkPlayed: (episode, played) =>
       listening.update(episode.id, episode.podcastId, played ? { played } : { played, positionSeconds: 0 }),
+    onDownload: downloads.download,
+    downloadOf: downloads.get,
   }
 
   function openQueue() {
@@ -167,6 +180,7 @@ export function SignedInApp({
         onPlay={playEpisode}
         onMove={(episodeId, index) => listening.moveInQueue(episodeId, index)}
         onRemove={(episodeId) => listening.dequeue(episodeId)}
+        downloaded={(episodeId) => downloads.get(episodeId).status === 'downloaded'}
       />
     )
   } else if (screen.name === 'episode') {
@@ -181,6 +195,8 @@ export function SignedInApp({
         backLabel={from.name === 'latest' ? 'Latest episodes' : (podcastById(from.podcastId)?.title ?? 'Podcast')}
         onBack={() => setScreen(from)}
         onPlay={playEpisode}
+        download={downloads.get(episode.id)}
+        onDownload={downloads.download}
       />
     )
   } else if (screen.name === 'latest') {

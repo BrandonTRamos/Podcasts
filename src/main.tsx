@@ -3,6 +3,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { amplifyServices } from './amplifyServices'
 import { App } from './App'
+import { browserDevice } from './device'
 import { browserMediaSession } from './mediaSession'
 import './index.css'
 
@@ -20,7 +21,14 @@ if (outputs) {
   Amplify.configure(outputs)
   root.render(
     <StrictMode>
-      <App services={{ ...amplifyServices(), audio: new Audio(), mediaSession: browserMediaSession() }} />
+      <App
+        services={{
+          ...amplifyServices(),
+          audio: new Audio(),
+          mediaSession: browserMediaSession(),
+          device: browserDevice(),
+        }}
+      />
     </StrictMode>,
   )
 } else {

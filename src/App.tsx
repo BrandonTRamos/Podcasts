@@ -37,6 +37,7 @@ export function App({ services }: { services: Services }) {
       data={services.data}
       audio={services.audio}
       mediaSession={services.mediaSession}
+      device={services.device}
       onSignOut={async () => {
         try {
           await services.auth.signOut()

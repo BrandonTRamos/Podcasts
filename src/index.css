@@ -513,3 +513,36 @@ button {
 .unsubscribe button + button {
   margin-inline-start: 0.5rem;
 }
+
+.episode-download {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.episode-download button {
+  font-size: 0.875rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.episode-download p {
+  margin: 0;
+}
+
+.download-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.download-progress progress {
+  width: 6rem;
+}
+
+.episode-downloaded {
+  font-weight: 600;
+}

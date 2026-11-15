@@ -1,3 +1,5 @@
+import { DownloadControl } from './DownloadControl'
+import type { DownloadState } from './downloads'
 import { formatDate, formatDuration } from './format'
 import type { QueuePlace } from './listening'
 import type { Episode, EpisodeState } from './services'
@@ -10,12 +12,16 @@ export interface EpisodeActions {
   onQueue: (episode: Episode, where: QueuePlace) => void
   /** Marking an episode unplayed also takes it back to the start. */
   onMarkPlayed: (episode: Episode, played: boolean) => void
+  /** Downloads it to this device, or resumes its download. */
+  onDownload: (episode: Episode) => void
+  /** Its download on this device. */
+  downloadOf: (episodeId: string) => DownloadState
 }
 
 /**
  * One episode in a list: its title (tap to play), date, duration and how far
- * through it is, with controls to queue it and mark it played. Shows its
- * podcast's title too when the list mixes podcasts.
+ * through it is, with controls to queue it, mark it played and download it.
+ * Shows its podcast's title too when the list mixes podcasts.
  */
 export function EpisodeRow({
   episode,
@@ -25,6 +31,8 @@ export function EpisodeRow({
   onOpen,
   onQueue,
   onMarkPlayed,
+  onDownload,
+  downloadOf,
 }: {
   episode: Episode
   state: EpisodeState | undefined
@@ -57,6 +65,7 @@ export function EpisodeRow({
           Add to queue
         </button>
       </div>
+      <DownloadControl download={downloadOf(episode.id)} onDownload={() => onDownload(episode)} />
     </li>
   )
 }

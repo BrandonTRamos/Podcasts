@@ -1,3 +1,4 @@
+import { DownloadedBadge } from './DownloadControl'
 import { formatDuration } from './format'
 import type { ListeningStatus } from './listening'
 import type { Episode } from './services'
@@ -11,6 +12,7 @@ export function QueueScreen({
   onPlay,
   onMove,
   onRemove,
+  downloaded,
 }: {
   queue: Episode[]
   status: ListeningStatus
@@ -20,6 +22,8 @@ export function QueueScreen({
   /** Moves the episode to this place in the queue, counting from 0. */
   onMove: (episodeId: string, index: number) => void
   onRemove: (episodeId: string) => void
+  /** Whether the episode is stored on this device. */
+  downloaded: (episodeId: string) => boolean
 }) {
   return (
     <main className="queue">
@@ -49,6 +53,7 @@ export function QueueScreen({
                     {podcastTitle && episode.durationSeconds !== null && ' · '}
                     {episode.durationSeconds !== null && formatDuration(episode.durationSeconds)}
                   </p>
+                  {downloaded(episode.id) && <DownloadedBadge />}
                 </div>
                 <div className="queued-actions">
                   <button

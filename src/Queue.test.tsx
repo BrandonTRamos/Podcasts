@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
 import { App } from './App'
 import type { DataApi } from './services'
-import { FakeAudio, fakeAuth, fakeDataApi, FakeMediaSession } from './test/fakes'
+import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 
 // The queue: episodes lined up to play one after another, the same on every device.
 
@@ -47,7 +47,7 @@ async function openShowOn(data: DataApi) {
   const audio = new FakeAudio()
   const mediaSession = new FakeMediaSession()
   const container = document.body.appendChild(document.createElement('div'))
-  render(<App services={{ auth, data, audio, mediaSession }} />, { container })
+  render(<App services={{ auth, data, audio, mediaSession, device: new FakeDevice() }} />, { container })
   const ui = within(container)
   const user = userEvent.setup()
   await user.click(await ui.findByRole('button', { name: /The Example Show/ }))

@@ -30,3 +30,8 @@ const dateTimeFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium',
 export function formatDateTime(iso: string): string {
   return dateTimeFormat.format(new Date(iso))
 }
+
+/** A file size to one decimal place of a megabyte: "12.3 MB". */
+export function formatMegabytes(bytes: number): string {
+  return `${(bytes / 1_000_000).toFixed(1)} MB`
+}
