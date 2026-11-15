@@ -32,3 +32,4 @@ The fix is to call `move(directory, newName)`, which every browser that has `mov
 
 - Seen with read-only checks only: data reads, CloudWatch logs, S3 `head-object` and `get-bucket-cors`, and probes of the enclosure and the staged copy with the site's origin. No AWS changes.
 - Real WebKit couldn't run here (the local WPE build has no OPFS). The signature comes from WebKit's IDL and is reproduced in the stand-in. Confirming on the iPhone belongs to ticket 17's re-run once this deploys: tap Try again on the episode.
+- 2026-11-15, 13:01 UTC: verified on Brandon's iPhone. After the fix, the download succeeded.
