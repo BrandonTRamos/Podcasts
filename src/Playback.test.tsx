@@ -271,6 +271,42 @@ describe('the mini player and now playing', () => {
   })
 })
 
+describe('the episode playing, in its list', () => {
+  it('offers to pause it there, and to play it again once paused', async () => {
+    const { audio, user } = await renderShow()
+    const list = screen.getByRole('list', { name: 'Episodes' })
+    expect(within(list).queryByRole('button', { name: /^Pause/ })).not.toBeInTheDocument()
+
+    await user.click(episodeInList(first.title))
+    act(() => audio.progressTo(600))
+
+    // Only the episode playing offers it.
+    expect(within(list).getAllByRole('button', { name: /^Pause/ })).toHaveLength(1)
+    await user.click(within(list).getByRole('button', { name: `Pause ${first.title}` }))
+
+    expect(audio.paused).toBe(true)
+    expect(within(list).queryByRole('button', { name: /^Pause/ })).not.toBeInTheDocument()
+    expect(within(miniPlayer()).getByRole('button', { name: 'Play' })).toBeInTheDocument()
+
+    await user.click(episodeInList(first.title))
+
+    expect(audio.paused).toBe(false)
+    expect(audio.currentTime).toBe(600)
+    expect(within(list).getByRole('button', { name: `Pause ${first.title}` })).toBeInTheDocument()
+  })
+
+  it('moves to whichever episode is started next', async () => {
+    const { user } = await renderShow()
+    const list = screen.getByRole('list', { name: 'Episodes' })
+    await user.click(episodeInList(first.title))
+
+    await user.click(episodeInList(second.title))
+
+    expect(within(list).getByRole('button', { name: `Pause ${second.title}` })).toBeInTheDocument()
+    expect(within(list).queryByRole('button', { name: `Pause ${first.title}` })).not.toBeInTheDocument()
+  })
+})
+
 describe('switching episodes', () => {
   it('replaces the current episode with the one started next', async () => {
     const { audio, user } = await renderShow()

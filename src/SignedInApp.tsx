@@ -183,6 +183,8 @@ export function SignedInApp({
 
   const episodeActions: EpisodeActions = {
     onPlay: playEpisode,
+    onPause: player.pause,
+    isPlaying: (episodeId) => playerState.episode !== null && playerState.playing && playerState.episode.id === episodeId,
     onOpen: (episode) => {
       if (screen.name === 'podcast' || screen.name === 'latest') setScreen({ name: 'episode', episode, from: screen })
     },
