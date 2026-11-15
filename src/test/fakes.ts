@@ -138,6 +138,8 @@ export function fakeDataApi() {
   const queueListeners = new Set<Listener<QueueSnapshot>>()
   let failNext = false
   let offline = false
+  /** Saves that have reached the backend but not been applied, while `holdSaves` holds them. */
+  let heldSaves: (() => void)[] | null = null
   let nextId = 1
   /** The backend's clock, for each state's updated time: a second on with every write. */
   let tick = 0
@@ -294,6 +296,7 @@ export function fakeDataApi() {
       },
       async saveEpisodeState(episodeId, podcastId, change, changedAt) {
         reach(connection)
+        if (heldSaves) await new Promise<void>((resolve) => heldSaves!.push(resolve))
         stateWrites.push({ ...change })
         const held = states.get(episodeId)
         const heldChangedAt = changeTimes.get(episodeId)
@@ -383,6 +386,16 @@ export function fakeDataApi() {
     /** The next request fails as if the network were down. */
     failNextRequest() {
       failNext = true
+    },
+    /** Saves stop being applied, as if slow on the way, until `releaseSaves`. */
+    holdSaves() {
+      heldSaves = []
+    },
+    /** Applies the saves held, newest arrival first when `newestFirst`, as a network can reorder them; later ones go straight through. */
+    releaseSaves({ newestFirst = false }: { newestFirst?: boolean } = {}) {
+      const held = heldSaves ?? []
+      heldSaves = null
+      ;(newestFirst ? [...held].reverse() : held).forEach((apply) => apply())
     },
     /** The network goes down for every device: requests fail, and live observations end with an error. */
     goOffline() {

@@ -207,11 +207,21 @@ export function createListeningStore(
     local.set(episodeId, [...earlier, entry])
     storeUnsynced()
     changed()
-    send(episodeId, entry)
+    sendNext(episodeId)
   }
 
-  /** Sends the change. Once saved, or outdone by a later change, what the backend holds replaces it; if it can't be sent, it waits. */
-  function send(episodeId: string, entry: LocalChange) {
+  /**
+   * Sends the episode's oldest change waiting, unless one of its changes is
+   * already on its way, then the next once that is saved. One at a time,
+   * oldest first: the backend keeps the latest change to the whole state, so
+   * a later change landing first would make an earlier one lose, even one to
+   * another field. Once saved, or outdone by a later change, what the backend
+   * holds replaces the change; if it can't be sent, it and those after it wait.
+   */
+  function sendNext(episodeId: string) {
+    const entries = local.get(episodeId)
+    if (!entries?.length || entries.some((entry) => entry.sending)) return
+    const [entry] = entries
     entry.sending = true
     data.saveEpisodeState(episodeId, entry.podcastId, entry.change, entry.changedAt).then(
       (result) => {
@@ -221,6 +231,7 @@ export function createListeningStore(
         keepLatest(result)
         storeUnsynced()
         changed()
+        sendNext(episodeId)
       },
       () => {
         entry.sending = false
@@ -229,7 +240,7 @@ export function createListeningStore(
   }
 
   function sendUnsynced() {
-    for (const [episodeId, entries] of local) for (const entry of entries) if (!entry.sending) send(episodeId, entry)
+    for (const episodeId of [...local.keys()]) sendNext(episodeId)
   }
 
   /** Queued episodes with their places, in order. */

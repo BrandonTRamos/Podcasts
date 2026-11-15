@@ -11,7 +11,7 @@ Listening state (position, played, queue place) can be changed on a device with 
 - Every save carries `changedAt`: when the listener made the change, by the device's clock.
 - The backend applies a save only if the `changedAt` it holds for the episode is not later (a conditional update; a state with none takes any change).
 - The unit is the episode's whole state: a losing save is dropped entirely, even fields the winner left alone. A winning save still changes only the fields it names.
-- A device keeps unsent changes and sends them again until the backend answers; the answer, won or lost, replaces them.
+- A device keeps unsent changes and sends them again until the backend answers; the answer, won or lost, replaces them. An episode's changes are sent one at a time, oldest first: sent together, a later one could land first and make an earlier one from the same device lose.
 
 ## Consequences
 

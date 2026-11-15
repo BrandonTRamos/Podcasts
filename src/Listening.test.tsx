@@ -122,10 +122,12 @@ describe('saving the position', () => {
     const device = await openShowOn(data)
     await device.tap(first.title)
 
-    // The element reports progress several times a second.
+    // The element reports progress several times a second; each second the
+    // backend has answered any save, as it would long before the next is due.
     for (let tenths = 1; tenths <= 1850; tenths++) {
       vi.setSystemTime(start + tenths * 100)
       act(() => device.audio.progressTo(tenths / 10))
+      if (tenths % 10 === 0) await act(async () => {})
     }
 
     expect(data.stateWrites().map((write) => write.positionSeconds)).toEqual([60, 120, 180])

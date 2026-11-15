@@ -140,17 +140,19 @@ describe('opening TinCan with no network', () => {
     const { data } = await backendWithShow()
     const device = new FakeDevice()
     const app = launch(data, device)
-    await app.ui.findByRole('heading', { name: 'Library' })
+    await app.ui.findByRole('button', { name: /The Example Show/ })
     expect(app.offlineNotice()).not.toBeInTheDocument()
 
     goOffline(data, device)
 
-    expect(app.offlineNotice()).toBeInTheDocument()
+    // Awaited: the app may start watching the network just after it first shows.
+    expect(await app.ui.findByText(/You’re offline/)).toBeInTheDocument()
     expect(app.ui.queryByRole('alert')).not.toBeInTheDocument()
+    expect(app.ui.getByRole('button', { name: /The Example Show/ })).toBeInTheDocument()
 
     goOnline(data, device)
 
-    expect(app.offlineNotice()).not.toBeInTheDocument()
+    await waitFor(() => expect(app.offlineNotice()).not.toBeInTheDocument())
   })
 
   it('opens with no sign-in prompt when the session has expired', async () => {
@@ -246,14 +248,14 @@ describe('playing with no network', () => {
 
     goOffline(data, device)
 
+    expect(await within(app.row(second.title)).findByText('Not available offline')).toBeInTheDocument()
     expect(app.playButton(second.title)).toBeDisabled()
-    expect(within(app.row(second.title)).getByText('Not available offline')).toBeInTheDocument()
     expect(app.playButton(first.title)).toBeEnabled()
     expect(within(app.row(first.title)).queryByText('Not available offline')).not.toBeInTheDocument()
 
     goOnline(data, device)
 
-    expect(app.playButton(second.title)).toBeEnabled()
+    await waitFor(() => expect(app.playButton(second.title)).toBeEnabled())
     expect(within(app.row(second.title)).queryByText('Not available offline')).not.toBeInTheDocument()
   })
 })
@@ -288,6 +290,31 @@ describe('syncing what was played offline', () => {
       expect(data.savedState(thirdId)?.queueOrder).not.toBeNull()
     })
     expect(within(relaunched.row(third.title)).getByText('Queued')).toBeInTheDocument()
+  })
+
+  it('keeps every change made offline to one episode, however the network orders their saves', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const at = (time: string) => vi.setSystemTime(new Date(`2026-11-14T${time}:00.000Z`))
+    const { data, firstId } = await backendWithShow()
+    const device = new FakeDevice()
+    const app = await prepareForFlight(data, device)
+    goOffline(data, device)
+    at('10:00')
+    await app.user.click(within(app.row(first.title)).getByRole('button', { name: 'Mark played' }))
+    at('10:05')
+    await app.tap(first.title)
+    act(() => app.audio.progressTo(600))
+    await app.user.click(within(app.miniPlayer()).getByRole('button', { name: 'Pause' }))
+    data.holdSaves()
+
+    goOnline(data, device)
+    await act(async () => {})
+    // The later change, if sent alongside, would land first, and the earlier one then lose to it.
+    act(() => data.releaseSaves({ newestFirst: true }))
+
+    await waitFor(() => expect(data.savedState(firstId)).toMatchObject({ played: true, positionSeconds: 600 }))
+    await act(async () => {})
+    expect(within(app.row(first.title)).getByText('Played')).toBeInTheDocument()
   })
 
   it('shows changes made on other devices meanwhile once back online', async () => {
