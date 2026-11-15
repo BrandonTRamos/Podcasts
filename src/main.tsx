@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { amplifyServices } from './amplifyServices'
 import { App } from './App'
 import { browserDevice } from './device'
-import { browserMediaSession } from './mediaSession'
+import { browserMediaSession, claimPlaybackAudioSession } from './mediaSession'
 import './index.css'
 
 // Written by `npx ampx sandbox` (or the hosting build). Loaded with a glob so the
@@ -28,6 +28,7 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 
 if (outputs) {
   Amplify.configure(outputs)
+  claimPlaybackAudioSession()
   root.render(
     <StrictMode>
       <App
