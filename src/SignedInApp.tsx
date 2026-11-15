@@ -15,6 +15,7 @@ import { PodcastScreen } from './PodcastScreen'
 import { PullToRefresh } from './PullToRefresh'
 import { QueueScreen } from './QueueScreen'
 import { SearchScreen } from './SearchScreen'
+import { SettingsPill, SettingsScreen } from './SettingsScreen'
 import { type Tab, TabBar } from './TabBar'
 import type {
   AudioElement,
@@ -26,6 +27,7 @@ import type {
   MediaSessionControls,
   Podcast,
 } from './services'
+import type { Theme } from './theme'
 
 /** Where the episode last loaded in the player is kept, for the next launch to have it ready. */
 const LAST_EPISODE_KEY = 'lastEpisode'
@@ -69,6 +71,7 @@ type Screen =
   | { name: 'queue' }
   | { name: 'search' }
   | { name: 'downloads' }
+  | { name: 'settings' }
   /** One episode, opened from a list, to which going back returns. */
   | { name: 'episode'; episode: Episode; from: ListScreen }
 
@@ -80,6 +83,8 @@ export function SignedInApp({
   onSignOut,
   sessionExpired = false,
   onSignIn,
+  theme,
+  onChooseTheme,
 }: {
   data: DataApi
   audio: AudioElement
@@ -90,6 +95,9 @@ export function SignedInApp({
   sessionExpired?: boolean
   /** Takes the listener to sign in again. */
   onSignIn?: () => void
+  /** The theme chosen on this device. */
+  theme: Theme
+  onChooseTheme: (theme: Theme) => void
 }) {
   // A fresh copy of the data API after each refresh, so every screen's live
   // observations, which start over when it changes, fetch again whatever
@@ -295,9 +303,20 @@ export function SignedInApp({
     setScreen({ name: 'queue' })
   }
 
-  /** The tab the current screen belongs to: a podcast is in the library, and an episode is where it was opened from. */
-  const tab: Tab =
-    screen.name === 'podcast' ? 'library' : screen.name === 'episode' ? (screen.from.name === 'latest' ? 'latest' : 'library') : screen.name
+  /**
+   * The tab the current screen belongs to: a podcast is in the library, and an
+   * episode is where it was opened from. Settings, opened from the top, is in none.
+   */
+  const tab: Tab | null =
+    screen.name === 'settings'
+      ? null
+      : screen.name === 'podcast'
+        ? 'library'
+        : screen.name === 'episode'
+          ? screen.from.name === 'latest'
+            ? 'latest'
+            : 'library'
+          : screen.name
 
   const showingNowPlaying = nowPlayingOpen && playerState.episode !== null
 
@@ -366,6 +385,8 @@ export function SignedInApp({
         onRemove={removeDownload}
       />
     )
+  } else if (screen.name === 'settings') {
+    content = <SettingsScreen theme={theme} onChooseTheme={onChooseTheme} />
   } else if (screen.name === 'search') {
     content = (
       <SearchScreen
@@ -426,7 +447,10 @@ export function SignedInApp({
         )}
         {content}
       </PullToRefresh>
-      {/* At the foot of every screen but now playing, which has the full controls and a way out of its own. */}
+      {/* At the top and foot of every screen but now playing, which has the full controls and a way out of its own. */}
+      {!showingNowPlaying && (
+        <SettingsPill current={screen.name === 'settings'} onOpen={() => setScreen({ name: 'settings' })} />
+      )}
       {!showingNowPlaying && (
         <div className="bottom-bars">
           {playerState.episode && <MiniPlayer state={playerState} player={player} onOpen={() => setNowPlayingOpen(true)} />}
