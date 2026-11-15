@@ -12,7 +12,8 @@ import {
  * Stands in for the Origin Private File System as a worker sees it. A sync
  * access handle's writes reach the disk only when flushed or closed: when the
  * page is `kill`ed, every file goes back to what reached the disk, and open
- * handles stop working. One handle may be open on a file at a time.
+ * handles stop working. One handle may be open on a file at a time. Its
+ * `move`, where it has one, is Safari's, which takes the destination folder.
  */
 class FakeOpfs {
   #disk = new Map<string, Uint8Array>()
@@ -74,7 +75,11 @@ class FakeOpfs {
       },
     }
     if (withMove) {
-      handle.move = async (to) => {
+      // As Safari's: only `move(destination, newName)`; a name alone is not a directory.
+      handle.move = async (destination: unknown, to: unknown) => {
+        if (destination !== this.directory || typeof to !== 'string') {
+          throw new TypeError("Argument 1 ('destination') to FileSystemHandle.move must be an instance of FileSystemHandle")
+        }
         this.#live.set(to, this.#live.get(name)!)
         this.#disk.set(to, this.#disk.get(name)!)
         this.#live.delete(name)
