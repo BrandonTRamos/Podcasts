@@ -1,5 +1,6 @@
 import { DownloadControl, DownloadedBadge } from './DownloadControl'
 import type { DownloadState } from './downloads'
+import { isNew } from './episodes'
 import { formatDate, formatDuration } from './format'
 import { PauseIcon, PlayIcon } from './Icons'
 import type { QueuePlace } from './listening'
@@ -141,7 +142,11 @@ export function EpisodeMeta({
   return <p className="episode-meta">{parts.flatMap((part, i) => (i === 0 ? [part] : [' · ', part]))}</p>
 }
 
-/** The episode's length, then played or new; or, part-played, how far through it is. */
+/**
+ * The episode's length, then played, or new if it came out in the last week;
+ * or, part-played, how far through it is. An older one never started has its
+ * length alone.
+ */
 function ListeningProgress({ episode, state }: { episode: Episode; state: EpisodeState | undefined }) {
   const duration = episode.durationSeconds
   const length = duration !== null && <span>{formatDuration(duration)}</span>
@@ -157,7 +162,7 @@ function ListeningProgress({ episode, state }: { episode: Episode; state: Episod
     return (
       <>
         {length}
-        <span className="episode-new">New</span>
+        {isNew(episode, state) && <span className="episode-new">New</span>}
       </>
     )
   }
