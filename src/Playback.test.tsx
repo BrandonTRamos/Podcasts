@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
-import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeMediaSession } from './test/fakes'
+import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = {
@@ -36,7 +36,7 @@ async function renderShow() {
 /** Opens the app, already signed in, at the show's page, as a fresh launch of it would. */
 async function launch(data: FakeDataApi) {
   const audio = new FakeAudio()
-  const services = { auth: fakeAuth(owner), data, audio, mediaSession: new FakeMediaSession() }
+  const services = { auth: fakeAuth(owner), data, audio, mediaSession: new FakeMediaSession(), device: new FakeDevice() }
   const { unmount } = render(<App services={services} />)
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: /The Example Show/ }))

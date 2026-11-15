@@ -2,7 +2,7 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
-import { FakeAudio, fakeAuth, fakeDataApi, FakeMediaSession } from './test/fakes'
+import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 
 // The OS media controls: the lock screen, notification centre, and headphone
 // and Bluetooth buttons, all of which reach the app through the media session.
@@ -35,7 +35,7 @@ async function renderShow({ artworkUrl = show.artworkUrl }: { artworkUrl?: strin
   const mediaSession = new FakeMediaSession()
   const auth = fakeAuth(owner)
   await auth.signIn(owner.email, owner.password)
-  render(<App services={{ auth, data, audio, mediaSession }} />)
+  render(<App services={{ auth, data, audio, mediaSession, device: new FakeDevice() }} />)
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: /The Example Show/ }))
   await screen.findByRole('list', { name: 'Episodes' })

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import { DownloadControl } from './DownloadControl'
+import type { DownloadState } from './downloads'
 import { EpisodeMeta } from './EpisodeRow'
 import { type ListeningStore, useEpisodeStates } from './listening'
 import type { DataApi, Episode } from './services'
 import { ShowNotes, type ShowNotesState } from './ShowNotes'
 
-/** One episode: its title, podcast, date and duration, a button to play it, and its show notes. */
+/** One episode: its title, podcast, date and duration, buttons to play and download it, and its show notes. */
 export function EpisodeScreen({
   data,
   episode,
@@ -13,6 +15,8 @@ export function EpisodeScreen({
   backLabel,
   onBack,
   onPlay,
+  download,
+  onDownload,
 }: {
   data: Pick<DataApi, 'getShowNotes'>
   episode: Episode
@@ -22,6 +26,8 @@ export function EpisodeScreen({
   backLabel: string
   onBack: () => void
   onPlay: (episode: Episode) => void
+  download: DownloadState
+  onDownload: (episode: Episode) => void
 }) {
   const [notes, setNotes] = useState<ShowNotesState>({ status: 'loading' })
   // Wait for the listening state, so playing from here still resumes.
@@ -51,6 +57,7 @@ export function EpisodeScreen({
         <button type="button" className="episode-play" onClick={() => onPlay(episode)} disabled={statesStatus === 'loading'}>
           Play
         </button>
+        <DownloadControl download={download} onDownload={() => onDownload(episode)} />
       </header>
       {statesStatus === 'failed' && <p role="alert">Couldn’t load what you’ve played.</p>}
       <ShowNotes notes={notes} />

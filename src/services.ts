@@ -213,10 +213,69 @@ export interface MediaSessionControls {
   setActionHandler(action: MediaSessionAction, handler: ((details: MediaSessionActionDetails) => void) | null): void
 }
 
+/**
+ * Files kept on this device, in one flat folder: the Origin Private File
+ * System. Names are plain file names, with no slashes.
+ */
+export interface DeviceFiles {
+  /** The name of every file stored. */
+  list(): Promise<string[]>
+  /** The file's size in bytes, or null when there is no such file. */
+  size(name: string): Promise<number | null>
+  /**
+   * Opens the file to write to its end, creating it if absent, or emptying it
+   * first when `fresh`. What is written is stored as it is written; closing
+   * makes sure all of it is.
+   */
+  openForAppend(name: string, options?: { fresh?: boolean }): Promise<FileAppender>
+  /** Renames the file, replacing any already called `to`. */
+  rename(from: string, to: string): Promise<void>
+  /**
+   * A URL the audio element can play the file from, seeking included, valid
+   * for as long as the app is open. Null when there is no such file.
+   */
+  playbackUrl(name: string): Promise<string | null>
+  /** Deletes the file, if there is one. */
+  remove(name: string): Promise<void>
+}
+
+export interface FileAppender {
+  /** Adds the bytes to the end of the file. Rejects when the device is out of space (`QuotaExceededError`). */
+  write(chunk: Uint8Array): Promise<void>
+  close(): Promise<void>
+}
+
+/** The parts of the browser's `fetch` that downloading uses. */
+export type Fetch = (
+  url: string,
+  init?: { headers?: Record<string, string>; mode?: 'cors' | 'no-cors'; signal?: AbortSignal },
+) => Promise<Response>
+
+/** A hold on the screen, keeping it from dimming and locking. The system drops it when the app is hidden. */
+export interface ScreenHold {
+  readonly released: boolean
+  release(): Promise<void>
+}
+
+/**
+ * The device's own facilities that downloading episodes uses: its file
+ * storage, the network, and the screen. `device.ts` implements them with
+ * browser APIs; tests substitute fakes.
+ */
+export interface Device {
+  files: DeviceFiles
+  fetch: Fetch
+  /** Keeps the screen on until released. Rejects where the browser can't or won't. */
+  keepScreenOn(): Promise<ScreenHold>
+  /** Asks the browser not to clear stored files when space runs low. Resolves to whether it agreed. */
+  persistStorage(): Promise<boolean>
+}
+
 export interface Services {
   auth: AuthService
   data: DataApi
   /** The one audio element the app plays through, for its whole lifetime. */
   audio: AudioElement
   mediaSession: MediaSessionControls
+  device: Device
 }

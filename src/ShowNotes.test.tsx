@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
-import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeMediaSession } from './test/fakes'
+import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 import hostileShowNotes from './test/fixtures/hostile-show-notes.html?raw'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
@@ -28,7 +28,7 @@ async function renderShow(
   const auth = fakeAuth(owner)
   await auth.signIn(owner.email, owner.password)
   const audio = new FakeAudio()
-  render(<App services={{ auth, data, audio, mediaSession: new FakeMediaSession() }} />)
+  render(<App services={{ auth, data, audio, mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />)
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: /The Example Show/ }))
   await screen.findByRole('list', { name: 'Episodes' })
@@ -207,7 +207,7 @@ describe('the episode screen’s place in the app', () => {
     data.ingest(podcastId, [{ ...episode, showNotes: 'Plain notes.' }])
     const auth = fakeAuth(owner)
     await auth.signIn(owner.email, owner.password)
-    render(<App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession() }} />)
+    render(<App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />)
     const user = userEvent.setup()
     await user.click(await screen.findByRole('button', { name: 'Latest' }))
     const list = await screen.findByRole('list', { name: 'Latest episodes' })

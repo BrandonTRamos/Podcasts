@@ -14,7 +14,7 @@ export interface PlayableEpisode {
   id: string
   podcastId: string
   title: string
-  /** Streamed straight from the publisher's host. */
+  /** On the publisher's host. Streamed from there when there is no stored copy. */
   enclosureUrl: string
   /** From the feed; stands in until the file says how long it is. */
   durationSeconds: number | null
@@ -53,8 +53,15 @@ export type SaveProgress = (episode: PlayableEpisode, progress: Progress) => voi
 export type TakeNext = () => { episode: PlayableEpisode; startAt: number } | null
 
 /**
+ * A URL to play the episode's copy stored on this device from, or null when
+ * it has none. Must answer at once, for the same reason as `TakeNext`.
+ */
+export type LocalCopyOf = (episodeId: string) => string | null
+
+/**
  * The player engine: plays one episode at a time through a plain audio
- * element and reports what it is doing. The element's own events are the
+ * element and reports what it is doing. It plays the episode's stored copy
+ * when there is one, and streams it from the publisher otherwise. The element's own events are the
  * source of truth for playing, position and length.
  *
  * It saves the position on pause, at the end (marking the episode played),
@@ -69,7 +76,7 @@ export interface Player {
   /** Calls the listener whenever the state changes. Returns a function that stops it. */
   subscribe(listener: () => void): () => void
   /**
-   * Streams this episode from `startAt` seconds (the start by default),
+   * Plays this episode from `startAt` seconds (the start by default),
    * replacing whatever was loaded. The episode already loaded carries on from
    * where it is, unless it failed.
    */
@@ -100,6 +107,7 @@ export function createPlayer(
   saveProgress: SaveProgress,
   initialSpeed: number,
   takeNext: TakeNext,
+  localCopyOf: LocalCopyOf,
 ): Player {
   let state: PlayerState = { episode: null, speed: initialSpeed }
   const listeners = new Set<() => void>()
@@ -202,7 +210,7 @@ export function createPlayer(
     set({ episode, playing: false, position: start, duration, failed: false, speed: state.speed })
     savedPosition = start
     lastSaveAt = Date.now()
-    audio.src = episode.enclosureUrl
+    audio.src = localCopyOf(episode.id) ?? episode.enclosureUrl
     applySpeed()
     if (start > 0) {
       pendingStart = start
@@ -323,8 +331,8 @@ function storeSpeed(speed: number) {
  * A player for this audio element, for the life of the calling component,
  * shown on and controlled from the OS media controls. It saves the position
  * whenever the app goes to the background, and keeps the chosen speed on this
- * device for the next launch. `saveProgress` and `takeNext` are taken once,
- * when the player is made, so later values are ignored. `hasNext` says
+ * device for the next launch. `saveProgress`, `takeNext` and `localCopyOf`
+ * are taken once, when the player is made, so later values are ignored. `hasNext` says
  * whether anything is queued, for the OS controls' next button.
  */
 export function usePlayer(
@@ -332,11 +340,12 @@ export function usePlayer(
   mediaSession: MediaSessionControls,
   saveProgress: SaveProgress,
   takeNext: TakeNext,
+  localCopyOf: LocalCopyOf,
   hasNext: boolean,
 ): { player: Player; state: PlayerState } {
   // The engine attaches to the element only while subscribed, so a discarded
   // instance (React may call the initialiser twice) leaves nothing behind.
-  const [player] = useState(() => createPlayer(audio, saveProgress, storedSpeed(), takeNext))
+  const [player] = useState(() => createPlayer(audio, saveProgress, storedSpeed(), takeNext, localCopyOf))
   const state = useSyncExternalStore(player.subscribe, player.getState)
   useEffect(() => () => player.stop(), [player])
   useEffect(() => connectMediaSession(mediaSession, player), [mediaSession, player])

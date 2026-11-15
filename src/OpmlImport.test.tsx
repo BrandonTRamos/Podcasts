@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { FEED_DEADLINE_MS } from './opmlImport'
-import { FakeAudio, fakeAuth, fakeDataApi, FakeMediaSession } from './test/fakes'
+import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 
 // Importing an OPML file: bringing every subscription over from another podcast app.
 
@@ -12,7 +12,7 @@ const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 async function renderSignedIn(data: ReturnType<typeof fakeDataApi>) {
   const auth = fakeAuth(owner)
   await auth.signIn(owner.email, owner.password)
-  render(<App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession() }} />)
+  render(<App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />)
   await screen.findByRole('heading', { name: 'Library' })
   return { user: userEvent.setup() }
 }
@@ -118,7 +118,7 @@ describe('importing an OPML file', () => {
       data.publishFeed(feed(1).feedUrl, { title: 'Show 1' })
       const auth = fakeAuth(owner)
       await auth.signIn(owner.email, owner.password)
-      render(<App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession() }} />)
+      render(<App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />)
       await screen.findByRole('heading', { name: 'Library' })
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
 

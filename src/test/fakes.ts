@@ -2,11 +2,15 @@ import {
   type AudioElement,
   type AuthService,
   type DataApi,
+  type Device,
+  type DeviceFiles,
   type DirectoryPodcast,
   type Episode,
   type EpisodeState,
   type EpisodeStateChange,
   type FeedError,
+  type Fetch,
+  type FileAppender,
   type MediaSessionControls,
   type Observer,
   type Podcast,
@@ -14,6 +18,7 @@ import {
   type QueuedEpisode,
   type QueueSnapshot,
   type SavedEpisodeState,
+  type ScreenHold,
   type SignInResult,
   type SubscribeRequestState,
   type SubscribeStart,
@@ -550,5 +555,261 @@ export class FakeMediaSession implements MediaSessionControls {
     const handler = this.#handlers.get(details.action)
     if (!handler) throw new Error(`No handler for media session action "${details.action}"`)
     handler(details)
+  }
+}
+
+/**
+ * Stands in for the Origin Private File System: files held in memory, which
+ * outlive any one launch of the app as long as the same instance is passed
+ * in. Writes land at once, so a file being downloaded shows what has arrived.
+ */
+export class FakeDeviceFiles implements DeviceFiles {
+  #files = new Map<string, Uint8Array>()
+  #urls = new Map<string, string>()
+  #nextUrl = 1
+  #outOfSpace = false
+
+  async list() {
+    return [...this.#files.keys()]
+  }
+
+  async size(name: string) {
+    return this.#files.get(name)?.length ?? null
+  }
+
+  async openForAppend(name: string, { fresh = false }: { fresh?: boolean } = {}): Promise<FileAppender> {
+    if (fresh || !this.#files.has(name)) this.#files.set(name, new Uint8Array())
+    let open = true
+    return {
+      write: async (chunk) => {
+        if (!open) throw new TypeError('The file is closed')
+        if (this.#outOfSpace) throw new DOMException('No space left', 'QuotaExceededError')
+        const before = this.#files.get(name) ?? new Uint8Array()
+        const after = new Uint8Array(before.length + chunk.length)
+        after.set(before)
+        after.set(chunk, before.length)
+        this.#files.set(name, after)
+      },
+      close: async () => {
+        open = false
+      },
+    }
+  }
+
+  async rename(from: string, to: string) {
+    const bytes = this.#files.get(from)
+    if (!bytes) throw new DOMException(`No file ${from}`, 'NotFoundError')
+    this.#files.delete(from)
+    this.#files.set(to, bytes)
+  }
+
+  async playbackUrl(name: string) {
+    if (!this.#files.has(name)) return null
+    const url = `blob:https://tincan.example/${this.#nextUrl++}`
+    this.#urls.set(url, name)
+    return url
+  }
+
+  async remove(name: string) {
+    this.#files.delete(name)
+  }
+
+  /** The bytes a playback URL plays, or undefined if it is not one or its file has gone. */
+  contentsAt(url: string): Uint8Array | undefined {
+    const name = this.#urls.get(url)
+    return name === undefined ? undefined : this.#files.get(name)
+  }
+
+  /** The bytes stored for an episode, complete or not, in whichever file holds them. */
+  storedFor(episodeId: string): Uint8Array | undefined {
+    const name = [...this.#files.keys()].find((file) => file.includes(encodeURIComponent(episodeId)))
+    return name === undefined ? undefined : this.#files.get(name)
+  }
+
+  /** How many files are stored. */
+  count() {
+    return this.#files.size
+  }
+
+  /** Every later write fails as the device has no room left. */
+  runOutOfSpace() {
+    this.#outOfSpace = true
+  }
+}
+
+interface HostedFile {
+  bytes: Uint8Array
+  /** The host sends CORS headers, so a web page may read the file. */
+  cors: boolean
+  /** The host answers range requests with part of the file. */
+  ranges: boolean
+  /** The host stops sending, cleanly, after this many bytes of the file, though it said it would send all. */
+  endsAt: number | null
+}
+
+/**
+ * Stands in for the network and the publishers' hosts on it, as `fetch` sees
+ * them. Hosts answer like real ones: a 206 with the rest of the file for a
+ * range request, a 200 for the whole of it, and, when the host sends no CORS
+ * headers, a network error for any read the page could see (an opaque
+ * `no-cors` answer still arrives). A cross-origin page can't read
+ * `Content-Range`, so none is sent; `Content-Length` it can.
+ *
+ * Files arrive in `chunkSize` pieces, as fast as they are read, unless
+ * `throttle` holds them back to be let through by `deliver`.
+ */
+export class FakeNetwork {
+  chunkSize = 100
+  #files = new Map<string, HostedFile>()
+  #offline = false
+  #throttled = false
+  /** Bytes that may yet be sent while throttled. */
+  #allowance = 0
+  #waiting = new Set<() => void>()
+  #open = new Set<ReadableStreamDefaultController<Uint8Array>>()
+  /** Every request made, oldest first, with its Range header if it had one. */
+  readonly requests: { url: string; range: string | null; mode: 'cors' | 'no-cors' }[] = []
+
+  /** Puts an audio file on a host. */
+  host(url: string, bytes: Uint8Array, { cors = true, ranges = true }: { cors?: boolean; ranges?: boolean } = {}) {
+    this.#files.set(url, { bytes, cors, ranges, endsAt: null })
+  }
+
+  /** The host stops part way through the file the next time it sends it, closing the response as if it had all been sent. */
+  endEarly(url: string, atByte: number) {
+    this.#files.get(url)!.endsAt = atByte
+  }
+
+  /** Files stop arriving until `deliver` lets bytes through. */
+  throttle() {
+    this.#throttled = true
+  }
+
+  /** Lets this many more bytes arrive, across every response. */
+  deliver(bytes: number) {
+    this.#allowance += bytes
+    this.#wake()
+  }
+
+  /** Files arrive as fast as they are read again. */
+  unthrottle() {
+    this.#throttled = false
+    this.#wake()
+  }
+
+  /** The connection drops: responses still arriving fail, and so does every request until `reconnect`. */
+  dropConnection() {
+    this.#offline = true
+    for (const controller of this.#open) controller.error(new TypeError('network error'))
+    this.#open.clear()
+    this.#wake()
+  }
+
+  reconnect() {
+    this.#offline = false
+  }
+
+  readonly fetch: Fetch = async (url, init = {}) => {
+    const range = init.headers?.Range ?? null
+    const mode = init.mode ?? 'cors'
+    this.requests.push({ url, range, mode })
+    if (this.#offline) throw new TypeError('Failed to fetch')
+    const file = this.#files.get(url)
+    if (mode === 'no-cors') return new Response(null)
+    if (!file) return new Response(null, { status: 404 })
+    if (!file.cors) throw new TypeError('Failed to fetch')
+    const from = range && file.ranges ? Number(/^bytes=(\d+)-$/.exec(range)![1]) : 0
+    if (from >= file.bytes.length && from > 0) return new Response(null, { status: 416 })
+    const end = file.endsAt ?? file.bytes.length
+    file.endsAt = null
+    const body = this.#stream(file.bytes.subarray(from, Math.max(end, from)), init.signal)
+    return new Response(body, {
+      status: from > 0 ? 206 : 200,
+      headers: { 'Content-Length': String(file.bytes.length - from), 'Content-Type': 'audio/mpeg' },
+    })
+  }
+
+  #stream(bytes: Uint8Array, signal: AbortSignal | undefined) {
+    let sent = 0
+    let controller: ReadableStreamDefaultController<Uint8Array>
+    return new ReadableStream<Uint8Array>({
+      start: (c) => {
+        controller = c
+        this.#open.add(c)
+        signal?.addEventListener('abort', () => {
+          this.#open.delete(c)
+          c.error(new DOMException('Aborted', 'AbortError'))
+        })
+      },
+      pull: async (c) => {
+        while (this.#throttled && this.#allowance === 0 && this.#open.has(c)) {
+          await new Promise<void>((resolve) => this.#waiting.add(resolve))
+        }
+        if (!this.#open.has(c)) return
+        if (sent >= bytes.length) {
+          this.#open.delete(c)
+          c.close()
+          return
+        }
+        let size = Math.min(this.chunkSize, bytes.length - sent)
+        if (this.#throttled) {
+          size = Math.min(size, this.#allowance)
+          this.#allowance -= size
+        }
+        c.enqueue(bytes.slice(sent, sent + size))
+        sent += size
+      },
+      cancel: () => {
+        this.#open.delete(controller)
+      },
+    })
+  }
+
+  #wake() {
+    const waiting = [...this.#waiting]
+    this.#waiting.clear()
+    waiting.forEach((resolve) => resolve())
+  }
+}
+
+/**
+ * Stands in for the device: its file storage, the network, the screen's wake
+ * lock and the browser's storage persistence. Rendering a fresh `<App>` with
+ * the same instance is a relaunch on the same device: files stay.
+ */
+export class FakeDevice implements Device {
+  readonly files = new FakeDeviceFiles()
+  readonly network = new FakeNetwork()
+  readonly fetch: Fetch = (url, init) => this.network.fetch(url, init)
+  /** How many times the app asked for persistent storage. */
+  persistRequests = 0
+  #holds = new Set<{ released: boolean }>()
+
+  async keepScreenOn(): Promise<ScreenHold> {
+    const hold = {
+      released: false,
+      release: async () => {
+        hold.released = true
+        this.#holds.delete(hold)
+      },
+    }
+    this.#holds.add(hold)
+    return hold
+  }
+
+  async persistStorage() {
+    this.persistRequests++
+    return true
+  }
+
+  /** Whether anything is keeping the screen on. */
+  screenKeptOn() {
+    return this.#holds.size > 0
+  }
+
+  /** The system drops every hold on the screen, as it does when the app is hidden. */
+  dropScreenHolds() {
+    for (const hold of this.#holds) hold.released = true
+    this.#holds.clear()
   }
 }

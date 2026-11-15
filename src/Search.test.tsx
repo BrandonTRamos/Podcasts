@@ -2,7 +2,7 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
-import { FakeAudio, fakeAuth, fakeDataApi, FakeMediaSession } from './test/fakes'
+import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const rome = {
@@ -18,7 +18,7 @@ const cooking = { title: 'Cooking Hour', author: 'Chef', artworkUrl: null, feedU
 async function renderSignedIn(data = fakeDataApi()) {
   const auth = fakeAuth(owner)
   await auth.signIn(owner.email, owner.password)
-  render(<App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession() }} />)
+  render(<App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />)
   await screen.findByRole('heading', { name: 'Library' })
   return { data, user: userEvent.setup() }
 }
