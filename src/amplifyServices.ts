@@ -19,7 +19,7 @@ import {
 
 const episodeFields = ['id', 'podcastId', 'title', 'publishedAt', 'durationSeconds', 'enclosureUrl'] as const
 const stateFields = ['id', 'podcastId', 'positionSeconds', 'played', 'queueOrder', 'updatedAt'] as const
-const podcastFields = ['id', 'title', 'author', 'artworkUrl', 'lastFetchedAt', 'lastFetchError', 'categoryId'] as const
+const podcastFields = ['id', 'title', 'author', 'artworkUrl', 'lastFetchedAt', 'lastFetchError', 'categoryId', 'libraryOrder'] as const
 const categoryFields = ['id', 'name'] as const
 
 /** Production auth and data: Cognito for auth, the AppSync data API for data. */
@@ -154,7 +154,15 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
       async setPodcastCategory(podcastId, categoryId) {
         // A null removes the field. Every field the library shows is selected, as live updates carry only these.
         const { errors } = await client.models.Podcast.update(
-          { id: podcastId, categoryId },
+          { id: podcastId, categoryId, libraryOrder: null },
+          { selectionSet: [...podcastFields] },
+        )
+        throwIfErrors(errors)
+      },
+
+      async placePodcast(podcastId, categoryId, libraryOrder) {
+        const { errors } = await client.models.Podcast.update(
+          { id: podcastId, categoryId, libraryOrder },
           { selectionSet: [...podcastFields] },
         )
         throwIfErrors(errors)
@@ -534,6 +542,7 @@ function toPodcast(record: {
   lastFetchedAt?: string | null
   lastFetchError?: Podcast['lastFetchError'] | null
   categoryId?: string | null
+  libraryOrder?: number | null
 }): Podcast {
   return {
     id: record.id,
@@ -543,6 +552,7 @@ function toPodcast(record: {
     lastFetchedAt: record.lastFetchedAt ?? null,
     lastFetchError: record.lastFetchError ?? null,
     categoryId: record.categoryId ?? null,
+    libraryOrder: record.libraryOrder ?? null,
   }
 }
 

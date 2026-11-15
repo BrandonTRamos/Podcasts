@@ -1,7 +1,8 @@
-import { type ChangeEvent, type FormEvent, type RefObject, useEffect, useRef, useState } from 'react'
+import { type ChangeEvent, type FormEvent, Fragment, type RefObject, useEffect, useRef, useState } from 'react'
 import { CategoryDialog } from './CategoryDialog'
-import { byTitle, type LibrarySection, librarySections, OTHER } from './categories'
+import { inListOrder, type LibrarySection, librarySections, OTHER, type Placement, placementsFor } from './categories'
 import { ChevronDownIcon, PlusIcon } from './Icons'
+import { type LibraryDrag, useLibraryDrag } from './libraryDrag'
 import { MoreActions } from './MoreActions'
 import type { ImportOutcome, ImportState } from './opmlImport'
 import type { Category, DataApi, Podcast } from './services'
@@ -46,8 +47,37 @@ export function LibraryScreen({
   const opmlFile = useRef<HTMLInputElement>(null)
   const count = podcasts.status === 'loaded' ? podcasts.items.length : 0
   const importing = opmlImport.status === 'reading' || opmlImport.status === 'importing'
+  const { moved, moveFailed, move } = useMoves(podcasts, data)
+  const sections = shownSections(moved, categoryList)
+
+  const { drag, bind } = useLibraryDrag({
+    podcastOf(podcastId) {
+      for (const section of sections) {
+        const podcast = section.podcasts.find((p) => p.id === podcastId)
+        if (podcast) return { podcast, section: section.key }
+      }
+    },
+    isOpen: (section) => openSections.has(section),
+    onOpenSection: (section) => {
+      if (!openSections.has(section)) onToggleSection(section)
+    },
+    onDrop(podcast, from, target) {
+      const section = sections.find((s) => s.key === target.section)
+      if (!section) return
+      const others = section.podcasts.filter((p) => p.id !== podcast.id)
+      // Put back where it was: nothing to save.
+      if (from === target.section && section.podcasts.findIndex((p) => p.id === podcast.id) === target.index) return
+      move(
+        placementsFor(others, podcast.id, target.index).map((placement) => ({
+          ...placement,
+          categoryId: section.category?.id ?? null,
+        })),
+      )
+    },
+  })
+
   return (
-    <main className="library">
+    <main className={drag ? 'library dragging' : 'library'}>
       <header>
         <div className="library-title">
           <h1>Library</h1>
@@ -105,57 +135,132 @@ export function LibraryScreen({
         />
       )}
       <OpmlImport state={opmlImport} onImport={onImportOpml} input={opmlFile} busy={importing} />
+      {moveFailed && <p role="alert">Couldn’t move the podcast. Check your connection and try again.</p>}
       {(podcasts.status === 'loading' || categories.status === 'loading') && <p>Loading…</p>}
       {podcasts.status === 'failed' && <p role="alert">Couldn’t load your library.</p>}
       {podcasts.status === 'loaded' && categories.status !== 'loading' && (
         <>
           {podcasts.items.length === 0 && <p>No podcasts yet.</p>}
-          {categoryList.length === 0 ? (
-            podcasts.items.length > 0 && (
-              <PodcastList label="Podcasts" podcasts={byTitle(podcasts.items)} onOpen={onOpenPodcast} />
-            )
-          ) : (
-            librarySections(podcasts.items, categoryList).map((section) => {
-              const key = section.category?.id ?? OTHER_SECTION
-              return (
+          {categoryList.length === 0
+            ? podcasts.items.length > 0 && (
+                <PodcastList label="Podcasts" section={sections[0]} drag={drag} bind={bind} onOpen={onOpenPodcast} />
+              )
+            : sections.map((section) => (
                 <CategorySection
-                  key={key}
+                  key={section.key}
                   section={section}
-                  open={openSections.has(key)}
-                  onToggle={() => onToggleSection(key)}
+                  open={openSections.has(section.key)}
+                  drag={drag}
+                  bind={bind}
+                  onToggle={() => onToggleSection(section.key)}
                   onOpenPodcast={onOpenPodcast}
                   onRename={(category) => setEditing({ action: 'rename', category })}
                   onDelete={setDeleting}
                 />
-              )
-            })
-          )}
+              ))}
         </>
       )}
+      {drag && <DraggedPodcast drag={drag} />}
     </main>
   )
 }
 
+/** A section of the library as shown, keyed by its category's ID, or `OTHER_SECTION`. */
+interface ShownSection extends LibrarySection {
+  key: string
+}
+
+/** The library's sections, or with no categories, one holding every podcast. */
+function shownSections(podcasts: LoadState<Podcast>, categories: Category[]): ShownSection[] {
+  if (podcasts.status !== 'loaded') return []
+  if (categories.length === 0) return [{ key: OTHER_SECTION, category: null, podcasts: inListOrder(podcasts.items) }]
+  return librarySections(podcasts.items, categories).map((section) => ({
+    ...section,
+    key: section.category?.id ?? OTHER_SECTION,
+  }))
+}
+
+/** A podcast's place as a move left it, until the library shows it there. */
+interface Move extends Placement {
+  categoryId: string | null
+}
+
+/**
+ * Moves podcasts, showing them moved at once. Each stays shown where it was
+ * put while it is saved and a few seconds after, time for the library to bring
+ * it there. A move that fails puts it back, and says so.
+ */
+function useMoves(podcasts: LoadState<Podcast>, data: Pick<DataApi, 'placePodcast'>) {
+  const [moves, setMoves] = useState<ReadonlyMap<string, Move>>(new Map())
+  const [moveFailed, setMoveFailed] = useState(false)
+
+  const moved: LoadState<Podcast> =
+    podcasts.status === 'loaded' && moves.size > 0
+      ? {
+          ...podcasts,
+          items: podcasts.items.map((podcast) => {
+            const move = moves.get(podcast.id)
+            return move ? { ...podcast, categoryId: move.categoryId, libraryOrder: move.libraryOrder } : podcast
+          }),
+        }
+      : podcasts
+
+  function forget(made: Move[]) {
+    setMoves((pending) => {
+      const left = new Map(pending)
+      for (const move of made) if (left.get(move.podcastId) === move) left.delete(move.podcastId)
+      return left
+    })
+  }
+
+  async function move(made: Move[]) {
+    setMoveFailed(false)
+    setMoves((pending) => new Map([...pending, ...made.map((m) => [m.podcastId, m] as const)]))
+    try {
+      await Promise.all(made.map((m) => data.placePodcast(m.podcastId, m.categoryId, m.libraryOrder)))
+      // By then the library has it as saved, or changed again elsewhere, which it should show.
+      window.setTimeout(() => forget(made), 5000)
+    } catch {
+      forget(made)
+      setMoveFailed(true)
+    }
+  }
+
+  return { moved, moveFailed, move: (made: Move[]) => void move(made) }
+}
+
+type BindRow = ReturnType<typeof useLibraryDrag>['bind']
+
 /** A category's podcasts, or Other's, under a heading that opens and closes it. */
 function CategorySection({
-  section: { category, podcasts },
+  section,
   open,
+  drag,
+  bind,
   onToggle,
   onOpenPodcast,
   onRename,
   onDelete,
 }: {
-  section: LibrarySection
+  section: ShownSection
   open: boolean
+  drag: LibraryDrag | null
+  bind: BindRow
   onToggle: () => void
   onOpenPodcast: (podcastId: string) => void
   onRename: (category: Category) => void
   onDelete: (category: Category) => void
 }) {
+  const { category, podcasts, key } = section
   const name = category?.name ?? OTHER
+  const targeted = drag?.target?.section === key
   return (
     <section className="category" aria-label={name}>
-      <div className="category-heading">
+      <div
+        className={targeted && (!open || podcasts.length === 0) ? 'category-heading drop-into' : 'category-heading'}
+        data-drop="heading"
+        data-section={key}
+      >
         <h2>
           <button
             type="button"
@@ -182,27 +287,91 @@ function CategorySection({
       </div>
       {open &&
         (podcasts.length === 0 ? (
-          <p className="category-empty">No podcasts here yet. Open a podcast to choose its category.</p>
+          <p className="category-empty" data-drop="heading" data-section={key}>
+            No podcasts here yet. Open a podcast to choose its category, or hold one to drag it here.
+          </p>
         ) : (
-          <PodcastList label={name} podcasts={podcasts} onOpen={onOpenPodcast} />
+          <PodcastList label={name} section={section} drag={drag} bind={bind} onOpen={onOpenPodcast} />
         ))}
     </section>
   )
 }
 
-function PodcastList({ label, podcasts, onOpen }: { label: string; podcasts: Podcast[]; onOpen: (podcastId: string) => void }) {
+/**
+ * A section's podcasts. While one is dragged, it leaves its place (kept, out
+ * of sight, for the touch that holds it) and a gap shows where it would land.
+ */
+function PodcastList({
+  label,
+  section: { key, podcasts },
+  drag,
+  bind,
+  onOpen,
+}: {
+  label: string
+  section: ShownSection
+  drag: LibraryDrag | null
+  bind: BindRow
+  onOpen: (podcastId: string) => void
+}) {
+  const gapAt = drag?.target?.section === key ? drag.target.index : null
+  const gap = (
+    <li key="drop-gap" className="drop-gap" data-drop="gap" data-section={key} style={{ height: drag?.height }} aria-hidden="true" />
+  )
+  const others = podcasts.filter((podcast) => podcast.id !== drag?.podcast.id)
+  const indexOf = new Map(others.map((podcast, index) => [podcast.id, index]))
   return (
     <ul className="podcasts" aria-label={label}>
-      {podcasts.map((podcast) => (
-        <li key={podcast.id}>
-          <button type="button" className="plain" onClick={() => onOpen(podcast.id)}>
-            <Artwork url={podcast.artworkUrl} />
-            <span className="podcast-title">{podcast.title}</span>
-            {podcast.author && <span className="podcast-author">{podcast.author}</span>}
-          </button>
-        </li>
-      ))}
+      {podcasts.map((podcast) => {
+        const held = drag?.podcast.id === podcast.id
+        const at = indexOf.get(podcast.id) ?? null
+        return (
+          <Fragment key={podcast.id}>
+            {at !== null && at === gapAt && gap}
+            <li
+              className={held ? 'drag-source' : undefined}
+              data-drop={held ? undefined : 'row'}
+              data-section={key}
+              data-index={at ?? undefined}
+              {...bind(podcast.id)}
+            >
+              <PodcastRow podcast={podcast} onOpen={onOpen} />
+            </li>
+          </Fragment>
+        )
+      })}
+      {gapAt !== null && gapAt >= others.length && gap}
     </ul>
+  )
+}
+
+function PodcastRow({ podcast, onOpen }: { podcast: Podcast; onOpen?: (podcastId: string) => void }) {
+  return (
+    <button type="button" className="plain" onClick={onOpen && (() => onOpen(podcast.id))} tabIndex={onOpen ? undefined : -1}>
+      <Artwork url={podcast.artworkUrl} />
+      <span className="podcast-title">{podcast.title}</span>
+      {podcast.author && <span className="podcast-author">{podcast.author}</span>}
+    </button>
+  )
+}
+
+/** How far the lifted podcast's card reaches past its row on each side (its padding, in `.dragged-podcast`). */
+const LIFTED_INSET = 12
+
+/** The podcast being dragged, lifted, under the finger. */
+function DraggedPodcast({ drag }: { drag: LibraryDrag }) {
+  return (
+    <div
+      className="podcasts dragged-podcast"
+      aria-hidden="true"
+      style={{
+        top: drag.point.y - drag.grab.y,
+        left: drag.left - LIFTED_INSET,
+        width: drag.width + 2 * LIFTED_INSET,
+      }}
+    >
+      <PodcastRow podcast={drag.podcast} />
+    </div>
   )
 }
 

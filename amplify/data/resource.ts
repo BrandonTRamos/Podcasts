@@ -29,6 +29,10 @@ const schema = a
         // The listener's category for it, set by the client; absent for none (Other).
         // Not a relationship: deleting a category leaves its podcasts naming it, which counts as none.
         categoryId: a.id(),
+        // Where the listener put it in its category's list: lowest first, then
+        // those with none, by title. Absent until moved. Fractional, so a move is
+        // usually one write.
+        libraryOrder: a.float(),
         episodes: a.hasMany('Episode', 'podcastId'),
       })
       .secondaryIndexes((index) => [index('feedUrl')]),

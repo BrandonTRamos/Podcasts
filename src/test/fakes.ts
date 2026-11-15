@@ -278,6 +278,15 @@ export function fakeDataApi() {
         const podcast = podcasts.find((p) => p.id === podcastId)
         if (!podcast) throw new Error('No such podcast')
         podcast.categoryId = categoryId
+        podcast.libraryOrder = null
+        queueMicrotask(notifyPodcasts)
+      },
+      async placePodcast(podcastId, categoryId, libraryOrder) {
+        reach(connection)
+        const podcast = podcasts.find((p) => p.id === podcastId)
+        if (!podcast) throw new Error('No such podcast')
+        podcast.categoryId = categoryId
+        podcast.libraryOrder = libraryOrder
         queueMicrotask(notifyPodcasts)
       },
       observeEpisodes(podcastId, observer) {
@@ -483,7 +492,7 @@ export function fakeDataApi() {
         if (feed === undefined) settle(requestId, { status: 'unreachable' })
         else if (typeof feed === 'string') settle(requestId, { status: feed })
         else {
-          const podcastId = addPodcast(feedUrl, { ...feed, lastFetchedAt: timeAt(tick), lastFetchError: null, categoryId: null })
+          const podcastId = addPodcast(feedUrl, { ...feed, lastFetchedAt: timeAt(tick), lastFetchError: null, categoryId: null, libraryOrder: null })
           settle(requestId, { status: 'subscribed', podcastId })
         }
       }
@@ -496,6 +505,7 @@ export function fakeDataApi() {
         lastFetchedAt: null,
         lastFetchError: null,
         categoryId: null,
+        libraryOrder: null,
         ...podcast,
       })
     },

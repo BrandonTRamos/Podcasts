@@ -46,6 +46,12 @@ export interface Podcast {
    * category since deleted counts as none: the podcast is in Other.
    */
   categoryId: string | null
+  /**
+   * Where the listener put it in its category's list (or Other's): lowest
+   * first, then those with none, by title. Null until moved. Fractional, so
+   * moving one podcast is usually a single write.
+   */
+  libraryOrder: number | null
 }
 
 /** A group of podcasts the listener made, such as News or Movies. A podcast is in one at most. */
@@ -171,10 +177,17 @@ export interface DataApi {
    */
   deleteCategory(categoryId: string): Promise<void>
   /**
-   * Puts the podcast in the category, or in none (Other) for null. The change
-   * arrives through `observePodcasts`. Throws when the backend can't be reached.
+   * Puts the podcast in the category, or in none (Other) for null, among those
+   * not placed by hand (it forgets its `libraryOrder`). The change arrives
+   * through `observePodcasts`. Throws when the backend can't be reached.
    */
   setPodcastCategory(podcastId: string, categoryId: string | null): Promise<void>
+  /**
+   * Puts the podcast in the category (null for Other) at the given place in its
+   * list. The change arrives through `observePodcasts`. Throws when the backend
+   * can't be reached.
+   */
+  placePodcast(podcastId: string, categoryId: string | null, libraryOrder: number): Promise<void>
   /** One podcast's episodes, in no particular order, kept current as they are ingested. */
   observeEpisodes(podcastId: string, observer: Observer<Episode[]>): () => void
   /**
