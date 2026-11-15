@@ -1,5 +1,5 @@
 import { type DownloadFailure, type DownloadState, percentOf } from './downloads'
-import { formatMegabytes } from './format'
+import { formatSize } from './format'
 
 const failureMessages: Record<DownloadFailure, string> = {
   unavailable: 'This episode couldn’t be downloaded: its publisher’s host didn’t send the file.',
@@ -9,7 +9,8 @@ const failureMessages: Record<DownloadFailure, string> = {
 
 /**
  * An episode's download: a button to start it, its progress while it runs, a
- * button to resume it once interrupted, and a badge once it is stored.
+ * button to resume it once interrupted, a badge once it is stored, and word
+ * when its stored file has gone.
  */
 export function DownloadControl({ download, onDownload }: { download: DownloadState; onDownload: () => void }) {
   switch (download.status) {
@@ -43,6 +44,15 @@ export function DownloadControl({ download, onDownload }: { download: DownloadSt
           <DownloadedBadge />
         </div>
       )
+    case 'lost':
+      return (
+        <div className="episode-download">
+          <DownloadLost />
+          <button type="button" onClick={onDownload}>
+            Download again
+          </button>
+        </div>
+      )
     case 'blocked':
       return (
         <div className="episode-download">
@@ -61,12 +71,13 @@ export function DownloadControl({ download, onDownload }: { download: DownloadSt
   }
 }
 
-function DownloadProgress({ bytes, total }: { bytes: number; total: number | null }) {
+/** How much of a download is stored: a bar and percent of a known size, or the bytes so far of an unknown one. */
+export function DownloadProgress({ bytes, total }: { bytes: number; total: number | null }) {
   if (!total) {
     return (
       <span className="download-progress">
         <progress aria-label="Download progress" />
-        <span>{formatMegabytes(bytes)}</span>
+        <span>{formatSize(bytes)}</span>
       </span>
     )
   }
@@ -81,4 +92,9 @@ function DownloadProgress({ bytes, total }: { bytes: number; total: number | nul
 /** Marks an episode whose whole file is stored on this device. */
 export function DownloadedBadge() {
   return <span className="episode-downloaded">Downloaded</span>
+}
+
+/** Says a downloaded episode's file has gone from the device since: most likely the OS cleared it to free space. */
+export function DownloadLost() {
+  return <p className="episode-download-lost">This episode’s download is no longer on this device.</p>
 }

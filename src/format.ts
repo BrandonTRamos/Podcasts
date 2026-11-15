@@ -35,3 +35,10 @@ export function formatDateTime(iso: string): string {
 export function formatMegabytes(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`
 }
+
+/** A size on disk to one decimal place of the largest unit it reaches: "980.0 KB", "12.3 MB", "1.2 GB". */
+export function formatSize(bytes: number): string {
+  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`
+  if (bytes >= 1_000_000) return formatMegabytes(bytes)
+  return `${(bytes / 1_000).toFixed(1)} KB`
+}

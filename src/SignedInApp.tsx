@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDownloads } from './downloads'
+import { DownloadsScreen } from './DownloadsScreen'
 import type { EpisodeActions } from './EpisodeRow'
 import { EpisodeScreen } from './EpisodeScreen'
 import { LatestScreen } from './LatestScreen'
@@ -28,6 +29,7 @@ type Screen =
   | ListScreen
   | { name: 'queue' }
   | { name: 'search' }
+  | { name: 'downloads' }
   /** One episode, opened from a list, to which going back returns. */
   | { name: 'episode'; episode: Episode; from: ListScreen }
 
@@ -147,7 +149,14 @@ export function SignedInApp({
     if (player.getState().episode?.podcastId === podcastId) player.stop()
     await data.unsubscribe(podcastId)
     listening.forgetPodcast(podcastId)
+    void downloads.removePodcast(podcastId)
     setScreen({ name: 'library' })
+  }
+
+  /** Deletes the episode's download, first stopping it if it is playing, as it may be playing the copy. */
+  function removeDownload(episodeId: string) {
+    if (player.getState().episode?.id === episodeId) player.stop()
+    void downloads.remove(episodeId)
   }
 
   const openPodcast = useCallback((podcastId: string) => setScreen({ name: 'podcast', podcastId }), [])
@@ -231,6 +240,17 @@ export function SignedInApp({
         {...episodeActions}
       />
     )
+  } else if (screen.name === 'downloads') {
+    content = (
+      <DownloadsScreen
+        downloads={downloads.list()}
+        podcastTitleOf={(podcastId) => podcastById(podcastId)?.title}
+        onBack={() => setScreen({ name: 'library' })}
+        onPlay={playEpisode}
+        onDownload={downloads.download}
+        onRemove={removeDownload}
+      />
+    )
   } else if (screen.name === 'search') {
     content = (
       <SearchScreen
@@ -261,6 +281,7 @@ export function SignedInApp({
         onOpenQueue={openQueue}
         onOpenLatest={() => setScreen({ name: 'latest' })}
         onOpenSearch={() => setScreen({ name: 'search' })}
+        onOpenDownloads={() => setScreen({ name: 'downloads' })}
         onSignOut={onSignOut}
         opmlImport={opmlImport.state}
         onImportOpml={(file) => void opmlImport.importFile(file)}

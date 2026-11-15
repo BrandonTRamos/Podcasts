@@ -11,6 +11,7 @@ export function LibraryScreen({
   onOpenQueue,
   onOpenLatest,
   onOpenSearch,
+  onOpenDownloads,
   onSignOut,
   opmlImport,
   onImportOpml,
@@ -23,6 +24,7 @@ export function LibraryScreen({
   onOpenQueue: () => void
   onOpenLatest: () => void
   onOpenSearch: () => void
+  onOpenDownloads: () => void
   onSignOut: () => Promise<void>
 }) {
   return (
@@ -37,6 +39,9 @@ export function LibraryScreen({
         </button>
         <button type="button" onClick={onOpenQueue}>
           Queue
+        </button>
+        <button type="button" onClick={onOpenDownloads}>
+          Downloads
         </button>
         <button type="button" onClick={() => void onSignOut()}>
           Sign out

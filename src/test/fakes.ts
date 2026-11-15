@@ -678,6 +678,8 @@ export class FakeDeviceFiles implements DeviceFiles {
   #urls = new Map<string, string>()
   #nextUrl = 1
   #outOfSpace = false
+  /** Deletions waiting to happen, while `holdRemovals` holds them; null when they happen at once. */
+  #heldRemovals: (() => void)[] | null = null
   /** Bumped when the app is killed: files it had open can no longer be written by it. */
   #launch = 0
 
@@ -733,7 +735,20 @@ export class FakeDeviceFiles implements DeviceFiles {
   }
 
   async remove(name: string) {
+    if (this.#heldRemovals) await new Promise<void>((resolve) => this.#heldRemovals!.push(resolve))
     this.#files.delete(name)
+  }
+
+  /** Deletions wait, as on a slow disk, until `releaseRemovals`. */
+  holdRemovals() {
+    this.#heldRemovals ??= []
+  }
+
+  /** Lets held deletions go ahead, and later ones happen at once. */
+  releaseRemovals() {
+    const held = this.#heldRemovals ?? []
+    this.#heldRemovals = null
+    held.forEach((resolve) => resolve())
   }
 
   /** The bytes a playback URL plays, or undefined if it is not one or its file has gone. */
@@ -746,6 +761,16 @@ export class FakeDeviceFiles implements DeviceFiles {
   onlyFile(): Uint8Array | undefined {
     if (this.#files.size > 1) throw new Error(`${this.#files.size} files are stored, not one`)
     return [...this.#files.values()][0]
+  }
+
+  /** How many files are stored, complete or not. */
+  count() {
+    return this.#files.size
+  }
+
+  /** The OS clears every stored file to free space, as iOS may while the app is closed. */
+  evictAll() {
+    this.#files.clear()
   }
 
   /** The app is killed: what it stored stays, and files it had open take no more from it. */
