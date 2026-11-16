@@ -3,7 +3,7 @@ import { wordMatcher } from '../amplify/feeds/matchWords'
 import { CategoryPicker } from './CategoryPicker'
 import { type EpisodeActions, EpisodeRow } from './EpisodeRow'
 import { isStored } from './downloads'
-import { newestFirst, recentlyAdded } from './episodes'
+import { newEpisodeIds, newestFirst, recentlyAdded } from './episodes'
 import { formatDateTime } from './format'
 import { ChevronLeftIcon, StarIcon } from './Icons'
 import { Artwork } from './LibraryScreen'
@@ -134,7 +134,7 @@ export function PodcastScreen({
  * every word (`matchWords.ts`), and submitting the search looks through the
  * podcast's whole feed as well, for episodes older than the library keeps
  * (see `OlderEpisodes`). Recently Added has those the listener added or
- * downloaded, and the new ones. Each episode has an Add button, which puts
+ * downloaded, and the new one. Each episode has an Add button, which puts
  * it there.
  */
 function EpisodeList({
@@ -189,6 +189,7 @@ function EpisodeList({
   const wanted = (episode: Episode) => !unplayedOnly || !stateOf(episode.id)?.played
   const shown = newestFirst(titled).filter(wanted)
   const more = found?.filter((episode) => !titledIds.has(episode.id) && wanted(episode)) ?? null
+  const fresh = newEpisodeIds([...inLibrary.values()], stateOf)
   const recent = recentlyAdded([...inLibrary.values()], stateOf, (episodeId) => isStored(actions.downloadOf(episodeId))).filter(wanted)
 
   function handleSubmit(event: FormEvent) {
@@ -226,7 +227,14 @@ function EpisodeList({
         ) : (
           <ol className="episodes" aria-label="Recently added">
             {recent.map((episode) => (
-              <EpisodeRow key={episode.id} episode={episode} state={stateOf(episode.id)} onSetAdded={onSetAdded} {...actions} />
+              <EpisodeRow
+                key={episode.id}
+                episode={episode}
+                state={stateOf(episode.id)}
+                isNew={fresh.has(episode.id)}
+                onSetAdded={onSetAdded}
+                {...actions}
+              />
             ))}
           </ol>
         )
@@ -255,7 +263,14 @@ function EpisodeList({
           ) : (
             <ol className="episodes" aria-label="Episodes">
               {shown.map((episode) => (
-                <EpisodeRow key={episode.id} episode={episode} state={stateOf(episode.id)} onSetAdded={onSetAdded} {...actions} />
+                <EpisodeRow
+                key={episode.id}
+                episode={episode}
+                state={stateOf(episode.id)}
+                isNew={fresh.has(episode.id)}
+                onSetAdded={onSetAdded}
+                {...actions}
+              />
               ))}
             </ol>
           )}
@@ -268,6 +283,7 @@ function EpisodeList({
               more={more}
               inLibrary={(episodeId) => inLibrary.get(episodeId)}
               stateOf={stateOf}
+              isNew={(episodeId) => fresh.has(episodeId)}
               onKept={onKept}
               onSetAdded={onSetAdded}
               {...actions}

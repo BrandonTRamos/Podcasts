@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { type EpisodeActions, EpisodeRow } from './EpisodeRow'
-import { newestFirst } from './episodes'
+import { newEpisodeIds, newestFirst } from './episodes'
 import { type ListeningStore, useEpisodeStatesOfEach } from './listening'
 import type { DataApi, Episode, Podcast } from './services'
 import type { LoadState } from './SignedInApp'
@@ -40,6 +40,8 @@ export function LatestScreen({
   else if (episodes.status === 'loading' || !(loaded || statesArrived)) content = <p>Loading episodes…</p>
   else if (episodes.items.length === 0) content = <p>No episodes yet.</p>
   else {
+    // The list holds the most recent episode of every podcast it holds any of, so new is judged within it.
+    const fresh = newEpisodeIds(episodes.items, (episodeId) => listening.get(episodeId))
     content = (
       <ol className="episodes" aria-label="Latest episodes">
         {newestFirst(episodes.items).map((episode) => {
@@ -49,6 +51,7 @@ export function LatestScreen({
               key={episode.id}
               episode={episode}
               state={listening.get(episode.id)}
+              isNew={fresh.has(episode.id)}
               podcastTitle={podcast?.title}
               artworkUrl={podcast?.artworkUrl ?? null}
               {...actions}

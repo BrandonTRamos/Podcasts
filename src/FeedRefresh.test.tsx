@@ -245,6 +245,22 @@ describe('the latest episodes', () => {
     expect(headings(await latestItems())).toEqual(['Other: just out', 'Show: newest', 'Other: middle', 'Show: oldest'])
   })
 
+  it('calls only a podcast’s most recent episode new, while it is under three days old', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(Date.parse('2026-11-13T09:00:00.000Z'))
+    const { data, showId } = backendWithTwoShows()
+    data.ingest(showId, [{ title: 'Show: the day before', publishedAt: '2026-11-11T08:00:00.000Z', durationSeconds: 1800 }])
+    const { user } = await renderSignedIn(data)
+
+    await openLatest(user)
+
+    const [newest, dayBefore, otherMiddle] = await latestItems()
+    expect(within(newest).getByText('New')).toBeInTheDocument()
+    expect(within(dayBefore).queryByText('New')).not.toBeInTheDocument()
+    // Its podcast's latest, but out eight days ago.
+    expect(within(otherMiddle).queryByText('New')).not.toBeInTheDocument()
+  })
+
   it('shows how far through each episode is, and resumes one where it was left', async () => {
     const { data, showId, showOld, showNew } = backendWithTwoShows()
     data.seedEpisodeState({ episodeId: showOld, podcastId: showId, positionSeconds: 0, played: true })

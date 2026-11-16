@@ -8,7 +8,7 @@ import { chooseAction } from './test/ui'
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = { title: 'The Example Show' }
 
-/** When the tests take place: the sequel came out within the week, the rest longer ago. */
+/** When the tests take place: the sequel, the latest, came out within three days, the rest longer ago. */
 const NOW = '2026-11-12T12:00:00.000Z'
 
 const sequel = { title: 'Episode 12: The Roman Sequel', publishedAt: '2026-11-10T08:00:00.000Z', durationSeconds: 3600 }

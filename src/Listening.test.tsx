@@ -285,21 +285,21 @@ describe('played state', () => {
   })
 
   it('lets the listener mark an episode played, and unplayed again', async () => {
-    setToday('2026-11-05T09:00:00.000Z')
-    const { data, podcastId, firstId } = backendWithShow()
-    data.seedEpisodeState({ episodeId: firstId, podcastId, positionSeconds: 900, played: false })
+    setToday('2026-11-11T09:00:00.000Z')
+    const { data, podcastId, secondId } = backendWithShow()
+    data.seedEpisodeState({ episodeId: secondId, podcastId, positionSeconds: 900, played: false })
     const device = await openShowOn(data)
 
-    await chooseAction(device.user, device.row(first.title), 'Mark played')
+    await chooseAction(device.user, device.row(second.title), 'Mark played')
 
-    expect(within(device.row(first.title)).getByText('Played')).toBeInTheDocument()
-    expect(data.savedState(firstId)).toMatchObject({ played: true })
+    expect(within(device.row(second.title)).getByText('Played')).toBeInTheDocument()
+    expect(data.savedState(secondId)).toMatchObject({ played: true })
 
-    await chooseAction(device.user, device.row(first.title), 'Mark unplayed')
+    await chooseAction(device.user, device.row(second.title), 'Mark unplayed')
 
-    expect(within(device.row(first.title)).getByText('New')).toBeInTheDocument()
-    expect(within(device.row(first.title)).queryByText('Played')).not.toBeInTheDocument()
-    expect(data.savedState(firstId)).toMatchObject({ positionSeconds: 0, played: false })
+    expect(within(device.row(second.title)).getByText('New')).toBeInTheDocument()
+    expect(within(device.row(second.title)).queryByText('Played')).not.toBeInTheDocument()
+    expect(data.savedState(secondId)).toMatchObject({ positionSeconds: 0, played: false })
   })
 
   it('keeps showing a change whose save failed', async () => {
@@ -331,32 +331,53 @@ describe('played state', () => {
     expect(within(device.row(third.title)).queryByRole('progressbar')).not.toBeInTheDocument()
   })
 
-  it('calls an episode new only for a week after it came out', async () => {
-    setToday('2026-11-14T09:00:00.000Z')
+  it('calls only the podcast’s most recent episode new', async () => {
+    setToday('2026-11-13T07:00:00.000Z')
     const { data, podcastId } = backendWithShow()
-    data.ingest(podcastId, [{ ...third, title: 'Undated', publishedAt: null }])
+    data.ingest(podcastId, [third, { ...third, title: 'Undated', publishedAt: null }])
     const device = await openShowOn(data)
 
-    expect(within(device.row(second.title)).getByText('New')).toBeInTheDocument()
-    // Eleven days old and never started: neither new nor played.
-    expect(within(device.row(first.title)).queryByText('New')).not.toBeInTheDocument()
-    expect(within(device.row(first.title)).queryByText('Played')).not.toBeInTheDocument()
-    expect(device.row(first.title)).toHaveTextContent('45 min')
+    expect(within(device.row(third.title)).getByText('New')).toBeInTheDocument()
+    // Out under three days ago too, and never started, but not the latest: neither new nor played.
+    expect(within(device.row(second.title)).queryByText('New')).not.toBeInTheDocument()
+    expect(within(device.row(second.title)).queryByText('Played')).not.toBeInTheDocument()
+    expect(device.row(second.title)).toHaveTextContent('1 hr 2 min')
     expect(within(device.row('Undated')).queryByText('New')).not.toBeInTheDocument()
   })
 
-  it('stops calling an episode new once it is started or played', async () => {
-    setToday('2026-11-14T09:00:00.000Z')
-    const { data, podcastId, secondId } = backendWithShow()
-    data.ingest(podcastId, [third])
-    data.seedEpisodeState({ episodeId: secondId, podcastId, positionSeconds: 60, played: false })
+  it('calls an episode new only for three days after it came out', async () => {
+    setToday('2026-11-13T09:00:00.000Z')
+    const { data } = backendWithShow()
     const device = await openShowOn(data)
 
+    // The latest, out three days and an hour ago and never started: neither new nor played.
     expect(within(device.row(second.title)).queryByText('New')).not.toBeInTheDocument()
+    expect(within(device.row(second.title)).queryByText('Played')).not.toBeInTheDocument()
+    expect(within(device.row(first.title)).queryByText('New')).not.toBeInTheDocument()
+  })
+
+  it('stops calling an episode new once it is played, without calling the one before it new', async () => {
+    setToday('2026-11-13T07:00:00.000Z')
+    const { data, podcastId } = backendWithShow()
+    data.ingest(podcastId, [third])
+    const device = await openShowOn(data)
+    expect(within(device.row(third.title)).getByText('New')).toBeInTheDocument()
 
     await chooseAction(device.user, device.row(third.title), 'Mark played')
 
     expect(within(device.row(third.title)).queryByText('New')).not.toBeInTheDocument()
+    expect(within(device.row(second.title)).queryByText('New')).not.toBeInTheDocument()
+  })
+
+  it('does not call an episode new once it is started', async () => {
+    setToday('2026-11-13T07:00:00.000Z')
+    const { data, podcastId } = backendWithShow()
+    const [thirdId] = data.ingest(podcastId, [third])
+    data.seedEpisodeState({ episodeId: thirdId, podcastId, positionSeconds: 60, played: false })
+    const device = await openShowOn(data)
+
+    expect(within(device.row(third.title)).queryByText('New')).not.toBeInTheDocument()
+    expect(within(device.row(second.title)).queryByText('New')).not.toBeInTheDocument()
   })
 
   it('filters the list to unplayed episodes', async () => {
