@@ -1172,14 +1172,18 @@ export class FakeDevice implements Device {
   }
 
   #newVersionListeners = new Set<() => void>()
+  #newVersionDeployed = false
 
   readonly watchForNewVersion = (listener: () => void) => {
     this.#newVersionListeners.add(listener)
+    // The real watcher checks as it starts, so one that starts after a deploy still finds it.
+    if (this.#newVersionDeployed) listener()
     return () => void this.#newVersionListeners.delete(listener)
   }
 
-  /** A new version of the app is deployed, and the running app notices. */
+  /** A new version of the app is deployed, and the running app notices: now, or as soon as it starts watching. */
   deployNewVersion() {
+    this.#newVersionDeployed = true
     this.#newVersionListeners.forEach((listener) => listener())
   }
 
