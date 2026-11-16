@@ -5,6 +5,7 @@ import { amplifyServices } from './amplifyServices'
 import { App } from './App'
 import { browserDevice } from './device'
 import { browserMediaSession, claimPlaybackAudioSession } from './mediaSession'
+import { dismissSplash } from './splash'
 import './index.css'
 
 // Written by `npx ampx sandbox` (or the hosting build). Loaded with a glob so the
@@ -42,5 +43,6 @@ if (outputs) {
     </StrictMode>,
   )
 } else {
+  dismissSplash()
   root.render(<p>amplify_outputs.json is missing. Start the sandbox with <code>npx ampx sandbox</code>.</p>)
 }

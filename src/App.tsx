@@ -4,6 +4,7 @@ import { forgetLibrary, withLocalCopy } from './localCopy'
 import type { Services, StoredSession } from './services'
 import { SignedInApp } from './SignedInApp'
 import { SignInScreen } from './SignInScreen'
+import { dismissSplash } from './splash'
 import { THEME_KEY, useTheme } from './theme'
 
 type Session =
@@ -63,7 +64,13 @@ export function App({ services }: { services: Services }) {
     }
   }, [session.status, auth, device])
 
-  if (session.status === 'loading') return <p>Loading…</p>
+  // The page's loading screen stays up until it is known which screen to open on.
+  const loading = session.status === 'loading'
+  useEffect(() => {
+    if (!loading) dismissSplash()
+  }, [loading])
+
+  if (loading) return null
 
   if (session.status === 'signedOut') {
     return <SignInScreen signIn={auth.signIn} onSignedIn={() => setSession({ status: 'signedIn' })} />
