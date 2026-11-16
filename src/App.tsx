@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { isDownloadRecord } from './downloads'
 import { forgetLibrary, withLocalCopy } from './localCopy'
 import type { Services, StoredSession } from './services'
@@ -65,8 +65,10 @@ export function App({ services }: { services: Services }) {
   }, [session.status, auth, device])
 
   // The page's loading screen stays up until it is known which screen to open on.
+  // A layout effect, so the loading screen starts to go in the same step that
+  // draws the screen under it, not some time after.
   const loading = session.status === 'loading'
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!loading) dismissSplash()
   }, [loading])
 
