@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
+import { LONG_PRESS_MS } from './longPress'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 import { chooseLibraryAction } from './test/ui'
 
@@ -276,6 +277,100 @@ describe('playback speed', () => {
     expect(audio.playbackRate).toBe(1)
     expect(speedSlider()).toHaveValue('1')
     expect(screen.getByRole('button', { name: /Reset to normal speed/ })).toBeDisabled()
+  })
+})
+
+describe('choosing how far the skips move', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Presses and holds the button long enough to count, then lets go, which sends its click. */
+  function hold(button: HTMLElement) {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
+    fireEvent.pointerDown(button, { button: 0 })
+    act(() => void vi.advanceTimersByTime(LONG_PRESS_MS))
+    fireEvent.pointerUp(button)
+    fireEvent.click(button)
+    vi.useRealTimers()
+  }
+
+  async function playFirst() {
+    const { audio, user, data, unmount } = await renderShow()
+    await user.click(screen.getByRole('button', { name: first.title }))
+    await openNowPlaying(user, first.title)
+    act(() => audio.loadMetadata(2712))
+    act(() => audio.progressTo(750))
+    return { audio, user, data, unmount }
+  }
+
+  it('asks how far skip back moves when it is held, without skipping', async () => {
+    const { audio, user } = await playFirst()
+
+    hold(screen.getByRole('button', { name: 'Skip back 15 seconds' }))
+
+    expect(audio.currentTime).toBe(750)
+    const dialog = screen.getByRole('dialog', { name: 'Skip back by' })
+    expect(within(dialog).getByRole('button', { name: '15 seconds' })).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(within(dialog).getByRole('button', { name: '10 seconds' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Skip back 10 seconds' }))
+    expect(audio.currentTime).toBe(740)
+    await user.click(screen.getByRole('button', { name: 'Skip forward 30 seconds' }))
+    expect(audio.currentTime).toBe(770)
+  })
+
+  it('asks how far skip forward moves when it is held, or right-clicked', async () => {
+    const { audio, user } = await playFirst()
+
+    hold(screen.getByRole('button', { name: 'Skip forward 30 seconds' }))
+    await user.click(within(screen.getByRole('dialog', { name: 'Skip forward by' })).getByRole('button', { name: '60 seconds' }))
+    await user.click(screen.getByRole('button', { name: 'Skip forward 60 seconds' }))
+    expect(audio.currentTime).toBe(810)
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Skip forward 60 seconds' }))
+    await user.click(within(screen.getByRole('dialog', { name: 'Skip forward by' })).getByRole('button', { name: '45 seconds' }))
+    expect(screen.getByRole('button', { name: 'Skip forward 45 seconds' })).toBeInTheDocument()
+  })
+
+  it('leaves the skip as it was when the choice is cancelled', async () => {
+    const { user } = await playFirst()
+
+    hold(screen.getByRole('button', { name: 'Skip back 15 seconds' }))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Skip back 15 seconds' })).toBeInTheDocument()
+  })
+
+  it('skips at once on a short press', async () => {
+    const { audio } = await playFirst()
+    const button = screen.getByRole('button', { name: 'Skip back 15 seconds' })
+
+    fireEvent.pointerDown(button, { button: 0 })
+    fireEvent.pointerUp(button)
+    fireEvent.click(button)
+
+    expect(audio.currentTime).toBe(735)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('remembers the chosen skips after the app is closed and opened again', async () => {
+    const { data, user, unmount } = await playFirst()
+    hold(screen.getByRole('button', { name: 'Skip back 15 seconds' }))
+    await user.click(screen.getByRole('button', { name: '5 seconds' }))
+    hold(screen.getByRole('button', { name: 'Skip forward 30 seconds' }))
+    await user.click(screen.getByRole('button', { name: '90 seconds' }))
+    unmount()
+
+    const relaunched = await launch(data)
+    await relaunched.user.click(screen.getByRole('button', { name: second.title }))
+    await openNowPlaying(relaunched.user, second.title)
+
+    expect(screen.getByRole('button', { name: 'Skip back 5 seconds' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Skip forward 90 seconds' })).toBeInTheDocument()
   })
 })
 

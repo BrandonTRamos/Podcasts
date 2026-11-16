@@ -2,8 +2,18 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { connectMediaSession, offerNextTrack } from './mediaSession'
 import type { AudioElement, MediaSessionControls } from './services'
 
-export const SKIP_BACK_SECONDS = 15
-export const SKIP_FORWARD_SECONDS = 30
+/** How far each skip moves until the listener picks otherwise. */
+export const DEFAULT_SKIP: SkipSeconds = { back: 15, forward: 30 }
+/** The amounts a skip can be set to, in seconds. */
+export const SKIP_CHOICES = [5, 10, 15, 30, 45, 60, 90] as const
+
+/** How many seconds each skip button moves by. */
+export interface SkipSeconds {
+  back: number
+  forward: number
+}
+
+export type SkipDirection = keyof SkipSeconds
 /** While playing, the position is saved no more often than this. Each save is a write to the backend. */
 export const SAVE_INTERVAL_MS = 60_000
 /** The range of playback speeds the listener can slide between; 1 is normal speed. */
@@ -43,10 +53,11 @@ export interface LoadedState {
   failed: boolean
   /** The playback rate: 1 is normal speed. */
   speed: number
+  skip: SkipSeconds
 }
 
-/** The speed is the listener's choice for every episode, so it stays when none is loaded. */
-export type PlayerState = { episode: null; speed: number } | LoadedState
+/** The speed and skips are the listener's choice for every episode, so they stay when none is loaded. */
+export type PlayerState = { episode: null; speed: number; skip: SkipSeconds } | LoadedState
 
 /** Where the listener has got to in an episode; `played` is set once it reaches the end. */
 export type Progress = { positionSeconds: number; played?: true }
@@ -107,6 +118,8 @@ export interface Player {
   skipToNext(): void
   /** Plays this and every later episode at this speed (1 is normal), starting now. Snapped to the slider's steps and range. */
   setSpeed(speed: number): void
+  /** Makes this skip move by this many seconds from now on. Ignores anything that is not a whole, positive number. */
+  setSkip(direction: SkipDirection, seconds: number): void
   /** Saves the position now, if it has moved since it was last saved: the app is going to the background. */
   savePosition(): void
   /**
@@ -125,8 +138,9 @@ export function createPlayer(
   initialSpeed: number,
   takeNext: TakeNext,
   localCopyOf: LocalCopyOf,
+  initialSkip: SkipSeconds = DEFAULT_SKIP,
 ): Player {
-  let state: PlayerState = { episode: null, speed: initialSpeed }
+  let state: PlayerState = { episode: null, speed: initialSpeed, skip: initialSkip }
   const listeners = new Set<() => void>()
   /** Bumped whenever a new file loads or the player stops, so a late answer about an earlier one is ignored. */
   let loadCount = 0
@@ -230,7 +244,7 @@ export function createPlayer(
     cued = false
     const start = Math.max(startAt, 0)
     const duration = episode.durationSeconds
-    set({ episode, playing: false, position: start, duration, failed: false, speed: state.speed })
+    set({ episode, playing: false, position: start, duration, failed: false, speed: state.speed, skip: state.skip })
     savedPosition = start
     lastSaveAt = Date.now()
     audio.src = localCopyOf(episode.id) ?? episode.enclosureUrl
@@ -294,7 +308,7 @@ export function createPlayer(
       if (state.episode) return
       cued = true
       const position = Math.max(startAt, 0)
-      set({ episode, playing: false, position, duration: episode.durationSeconds, failed: false, speed: state.speed })
+      set({ episode, playing: false, position, duration: episode.durationSeconds, failed: false, speed: state.speed, skip: state.skip })
       savedPosition = position
     },
 
@@ -310,10 +324,10 @@ export function createPlayer(
 
     seekTo,
     skipBack() {
-      if (state.episode) seekTo(state.position - SKIP_BACK_SECONDS)
+      if (state.episode) seekTo(state.position - state.skip.back)
     },
     skipForward() {
-      if (state.episode) seekTo(state.position + SKIP_FORWARD_SECONDS)
+      if (state.episode) seekTo(state.position + state.skip.forward)
     },
 
     skipToNext() {
@@ -327,6 +341,11 @@ export function createPlayer(
       if (speed === state.speed) return
       set({ ...state, speed })
       applySpeed()
+    },
+
+    setSkip(direction, seconds) {
+      if (!isSkipSeconds(seconds) || state.skip[direction] === seconds) return
+      set({ ...state, skip: { ...state.skip, [direction]: seconds } })
     },
 
     savePosition: () => save(),
@@ -345,7 +364,7 @@ export function createPlayer(
       audio.pause()
       audio.removeAttribute('src')
       audio.load()
-      set({ episode: null, speed: state.speed })
+      set({ episode: null, speed: state.speed, skip: state.skip })
     },
   }
 }
@@ -370,11 +389,39 @@ function storeSpeed(speed: number) {
   }
 }
 
+const SKIP_KEY = 'tincan.skipSeconds'
+
+const isSkipSeconds = (seconds: unknown): seconds is number =>
+  typeof seconds === 'number' && Number.isInteger(seconds) && seconds > 0
+
+/** The skips last chosen on this device, or the defaults. */
+function storedSkip(): SkipSeconds {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(SKIP_KEY) ?? 'null')
+    if (typeof stored !== 'object' || stored === null) return DEFAULT_SKIP
+    const { back, forward } = stored as Record<string, unknown>
+    return {
+      back: isSkipSeconds(back) ? back : DEFAULT_SKIP.back,
+      forward: isSkipSeconds(forward) ? forward : DEFAULT_SKIP.forward,
+    }
+  } catch {
+    return DEFAULT_SKIP
+  }
+}
+
+function storeSkip(skip: SkipSeconds) {
+  try {
+    localStorage.setItem(SKIP_KEY, JSON.stringify(skip))
+  } catch {
+    // As with the speed, the skips then last until the app closes.
+  }
+}
+
 /**
  * A player for this audio element, for the life of the calling component,
  * shown on and controlled from the OS media controls. It saves the position
- * whenever the app goes to the background, and keeps the chosen speed on this
- * device for the next launch. `saveProgress`, `takeNext` and `localCopyOf`
+ * whenever the app goes to the background, and keeps the chosen speed and skips on
+ * this device for the next launch. `saveProgress`, `takeNext` and `localCopyOf`
  * are taken once, when the player is made, so later values are ignored. `hasNext` says
  * whether anything is queued, for the OS controls' next button.
  */
@@ -388,12 +435,13 @@ export function usePlayer(
 ): { player: Player; state: PlayerState } {
   // The engine attaches to the element only while subscribed, so a discarded
   // instance (React may call the initialiser twice) leaves nothing behind.
-  const [player] = useState(() => createPlayer(audio, saveProgress, storedSpeed(), takeNext, localCopyOf))
+  const [player] = useState(() => createPlayer(audio, saveProgress, storedSpeed(), takeNext, localCopyOf, storedSkip()))
   const state = useSyncExternalStore(player.subscribe, player.getState)
   useEffect(() => () => player.stop(), [player])
   useEffect(() => connectMediaSession(mediaSession, player), [mediaSession, player])
   useEffect(() => offerNextTrack(mediaSession, player, hasNext), [mediaSession, player, hasNext])
   useEffect(() => storeSpeed(state.speed), [state.speed])
+  useEffect(() => storeSkip(state.skip), [state.skip])
   useEffect(() => {
     const saveIfHidden = () => {
       if (document.visibilityState === 'hidden') player.savePosition()

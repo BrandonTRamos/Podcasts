@@ -184,6 +184,24 @@ describe('controlling playback from the OS media controls', () => {
     expect(mediaSession.positionState).toMatchObject({ position: 765 })
   })
 
+  it('skips by the amounts chosen in the app', async () => {
+    const { audio, mediaSession, user } = await renderShow()
+    await user.click(screen.getByRole('button', { name: first.title }))
+    act(() => audio.loadMetadata(2712))
+    act(() => audio.progressTo(750))
+    await user.click(within(miniPlayer()).getByRole('button', { name: new RegExp(first.title) }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Skip back 15 seconds' }))
+    await user.click(screen.getByRole('button', { name: '10 seconds' }))
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Skip forward 30 seconds' }))
+    await user.click(screen.getByRole('button', { name: '60 seconds' }))
+
+    act(() => mediaSession.press('seekbackward'))
+    expect(audio.currentTime).toBe(740)
+
+    act(() => mediaSession.press('seekforward'))
+    expect(audio.currentTime).toBe(800)
+  })
+
   it('seeks to where the lock screen’s scrubber is dragged', async () => {
     const { audio, mediaSession, user } = await renderShow()
     await user.click(screen.getByRole('button', { name: first.title }))
