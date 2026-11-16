@@ -101,6 +101,40 @@ describe('feed URLs are not written to logs', () => {
     expect(logged.join('\n')).not.toContain(secret)
   })
 
+  it('when searching a feed for episodes and keeping one, whether the feed answers or fails', async () => {
+    fakeHttp({ [feedUrl]: fixture('show.xml') })
+    const flow = feedHandlers()
+    const { podcastId } = await flow.subscribeAndIngest(feedUrl)
+
+    const found = await flow.searchEpisodes(podcastId!, 'sequel')
+    await flow.keepEpisode(podcastId!, found.episodes[0].id)
+    fakeHttp({})
+    await flow.searchEpisodes(podcastId!, 'sequel')
+    await flow.keepEpisode(podcastId!, found.episodes[0].id)
+
+    expect(JSON.stringify(found)).not.toContain(secret)
+    expect(logged.join('\n')).not.toContain(secret)
+  })
+
+  it('when keeping an episode fails in the data store with the URL in its error, which is not passed on either', async () => {
+    fakeHttp({ [feedUrl]: fixture('show.xml') })
+    const flow = feedHandlers()
+    const { podcastId } = await flow.subscribeAndIngest(feedUrl)
+    const found = await flow.searchEpisodes(podcastId!, 'sequel')
+    flow.data.store.getEpisode = async () => {
+      throw new Error(`Read failed (${feedUrl})`)
+    }
+
+    const error = await flow.keepEpisode(podcastId!, found.episodes[0].id).then(
+      () => null,
+      (reason: Error) => reason,
+    )
+
+    expect(error).toBeInstanceOf(Error)
+    expect(`${error!.message}\n${error!.stack}`).not.toContain(secret)
+    expect(logged.join('\n')).not.toContain(secret)
+  })
+
   it('when searching the directory fails in the data store with the URL in its error, which is not passed on either', async () => {
     const search = 'https://itunes.apple.com/search?media=podcast&entity=podcast&limit=25&term=private'
     fakeHttp({ [search]: JSON.stringify({ results: [{ collectionName: 'Private', feedUrl: 'https://feeds.example.com/p.xml' }] }) })

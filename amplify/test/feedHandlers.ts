@@ -2,7 +2,9 @@ import type { DirectoryGenre } from '../directory/genres'
 import { createSearchPodcastsHandler } from '../directory/searchPodcasts'
 import { createTopPodcastsHandler } from '../directory/topPodcasts'
 import { createIngestFeedHandler } from '../feeds/ingestFeed'
+import { createKeepEpisodeHandler } from '../feeds/keepEpisode'
 import { createRefreshFeedsHandler } from '../feeds/refreshFeeds'
+import { createSearchEpisodesHandler } from '../feeds/searchEpisodes'
 import { createSubscribeHandler } from '../feeds/subscribe'
 import { createUnsubscribeHandler } from '../feeds/unsubscribe'
 import { fakeFeedStore } from './fakes'
@@ -11,7 +13,9 @@ import { fakeFeedStore } from './fakes'
  * The backend's handlers over one fake store: the `subscribe` mutation, the
  * background ingest the request table's stream triggers, and the refresher
  * (run hourly by the scheduler, and for one podcast by the `refreshPodcast`
- * mutation), the `unsubscribe` mutation, and the directory's search and charts. The clock reads `now`, which a test may move on.
+ * mutation), the `unsubscribe` mutation, the search of one podcast's feed and
+ * the keeping of an episode from it, and the directory's search and charts.
+ * The clock reads `now`, which a test may move on.
  */
 export function feedHandlers({ episodeLimit = 100 } = {}) {
   const data = fakeFeedStore()
@@ -23,6 +27,8 @@ export function feedHandlers({ episodeLimit = 100 } = {}) {
   const searchHandler = createSearchPodcastsHandler({ store: data.store })
   const topHandler = createTopPodcastsHandler({ store: data.store, now })
   const unsubscribeHandler = createUnsubscribeHandler({ store: data.store })
+  const searchEpisodesHandler = createSearchEpisodesHandler({ store: data.store })
+  const keepEpisodeHandler = createKeepEpisodeHandler({ store: data.store })
 
   return {
     data,
@@ -43,6 +49,10 @@ export function feedHandlers({ episodeLimit = 100 } = {}) {
     refreshPodcast: (podcastId: string) => refresh({ arguments: { podcastId } }),
     /** The `unsubscribe` mutation. */
     unsubscribe: (podcastId: string) => unsubscribeHandler({ arguments: { podcastId } }),
+    /** The `searchEpisodes` query: one podcast's whole feed, searched. */
+    searchEpisodes: (podcastId: string, term: string) => searchEpisodesHandler({ arguments: { podcastId, term } }),
+    /** The `keepEpisode` mutation. */
+    keepEpisode: (podcastId: string, episodeId: string) => keepEpisodeHandler({ arguments: { podcastId, episodeId } }),
     /** The `searchPodcasts` query. */
     search: (term: string) => searchHandler({ arguments: { term } }),
     /** The `topPodcasts` query: one genre's chart, or with none the chart of all podcasts. */

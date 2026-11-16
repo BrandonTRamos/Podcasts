@@ -257,7 +257,12 @@ export function SignedInApp({
     device.storage.remove(LAST_EPISODE_KEY)
   }
 
-  const openPodcast = useCallback((podcastId: string) => setScreen({ name: 'podcast', podcastId }), [])
+  /** What the open podcast's episodes are searched for. Here, so it is still there on coming back from one of its episodes. */
+  const [episodeSearch, setEpisodeSearch] = useState('')
+  const openPodcast = useCallback((podcastId: string) => {
+    setEpisodeSearch('')
+    setScreen({ name: 'podcast', podcastId })
+  }, [])
 
   const podcastById = (podcastId: string) => findPodcast(podcasts, podcastId)
 
@@ -408,6 +413,8 @@ export function SignedInApp({
         podcast={podcastById(screen.podcastId)}
         categories={categories.status === 'loaded' ? categories.items : undefined}
         listening={listening}
+        searchTerm={episodeSearch}
+        onSearchTermChange={setEpisodeSearch}
         onBack={() => setScreen({ name: 'library' })}
         onUnsubscribe={() => unsubscribe(screen.podcastId)}
         {...episodeActions}

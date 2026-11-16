@@ -9,6 +9,7 @@ import {
   type DirectoryGenre,
   type DirectoryPodcast,
   type Episode,
+  type EpisodeSearch,
   type EpisodeState,
   type EpisodeStateChange,
   type FeedError,
@@ -32,7 +33,8 @@ import {
   type User,
   LATEST_EPISODES_LIMIT,
 } from '../services'
-import { isInProgress } from '../episodes'
+import { isInProgress, newestFirst } from '../episodes'
+import { wordMatcher } from '../../amplify/feeds/matchWords'
 
 const SESSION_KEY = 'fake-auth-session'
 
@@ -124,6 +126,14 @@ export function fakeDataApi() {
   const episodes: Episode[] = []
   /** Each episode's show notes, by ID, kept apart as the client fetches them apart. */
   const showNotes = new Map<string, string | null>()
+  /** Episodes each podcast's feed lists further back than the library keeps, until one is kept. */
+  const olderEpisodes: Episode[] = []
+  /** The podcasts whose feeds can't be fetched just now. */
+  const unreachableFeeds = new Set<string>()
+  /** Every search of a feed for episodes, in order. */
+  const episodeSearches: { podcastId: string; term: string }[] = []
+  /** The episode searches asked for and not yet answered, while they are held. */
+  let heldEpisodeSearches: (() => void)[] | null = null
   const states = new Map<string, SavedEpisodeState>()
   /** When the change each state holds was made, by episode. */
   const changeTimes = new Map<string, string>()
@@ -330,6 +340,32 @@ export function fakeDataApi() {
       async refreshPodcast(podcastId) {
         reach(connection)
         refreshRequests.push(podcastId)
+      },
+      async searchEpisodes(podcastId, term): Promise<EpisodeSearch> {
+        reach(connection)
+        episodeSearches.push({ podcastId, term })
+        if (heldEpisodeSearches) await new Promise<void>((release) => heldEpisodeSearches!.push(release))
+        if (unreachableFeeds.has(podcastId)) return { outcome: 'feedUnavailable' }
+        const matches = wordMatcher(term)
+        const inFeed = [...episodesOf(podcastId), ...olderEpisodes.filter((episode) => episode.podcastId === podcastId)]
+        const found = newestFirst(inFeed).filter(
+          (episode) => matches?.(`${episode.title}\n${showNotes.get(episode.id) ?? ''}`) ?? false,
+        )
+        return { outcome: 'found', episodes: found.slice(0, 50).map((episode) => ({ ...episode })), more: found.length > 50 }
+      },
+      async keepEpisode(podcastId, episodeId) {
+        reach(connection)
+        if (unreachableFeeds.has(podcastId)) return 'feedUnavailable'
+        if (episodes.some((episode) => episode.id === episodeId)) return 'kept'
+        const index = olderEpisodes.findIndex((episode) => episode.id === episodeId && episode.podcastId === podcastId)
+        if (index === -1) return 'notFound'
+        episodes.push(...olderEpisodes.splice(index, 1))
+        // The new episode reaches observers a little after the call answers, as a live update does.
+        queueMicrotask(() => {
+          notify(episodeListeners.get(podcastId), episodesOf(podcastId))
+          notify(latestListeners, latestEpisodes())
+        })
+        return 'kept'
       },
       async searchPodcasts(term): Promise<PodcastSearch> {
         reach(connection)
@@ -598,6 +634,47 @@ export function fakeDataApi() {
       notify(episodeListeners.get(podcastId), episodesOf(podcastId))
       notify(latestListeners, latestEpisodes())
       return ids
+    },
+    /**
+     * Lists episodes in the podcast's feed that are further back than the
+     * library keeps: found only by searching the feed, and in the library
+     * once kept. Returns their IDs.
+     */
+    publishOlderEpisodes(
+      podcastId: string,
+      older: (Omit<Episode, 'podcastId' | 'id' | 'enclosureUrl'> & { showNotes?: string | null })[],
+    ) {
+      return older.map(({ showNotes: notes = null, ...episode }) => {
+        const id = `episode-${nextId++}`
+        olderEpisodes.push({ id, podcastId, enclosureUrl: `https://media.example.com/${id}.mp3`, ...episode })
+        showNotes.set(id, notes)
+        return id
+      })
+    },
+    /** The feed drops an older episode it listed, as a publisher trimming its feed does. */
+    withdrawOlderEpisode(episodeId: string) {
+      removeWhere(olderEpisodes, (episode) => episode.id === episodeId)
+    },
+    /** The podcast's feed stops answering, for searches of it and for keeping episodes from it. */
+    breakFeedOf(podcastId: string) {
+      unreachableFeeds.add(podcastId)
+    },
+    repairFeedOf(podcastId: string) {
+      unreachableFeeds.delete(podcastId)
+    },
+    /** Every search of a feed for episodes so far, oldest first. */
+    episodeSearches(): readonly { podcastId: string; term: string }[] {
+      return episodeSearches
+    },
+    /** Searches of feeds stop being answered, as if slow, until `releaseEpisodeSearches`. */
+    holdEpisodeSearches() {
+      heldEpisodeSearches = []
+    },
+    /** Answers the searches held, the latest first when `newestFirst`; later ones are answered at once. */
+    releaseEpisodeSearches({ newestFirst: latestFirst = false }: { newestFirst?: boolean } = {}) {
+      const held = heldEpisodeSearches ?? []
+      heldEpisodeSearches = null
+      ;(latestFirst ? [...held].reverse() : held).forEach((release) => release())
     },
     /** Listening state saved earlier, by this device or another. */
     seedEpisodeState({

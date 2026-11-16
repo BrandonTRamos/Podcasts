@@ -861,6 +861,38 @@ button.category-toggle {
   font-weight: 400;
 }
 
+/* The search of a podcast's episodes, over their list. */
+.episode-search {
+  margin-block: 0.75rem 0.25rem;
+}
+
+/* Under the list while it is searched: the search of the whole feed, and what it finds beyond the list. */
+.older-episodes {
+  padding-block: 1rem 0.5rem;
+}
+
+.older-episodes > p {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+}
+
+.older-episodes > p.older-episodes-hint {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.older-episodes h3 {
+  margin: 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ink);
+  font-size: 1rem;
+}
+
+.older-episodes .episode-row-main p[role] {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+}
+
 /* A checkbox drawn as a switch. */
 input.switch {
   appearance: none;

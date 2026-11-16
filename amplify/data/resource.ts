@@ -1,7 +1,9 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend'
 import { DIRECTORY_GENRES } from '../directory/genres'
 import { ingestFeedFunction } from '../functions/ingest-feed/resource'
+import { keepEpisodeFunction } from '../functions/keep-episode/resource'
 import { refreshFeedsFunction } from '../functions/refresh-feeds/resource'
+import { searchEpisodesFunction } from '../functions/search-episodes/resource'
 import { searchPodcastsFunction } from '../functions/search-podcasts/resource'
 import { stageDownloadFunction } from '../functions/stage-download/resource'
 import { subscribeFunction } from '../functions/subscribe/resource'
@@ -145,6 +147,53 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(refreshFeedsFunction).async()),
 
+    // An episode as its podcast's feed lists it now, stored or not. Its ID is
+    // the one it is stored under, or would be.
+    FeedEpisode: a.customType({
+      id: a.id().required(),
+      podcastId: a.id().required(),
+      title: a.string().required(),
+      publishedAt: a.datetime(),
+      durationSeconds: a.integer(),
+      enclosureUrl: a.string().required(),
+    }),
+
+    EpisodeSearchOutcome: a.enum(['found', 'feedUnavailable']),
+
+    SearchEpisodesResult: a.customType({
+      outcome: a.ref('EpisodeSearchOutcome').required(),
+      // Newest first. Empty when nothing matched, or when the feed is unavailable.
+      episodes: a.ref('FeedEpisode').required().array().required(),
+      // Whether more matched than are returned.
+      more: a.boolean().required(),
+    }),
+
+    // Finds episodes anywhere in a podcast's feed, however far back, by the
+    // words of their titles and show notes. The feed is fetched and searched
+    // by the function; nothing is stored. `keepEpisode` stores a match.
+    searchEpisodes: a
+      .query()
+      .arguments({ podcastId: a.id().required(), term: a.string().required() })
+      .returns(a.ref('SearchEpisodesResult').required())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(searchEpisodesFunction)),
+
+    // `notFound`: the feed no longer lists the episode, or the podcast has left the library.
+    KeepEpisodeOutcome: a.enum(['kept', 'notFound', 'feedUnavailable']),
+
+    KeepEpisodeResult: a.customType({
+      outcome: a.ref('KeepEpisodeOutcome').required(),
+    }),
+
+    // Stores one episode from the podcast's feed that its newest, all that
+    // subscribing and refreshing store, don't reach. Returns once it is stored.
+    keepEpisode: a
+      .mutation()
+      .arguments({ podcastId: a.id().required(), episodeId: a.id().required() })
+      .returns(a.ref('KeepEpisodeResult').required())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(keepEpisodeFunction)),
+
     DownloadStagingStatus: a.enum(['preparing', 'ready', 'unavailable', 'failed']),
 
     // A temporary copy of an episode's file, made for a publisher whose host
@@ -217,6 +266,8 @@ const schema = a
     allow.resource(ingestFeedFunction),
     allow.resource(refreshFeedsFunction),
     allow.resource(searchPodcastsFunction),
+    allow.resource(searchEpisodesFunction),
+    allow.resource(keepEpisodeFunction),
     allow.resource(topPodcastsFunction),
     allow.resource(stageDownloadFunction),
   ])

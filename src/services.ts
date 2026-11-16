@@ -177,6 +177,25 @@ export type PodcastSearch =
   /** The directory couldn't be reached, or gave no usable answer. */
   | { outcome: 'directoryUnavailable' }
 
+/** What searching a podcast's whole feed for episodes answers with. */
+export type EpisodeSearch =
+  /**
+   * The feed's matching episodes, newest first, up to 50 of them: empty when
+   * it had none. Some may be in the library already, and the rest are not
+   * until kept (`DataApi.keepEpisode`). `more` says more matched than are given.
+   */
+  | { outcome: 'found'; episodes: Episode[]; more: boolean }
+  /** The feed couldn't be fetched, or the podcast has left the library. */
+  | { outcome: 'feedUnavailable' }
+
+/** How keeping an episode from a podcast's feed ended. */
+export type KeepEpisodeOutcome =
+  | 'kept'
+  /** The feed no longer lists the episode, or the podcast has left the library. */
+  | 'notFound'
+  /** The feed couldn't be fetched. */
+  | 'feedUnavailable'
+
 /**
  * How a temporary copy of an episode's file stands, prepared by the backend
  * for a publisher whose host doesn't let the app download it directly.
@@ -240,6 +259,20 @@ export interface DataApi {
    * exists. Throws when the backend can't be reached.
    */
   getShowNotes(episodeId: string): Promise<string | null>
+  /**
+   * Searches the podcast's whole feed, however far back it goes, for episodes
+   * whose title or show notes have every word of the term. The library holds
+   * only each feed's newest episodes; this reaches the rest, and stores
+   * nothing. Throws when the backend can't be reached.
+   */
+  searchEpisodes(podcastId: string, term: string): Promise<EpisodeSearch>
+  /**
+   * Adds an episode found by `searchEpisodes` to the library, where it stays:
+   * it then plays, queues and downloads like any other. Resolves once it is
+   * stored; it arrives through `observeEpisodes` too. Throws when the backend
+   * can't be reached.
+   */
+  keepEpisode(podcastId: string, episodeId: string): Promise<KeepEpisodeOutcome>
   /**
    * The newest dated episodes across every podcast, newest first, up to
    * `LATEST_EPISODES_LIMIT` of them, kept current as new ones are found.
