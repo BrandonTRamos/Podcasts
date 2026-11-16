@@ -139,7 +139,8 @@ describe('saving the position', () => {
 
     expect(data.stateWrites().map((write) => write.positionSeconds)).toEqual([60, 120, 180])
     expect(data.savedState(firstId)).toMatchObject({ positionSeconds: 180, played: false })
-  })
+    // Nearly two thousand renders: about 2s alone, but past the default 5s when every test file runs at once.
+  }, 15_000)
 })
 
 describe('resuming', () => {

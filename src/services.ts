@@ -404,9 +404,15 @@ export interface Device {
   persistStorage(): Promise<boolean>
   /**
    * Loads the app afresh, as a browser's reload button does. The installed app
-   * has no such button, and a reload is what shows a version deployed since it opened.
+   * has no such button, and a reload is what shows a newly deployed version.
    */
   reload(): void
+  /**
+   * Calls the listener when a version of the app newer than the one running
+   * has been deployed, so the app can offer a reload. Returns a function that
+   * stops watching.
+   */
+  watchForNewVersion(listener: () => void): () => void
 }
 
 export interface Services {

@@ -14,7 +14,7 @@ export async function chooseAction(user: User, row: HTMLElement, name: string) {
   await user.click(within(row).getByRole('button', { name }))
 }
 
-/** Chooses one of the library's own actions (Import OPML file, Reload app, Sign out) from its "More actions". */
+/** Chooses one of the library's own actions (Import OPML file, Sign out) from its "More actions". */
 export async function chooseLibraryAction(user: User, name: string) {
   await user.click(await screen.findByRole('button', { name: 'More actions' }))
   await user.click(screen.getByRole('button', { name }))

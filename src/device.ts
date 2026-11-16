@@ -29,7 +29,60 @@ export function browserDevice(): Device {
       return (await navigator.storage.persisted()) || navigator.storage.persist()
     },
     reload: () => window.location.reload(),
+    watchForNewVersion,
   }
+}
+
+/** How often an open app looks for a new deploy, besides when it comes back to the foreground or online. */
+const NEW_VERSION_CHECK_MS = 30 * 60_000
+
+/**
+ * Looks for a new deploy by fetching the page afresh and comparing the
+ * scripts it loads with the running page's: their names carry a hash of their
+ * contents, so they differ exactly when a different version is deployed. The
+ * fetch for `/` passes the service worker by (it holds only `/index.html`),
+ * so this sees what the server has now. Checks on launch, every half hour,
+ * and whenever the app returns to the foreground or the network comes back,
+ * since an installed app may stay open, in the background, for days.
+ */
+function watchForNewVersion(listener: () => void): () => void {
+  const running = moduleScripts(document)
+  let stopped = false
+  let found = false
+  const check = async () => {
+    if (stopped || found || !navigator.onLine) return
+    try {
+      const response = await fetch('/', { cache: 'no-store' })
+      if (!response.ok) return
+      const deployed = moduleScripts(new DOMParser().parseFromString(await response.text(), 'text/html'))
+      if (stopped || found || deployed.length === 0 || deployed.join() === running.join()) return
+      found = true
+      listener()
+    } catch {
+      // Offline or the server didn't answer; the next check tries again.
+    }
+  }
+  const checkIfVisible = () => {
+    if (document.visibilityState === 'visible') void check()
+  }
+  const timer = window.setInterval(() => void check(), NEW_VERSION_CHECK_MS)
+  document.addEventListener('visibilitychange', checkIfVisible)
+  window.addEventListener('online', checkIfVisible)
+  void check()
+  return () => {
+    stopped = true
+    window.clearInterval(timer)
+    document.removeEventListener('visibilitychange', checkIfVisible)
+    window.removeEventListener('online', checkIfVisible)
+  }
+}
+
+/** The paths of the scripts a page loads as modules, which name the build it is from. */
+function moduleScripts(page: Document): string[] {
+  return Array.from(
+    page.querySelectorAll<HTMLScriptElement>('script[type="module"][src]'),
+    (script) => new URL(script.getAttribute('src')!, window.location.origin).pathname,
+  )
 }
 
 /**
