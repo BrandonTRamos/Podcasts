@@ -1562,19 +1562,22 @@ button.mini-player-open {
   justify-content: space-between;
   margin-top: auto;
   padding-top: 1.5rem;
-  /* Speed gets a row of its own, full width, so each 0.05 step is wide enough to land on with a thumb. */
   flex-wrap: wrap;
   row-gap: 0.75rem;
 }
 
 .speed {
   display: flex;
-  flex: 1 1 100%;
   align-items: center;
   gap: 0.75rem;
 }
 
-/* Reads as the value alone; tapping it goes back to 1×. */
+/* Open, speed gets a row of its own, full width, so each 0.05 step is wide enough to land on with a thumb. */
+.speed-open {
+  flex: 1 1 100%;
+}
+
+/* Reads as the value alone; tapping it shows or hides the slider. */
 .speed-value {
   min-width: 3.75rem;
   min-height: 2.75rem;
@@ -1589,15 +1592,36 @@ button.mini-player-open {
   cursor: pointer;
 }
 
-.speed-value:disabled {
-  opacity: 1;
-  cursor: default;
+.speed-controls {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
 }
 
 .speed-bar {
   flex: 1;
   width: auto;
   min-width: 0;
+}
+
+/* Back to 1×; faded out while already there. */
+.speed-reset {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.speed-reset:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .now-playing-extras .text-button {

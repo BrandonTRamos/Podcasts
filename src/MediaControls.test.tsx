@@ -111,6 +111,7 @@ describe('what the OS media controls show', () => {
     const { mediaSession, user } = await renderShow()
     await user.click(screen.getByRole('button', { name: first.title }))
     await user.click(within(miniPlayer()).getByRole('button', { name: new RegExp(first.title) }))
+    await user.click(screen.getByRole('button', { name: /Change speed/ }))
 
     fireEvent.change(screen.getByRole('slider', { name: 'Playback speed' }), { target: { value: '1.45' } })
 

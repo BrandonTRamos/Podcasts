@@ -53,6 +53,10 @@ function speedSlider() {
   return screen.getByRole('slider', { name: 'Playback speed' })
 }
 
+async function openSpeed(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: /Change speed/ }))
+}
+
 function slideSpeedTo(speed: string) {
   fireEvent.change(speedSlider(), { target: { value: speed } })
 }
@@ -169,10 +173,26 @@ describe('controlling playback', () => {
 })
 
 describe('playback speed', () => {
+  it('shows the speed on now playing, with the slider hidden until the speed is tapped', async () => {
+    const { user } = await renderShow()
+    await user.click(screen.getByRole('button', { name: first.title }))
+    await openNowPlaying(user, first.title)
+
+    expect(screen.getByText('1.00×')).toBeInTheDocument()
+    expect(screen.queryByRole('slider', { name: 'Playback speed' })).not.toBeInTheDocument()
+
+    await openSpeed(user)
+    expect(speedSlider()).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Hide speed/ }))
+    expect(screen.queryByRole('slider', { name: 'Playback speed' })).not.toBeInTheDocument()
+  })
+
   it('offers a speed slider on now playing from 0.5× to 3× in steps of 0.05, starting at normal speed', async () => {
     const { audio, user } = await renderShow()
     await user.click(screen.getByRole('button', { name: first.title }))
     await openNowPlaying(user, first.title)
+    await openSpeed(user)
 
     expect(speedSlider()).toHaveAttribute('min', '0.5')
     expect(speedSlider()).toHaveAttribute('max', '3')
@@ -187,6 +207,7 @@ describe('playback speed', () => {
     await user.click(screen.getByRole('button', { name: first.title }))
     act(() => audio.progressTo(600))
     await openNowPlaying(user, first.title)
+    await openSpeed(user)
 
     slideSpeedTo('1.15')
 
@@ -200,6 +221,7 @@ describe('playback speed', () => {
     const { audio, user } = await renderShow()
     await user.click(screen.getByRole('button', { name: first.title }))
     await openNowPlaying(user, first.title)
+    await openSpeed(user)
 
     slideSpeedTo('1.4000000000000001')
 
@@ -211,6 +233,7 @@ describe('playback speed', () => {
     const { audio, user } = await renderShow()
     await user.click(screen.getByRole('button', { name: first.title }))
     await openNowPlaying(user, first.title)
+    await openSpeed(user)
     slideSpeedTo('1.85')
     await user.click(screen.getByRole('button', { name: 'Close now playing' }))
 
@@ -219,6 +242,8 @@ describe('playback speed', () => {
     expect(audio.src).toBe(second.enclosureUrl)
     expect(audio.playbackRate).toBe(1.85)
     await openNowPlaying(user, second.title)
+    expect(screen.getByText('1.85×')).toBeInTheDocument()
+    await openSpeed(user)
     expect(speedSlider()).toHaveValue('1.85')
   })
 
@@ -226,6 +251,7 @@ describe('playback speed', () => {
     const { data, user, unmount } = await renderShow()
     await user.click(screen.getByRole('button', { name: first.title }))
     await openNowPlaying(user, first.title)
+    await openSpeed(user)
     slideSpeedTo('1.05')
     unmount()
 
@@ -234,13 +260,15 @@ describe('playback speed', () => {
 
     expect(relaunched.audio.playbackRate).toBe(1.05)
     await openNowPlaying(relaunched.user, second.title)
+    await openSpeed(relaunched.user)
     expect(speedSlider()).toHaveValue('1.05')
   })
 
-  it('goes back to normal speed from a tap on the speed shown', async () => {
+  it('goes back to normal speed from the reset beside the slider', async () => {
     const { audio, user } = await renderShow()
     await user.click(screen.getByRole('button', { name: first.title }))
     await openNowPlaying(user, first.title)
+    await openSpeed(user)
     slideSpeedTo('2.4')
 
     await user.click(screen.getByRole('button', { name: /Reset to normal speed/ }))
