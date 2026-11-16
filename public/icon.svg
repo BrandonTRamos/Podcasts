@@ -1,21 +1,36 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <title>TinCan</title>
+  <defs>
+    <linearGradient id="tin" gradientUnits="userSpaceOnUse" x1="0" y1="-69.2" x2="0" y2="69.2">
+      <stop offset="0" stop-color="#ccd2da"/>
+      <stop offset="0.28" stop-color="#eaecf0"/>
+      <stop offset="0.49" stop-color="#c0c7d2"/>
+      <stop offset="0.75" stop-color="#b4bcc6"/>
+      <stop offset="1" stop-color="#b0b8c4"/>
+    </linearGradient>
+    <linearGradient id="rib" gradientUnits="userSpaceOnUse" x1="0" y1="-69.2" x2="0" y2="69.2">
+      <stop offset="0" stop-color="#a1abb9"/>
+      <stop offset="0.28" stop-color="#a5aebb"/>
+      <stop offset="0.49" stop-color="#969fae"/>
+      <stop offset="1" stop-color="#909bab"/>
+    </linearGradient>
+    <clipPath id="can-side">
+      <path d="M0 -69.2 H-73.5 A22.5 69.2 0 0 0 -73.5 69.2 H0 Z"/>
+    </clipPath>
+    <!-- One can, drawn about the middle of its open end, its ribbed side running off to the left. -->
+    <g id="can">
+      <g clip-path="url(#can-side)">
+        <rect x="-96" y="-69.2" width="96" height="138.4" fill="url(#tin)"/>
+        <path d="M-56.8 -73.5 a20.6 73.5 0 0 0 0 147 M-37.4 -73.5 a20.6 73.5 0 0 0 0 147 M-18 -73.5 a20.6 73.5 0 0 0 0 147" fill="none" stroke="url(#rib)" stroke-width="5.5"/>
+      </g>
+      <ellipse rx="18.8" ry="69.2" fill="#eff0f3"/>
+      <ellipse cx="0.5" rx="13.3" ry="60.2" fill="#2e3c4c"/>
+    </g>
+  </defs>
   <rect width="512" height="512" fill="#1f3a5f"/>
   <!-- Tin-can headphones with sound bars between the cups, inside the maskable safe zone. -->
-  <path d="M150 268 A106 106 0 0 1 362 268" fill="none" stroke="#f4e9cd" stroke-width="20" stroke-linecap="round"/>
-  <g transform="translate(152 314) scale(-0.62 1)">
-    <ellipse cx="56" cy="0" rx="19" ry="60" fill="#a9b6c2"/>
-    <rect x="-56" y="-60" width="112" height="120" fill="#c5cfd8"/>
-    <path d="M-24 -60 v120 M8 -60 v120 M40 -60 v120" stroke="#93a1ae" stroke-width="7"/>
-    <ellipse cx="-56" cy="0" rx="23" ry="60" fill="#e3e9ee"/>
-    <ellipse cx="-56" cy="0" rx="15" ry="49" fill="#56636f"/>
-  </g>
-  <g transform="translate(360 314) scale(0.62 1)">
-    <ellipse cx="56" cy="0" rx="19" ry="60" fill="#a9b6c2"/>
-    <rect x="-56" y="-60" width="112" height="120" fill="#c5cfd8"/>
-    <path d="M-24 -60 v120 M8 -60 v120 M40 -60 v120" stroke="#93a1ae" stroke-width="7"/>
-    <ellipse cx="-56" cy="0" rx="23" ry="60" fill="#e3e9ee"/>
-    <ellipse cx="-56" cy="0" rx="15" ry="49" fill="#56636f"/>
-  </g>
-  <path d="M228 299 v30 M242 284 v60 M256 272 v84 M270 290 v48 M284 301 v26" fill="none" stroke="#f4e9cd" stroke-width="12" stroke-linecap="round"/>
+  <path d="M129 228.5 A127 127.5 0 0 1 383 228.5 H362 A106 103.5 0 0 0 150 228.5 Z" fill="#fdf3de"/>
+  <use href="#can" transform="translate(181.3 292.5)"/>
+  <use href="#can" transform="translate(330.7 292.5) scale(-1 1)"/>
+  <path d="M217 280 v22 M236.5 266 v50 M256 247 v88 M275.5 266 v50 M295 280 v22" fill="none" stroke="#07e6ec" stroke-width="12" stroke-linecap="round"/>
 </svg>
