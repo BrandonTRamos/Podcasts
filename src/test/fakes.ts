@@ -6,6 +6,7 @@ import {
   type DeviceFiles,
   type DeviceStorage,
   type Category,
+  type DirectoryGenre,
   type DirectoryPodcast,
   type Episode,
   type EpisodeState,
@@ -131,8 +132,12 @@ export function fakeDataApi() {
   const feeds = new Map<string, Pick<Podcast, 'title' | 'author' | 'artworkUrl'> | 'notAFeed' | 'failed'>()
   const requests = new Map<string, { feedUrl: string; state: SubscribeRequestState }>()
   /** The public podcast directory's listings. */
-  const directory: Omit<DirectoryPodcast, 'podcastId'>[] = []
+  const directory: (Omit<DirectoryPodcast, 'podcastId'> & { genre: DirectoryGenre | null })[] = []
   let directoryBroken = false
+  /** Every chart asked for, in order: a genre, or null for the chart of all podcasts. */
+  const chartRequests: (DirectoryGenre | null)[] = []
+  /** The charts asked for and not yet answered, while they are held. */
+  let heldCharts: (() => void)[] | null = null
   const podcastListeners = new Set<Listener<Podcast[]>>()
   const categories: Category[] = []
   const categoryListeners = new Set<Listener<Category[]>>()
@@ -207,6 +212,14 @@ export function fakeDataApi() {
 
   function notify<T>(listeners: Set<Listener<T>> | undefined, value: T) {
     listeners?.forEach(({ connection, observer }) => connection.asleep || connection.offline || offline || observer.next(value))
+  }
+
+  /** The directory's listings that pass, in the order listed, each marked if it is in the library. */
+  function listed(pass: (listing: (typeof directory)[number]) => boolean): DirectoryPodcast[] {
+    return directory.filter(pass).map(({ genre: _genre, ...listing }) => ({
+      ...listing,
+      podcastId: podcasts.find((podcast) => podcast.feedUrl === listing.feedUrl)?.id ?? null,
+    }))
   }
 
   /** Fails the request if the network is down. */
@@ -322,15 +335,14 @@ export function fakeDataApi() {
         reach(connection)
         if (directoryBroken) return { outcome: 'directoryUnavailable' }
         const wanted = term.trim().toLowerCase()
-        return {
-          outcome: 'found',
-          podcasts: directory
-            .filter((listing) => wanted && listing.title.toLowerCase().includes(wanted))
-            .map((listing) => ({
-              ...listing,
-              podcastId: podcasts.find((podcast) => podcast.feedUrl === listing.feedUrl)?.id ?? null,
-            })),
-        }
+        return { outcome: 'found', podcasts: listed((listing) => wanted !== '' && listing.title.toLowerCase().includes(wanted)) }
+      },
+      async topPodcasts(genre): Promise<PodcastSearch> {
+        reach(connection)
+        chartRequests.push(genre)
+        if (heldCharts) await new Promise<void>((release) => heldCharts!.push(release))
+        if (directoryBroken) return { outcome: 'directoryUnavailable' }
+        return { outcome: 'found', podcasts: listed((listing) => genre === null || listing.genre === genre) }
       },
       async subscribeToFeed(feedUrl): Promise<SubscribeStart> {
         reach(connection)
@@ -443,16 +455,33 @@ export function fakeDataApi() {
     },
     /**
      * Lists a show in the public directory, which a search for part of its
-     * title finds. Its feed is published too, unless it is to be `unreachable`.
+     * title finds. The chart of all podcasts lists it too, after those listed
+     * before it, and so does the chart of its `genre`, if it has one. Its feed
+     * is published too, unless it is to be `unreachable`.
      */
-    listInDirectory(listing: Omit<DirectoryPodcast, 'podcastId'>, { feed = 'published' }: { feed?: 'published' | 'unreachable' } = {}) {
-      directory.push(listing)
+    listInDirectory(
+      listing: Omit<DirectoryPodcast, 'podcastId'>,
+      { feed = 'published', genre = null }: { feed?: 'published' | 'unreachable'; genre?: DirectoryGenre | null } = {},
+    ) {
+      directory.push({ ...listing, genre })
       if (feed === 'published') {
         const { title, author, artworkUrl } = listing
         feeds.set(listing.feedUrl, { title, author, artworkUrl })
       }
     },
-    /** The directory stops answering searches usefully, as when it is down or rate-limiting. */
+    /** Every chart asked for, in order: a genre, or null for the chart of all podcasts. */
+    chartRequests,
+    /** Charts stop being answered, as if slow on the way, until `releaseCharts`. */
+    holdCharts() {
+      heldCharts = []
+    },
+    /** Answers the charts held, the one asked for last first when `newestFirst`, as a network can reorder them; later ones are answered at once. */
+    releaseCharts({ newestFirst = false }: { newestFirst?: boolean } = {}) {
+      const held = heldCharts ?? []
+      heldCharts = null
+      for (const release of newestFirst ? held.reverse() : held) release()
+    },
+    /** The directory stops answering searches and charts usefully, as when it is down or rate-limiting. */
     breakDirectory() {
       directoryBroken = true
     },

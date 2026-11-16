@@ -11,6 +11,7 @@ import { refreshFeedsFunction } from './functions/refresh-feeds/resource'
 import { searchPodcastsFunction } from './functions/search-podcasts/resource'
 import { stageDownloadFunction } from './functions/stage-download/resource'
 import { subscribeFunction } from './functions/subscribe/resource'
+import { topPodcastsFunction } from './functions/top-podcasts/resource'
 import { unsubscribeFunction } from './functions/unsubscribe/resource'
 
 const backend = defineBackend({
@@ -21,6 +22,7 @@ const backend = defineBackend({
   ingestFeedFunction,
   refreshFeedsFunction,
   searchPodcastsFunction,
+  topPodcastsFunction,
   stageDownloadFunction,
 })
 

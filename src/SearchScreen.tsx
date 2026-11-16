@@ -1,18 +1,67 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { Artwork } from './LibraryScreen'
-import type { DataApi, DirectoryPodcast, Podcast, PodcastSearch } from './services'
+import { DIRECTORY_GENRES, type DataApi, type DirectoryGenre, type DirectoryPodcast, type Podcast, type PodcastSearch } from './services'
 import type { LoadState } from './SignedInApp'
 import { failureMessage, type SubscribeFailure, useSubscribe } from './subscribing'
 
-type SearchState =
-  | { status: 'idle' }
-  | { status: 'searching' }
-  /** `number` counts searches, so each one's results start afresh. */
-  | { status: 'done'; term: string; search: PodcastSearch; number: number }
-  /** The search call itself failed. */
-  | { status: 'offline' }
+const genreNames: Record<DirectoryGenre, string> = {
+  arts: 'Arts',
+  business: 'Business',
+  comedy: 'Comedy',
+  education: 'Education',
+  fiction: 'Fiction',
+  government: 'Government',
+  healthFitness: 'Health & Fitness',
+  history: 'History',
+  kidsFamily: 'Kids & Family',
+  leisure: 'Leisure',
+  music: 'Music',
+  news: 'News',
+  religionSpirituality: 'Religion & Spirituality',
+  science: 'Science',
+  societyCulture: 'Society & Culture',
+  sports: 'Sports',
+  technology: 'Technology',
+  trueCrime: 'True Crime',
+  tvFilm: 'TV & Film',
+}
 
-/** Searches the public directory by name, and subscribes to a result in one tap. */
+/** What the screen lists: one of the directory's charts (null: the chart of all podcasts), or what a search found. */
+type Listing = { kind: 'chart'; genre: DirectoryGenre | null } | { kind: 'search'; term: string }
+
+interface Shown {
+  listing: Listing
+  /** Counts the listings asked for, so each one's results start afresh. */
+  number: number
+  load:
+    | { status: 'loading' }
+    | { status: 'done'; result: PodcastSearch }
+    /** The call itself failed. */
+    | { status: 'offline' }
+}
+
+/** What each kind of listing says while it loads, when it fails, and over its results. */
+function wording(listing: Listing) {
+  if (listing.kind === 'search') {
+    return {
+      loading: 'Searching…',
+      offline: 'Couldn’t search. Check your connection and try again.',
+      empty: `No podcasts found for “${listing.term}”.`,
+      results: 'Search results',
+    }
+  }
+  return {
+    loading: 'Loading top shows…',
+    offline: 'Couldn’t load the top shows. Check your connection and try again.',
+    empty: 'No top shows to list right now.',
+    results: listing.genre ? `Top shows in ${genreNames[listing.genre]}` : 'Top shows',
+  }
+}
+
+/**
+ * Finds podcasts in the public directory, to subscribe to in one tap: by
+ * browsing its top shows, over all or in one genre, or by searching by name.
+ */
 export function SearchScreen({
   data,
   podcasts,
@@ -23,28 +72,66 @@ export function SearchScreen({
   onOpenPodcast: (podcastId: string) => void
 }) {
   const [term, setTerm] = useState('')
-  const [state, setState] = useState<SearchState>({ status: 'idle' })
-  const [searches, setSearches] = useState(0)
+  /** The chart last browsed, shown again when a search is cleared. */
+  const [genre, setGenre] = useState<DirectoryGenre | null>(null)
+  const [shown, setShown] = useState<Shown>({ listing: { kind: 'chart', genre: null }, number: 0, load: { status: 'loading' } })
+  /** The number of the listing last asked for. */
+  const latest = useRef(0)
+  // Read when a listing is asked for, so a fresh copy of the data API doesn't ask again for what is showing.
+  const dataRef = useRef(data)
+  useEffect(() => {
+    dataRef.current = data
+  }, [data])
 
-  async function handleSubmit(event: FormEvent) {
+  const show = useCallback(async (listing: Listing) => {
+    const number = ++latest.current
+    setShown({ listing, number, load: { status: 'loading' } })
+    let load: Shown['load']
+    try {
+      const result =
+        listing.kind === 'chart'
+          ? await dataRef.current.topPodcasts(listing.genre)
+          : await dataRef.current.searchPodcasts(listing.term)
+      load = { status: 'done', result }
+    } catch {
+      load = { status: 'offline' }
+    }
+    // Only the listing last asked for is shown: an earlier one answering late is dropped.
+    if (latest.current === number) setShown({ listing, number, load })
+  }, [])
+
+  // The screen opens on the top shows over all.
+  useEffect(() => {
+    void show({ kind: 'chart', genre: null })
+  }, [show])
+
+  function handleSubmit(event: FormEvent) {
     event.preventDefault()
     const wanted = term.trim()
-    if (!wanted) return
-    setState({ status: 'searching' })
-    const number = searches + 1
-    setSearches(number)
-    try {
-      setState({ status: 'done', term: wanted, search: await data.searchPodcasts(wanted), number })
-    } catch {
-      setState({ status: 'offline' })
-    }
+    if (wanted) void show({ kind: 'search', term: wanted })
+  }
+
+  function handleTerm(next: string) {
+    setTerm(next)
+    // Clearing the search goes back to browsing.
+    if (!next.trim() && shown.listing.kind === 'search') void show({ kind: 'chart', genre })
+  }
+
+  /** Browses a chart. Choosing the one showing loads it again. */
+  function browse(next: DirectoryGenre | null) {
+    setGenre(next)
+    setTerm('')
+    void show({ kind: 'chart', genre: next })
   }
 
   /** Whether the podcast is in the library: when the library has loaded, it is the judge. */
   const inLibrary = (podcastId: string) =>
     podcasts.status !== 'loaded' || podcasts.items.some((podcast) => podcast.id === podcastId)
 
-  const found = state.status === 'done' && state.search.outcome === 'found' ? state.search.podcasts : null
+  const { listing, load } = shown
+  const words = wording(listing)
+  const found = load.status === 'done' && load.result.outcome === 'found' ? load.result.podcasts : null
+  const browsing = (chart: DirectoryGenre | null) => listing.kind === 'chart' && listing.genre === chart
 
   return (
     <main className="search">
@@ -52,23 +139,33 @@ export function SearchScreen({
       <form className="search-form" role="search" onSubmit={handleSubmit}>
         <label>
           Podcast name
-          <input type="search" autoComplete="off" value={term} onChange={(e) => setTerm(e.target.value)} />
+          <input type="search" autoComplete="off" value={term} onChange={(e) => handleTerm(e.target.value)} />
         </label>
-        <button type="submit" className="primary" disabled={state.status === 'searching'}>
+        <button type="submit" className="primary" disabled={listing.kind === 'search' && load.status === 'loading'}>
           Search
         </button>
       </form>
-      {state.status === 'searching' && <p role="status">Searching…</p>}
-      {state.status === 'offline' && <p role="alert">Couldn’t search. Check your connection and try again.</p>}
-      {state.status === 'done' && state.search.outcome === 'directoryUnavailable' && (
+      <div className="genres" role="group" aria-label="Top shows by genre">
+        <button type="button" aria-pressed={browsing(null)} onClick={() => browse(null)}>
+          Top shows
+        </button>
+        {DIRECTORY_GENRES.map((each) => (
+          <button key={each} type="button" aria-pressed={browsing(each)} onClick={() => browse(each)}>
+            {genreNames[each]}
+          </button>
+        ))}
+      </div>
+      {load.status === 'loading' && <p role="status">{words.loading}</p>}
+      {load.status === 'offline' && <p role="alert">{words.offline}</p>}
+      {load.status === 'done' && load.result.outcome === 'directoryUnavailable' && (
         <p role="alert">Couldn’t reach the podcast directory. Try again later.</p>
       )}
-      {found?.length === 0 && state.status === 'done' && <p role="status">No podcasts found for “{state.term}”.</p>}
-      {found && found.length > 0 && state.status === 'done' && (
-        <ul className="search-results" aria-label="Search results">
+      {found?.length === 0 && <p role="status">{words.empty}</p>}
+      {found && found.length > 0 && (
+        <ul className="search-results" aria-label={words.results}>
           {found.map((result) => (
             <SearchResult
-              key={`${state.number} ${result.feedUrl}`}
+              key={`${shown.number} ${result.feedUrl}`}
               data={data}
               result={result}
               inLibrary={inLibrary}
