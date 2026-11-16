@@ -76,8 +76,8 @@ export function PodcastScreen({
     <main className="podcast">
       <nav>
         <button type="button" className="back" onClick={onBack} aria-label="Back to library">
-          <ChevronLeftIcon size={22} />
-          Library
+          <ChevronLeftIcon size={18} />
+          <span>Library</span>
         </button>
       </nav>
       {podcast ? (
@@ -392,7 +392,6 @@ function FeedHealth({ podcast, refresh }: { podcast: Podcast; refresh: (podcastI
       </p>
       <button
         type="button"
-        className="text-button"
         onClick={() => void handleRefresh()}
         disabled={request.status === 'sending' || checking}
       >

@@ -57,7 +57,7 @@ describe('an episode’s screen', () => {
     await openEpisode(user)
 
     // Its podcast, as the episode names it: the back button names it too.
-    expect(screen.getByText('The Example Show', { ignore: 'button' })).toBeInTheDocument()
+    expect(screen.getByText('The Example Show', { ignore: 'button, button *' })).toBeInTheDocument()
     expect(screen.getByText('1 hr 2 min')).toBeInTheDocument()
     expect(screen.getByText(new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(episode.publishedAt))))
       .toHaveAttribute('dateTime', episode.publishedAt)
