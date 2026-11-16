@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
-import { isNew } from './episodes'
+import { newEpisodeIds } from './episodes'
 import { type ListeningStore, useEpisodeStatesOfEach } from './listening'
 import type { DataApi, Episode } from './services'
 
 /**
  * How many new episodes each podcast has, by podcast ID, kept current as
- * refreshes find episodes and the listener plays them. A podcast with none,
+ * refreshes find episodes and the listener plays them: one at most, unless
+ * its latest came out together (see `newEpisodeIds`). A podcast with none,
  * or whose listening state has not arrived, is left out, so a count never
  * shows only to vanish. Counted from the latest episodes across the library,
- * which reach back further than a week unless the library is very busy.
+ * which hold the most recent of any podcast they hold an episode of, and
+ * reach back further than three days unless the library is very busy.
  */
 export function useNewEpisodeCounts(
   data: Pick<DataApi, 'observeLatestEpisodes'>,
@@ -22,12 +24,11 @@ export function useNewEpisodeCounts(
     episodes.map((episode) => episode.podcastId),
   )
 
+  const fresh = newEpisodeIds(episodes, (episodeId) => listening.get(episodeId))
   const counts = new Map<string, number>()
   for (const episode of episodes) {
-    if (listening.status(episode.podcastId) !== 'loaded') continue
-    if (isNew(episode, listening.get(episode.id))) {
-      counts.set(episode.podcastId, (counts.get(episode.podcastId) ?? 0) + 1)
-    }
+    if (listening.status(episode.podcastId) !== 'loaded' || !fresh.has(episode.id)) continue
+    counts.set(episode.podcastId, (counts.get(episode.podcastId) ?? 0) + 1)
   }
   return counts
 }

@@ -1,6 +1,5 @@
 import { DownloadControl, DownloadedBadge } from './DownloadControl'
 import type { DownloadState } from './downloads'
-import { isNew } from './episodes'
 import { formatDate, formatDuration } from './format'
 import { PauseIcon, PlayIcon } from './Icons'
 import { Artwork } from './LibraryScreen'
@@ -42,6 +41,7 @@ export function EpisodeRow({
   state,
   podcastTitle,
   artworkUrl,
+  isNew = false,
   onSetAdded,
   onPlay,
   onPause,
@@ -58,6 +58,8 @@ export function EpisodeRow({
   podcastTitle?: string
   /** Its podcast's artwork, shown at the start of the row; left out, the row has none. */
   artworkUrl?: string | null
+  /** Whether to call it new (see `newEpisodeIds`), which shows unless it is started or played. */
+  isNew?: boolean
   /** Adds it to its podcast's Recently Added, or takes it out. Left out, the row has no Add button. */
   onSetAdded?: (episode: Episode, added: boolean) => void
 } & EpisodeActions) {
@@ -102,7 +104,7 @@ export function EpisodeRow({
               <PlayIcon size={16} />
             </button>
           )}
-          <ListeningProgress episode={episode} state={state} />
+          <ListeningProgress episode={episode} state={state} isNew={isNew} />
           {state?.queueOrder != null && <span className="episode-queued">Queued</span>}
           {download.status === 'downloaded' && <DownloadedBadge />}
         </div>
@@ -174,11 +176,18 @@ export function EpisodeMeta({
 }
 
 /**
- * The episode's length, then played, or new if it came out in the last week;
- * or, part-played, how far through it is. An older one never started has its
- * length alone.
+ * The episode's length, then played, or new if it is; or, part-played, how
+ * far through it is. Any other never started has its length alone.
  */
-function ListeningProgress({ episode, state }: { episode: Episode; state: EpisodeState | undefined }) {
+function ListeningProgress({
+  episode,
+  state,
+  isNew,
+}: {
+  episode: Episode
+  state: EpisodeState | undefined
+  isNew: boolean
+}) {
   const duration = episode.durationSeconds
   const length = duration !== null && <span>{formatDuration(duration)}</span>
   if (state?.played) {
@@ -193,7 +202,7 @@ function ListeningProgress({ episode, state }: { episode: Episode; state: Episod
     return (
       <>
         {length}
-        {isNew(episode, state) && <span className="episode-new">New</span>}
+        {isNew && <span className="episode-new">New</span>}
       </>
     )
   }

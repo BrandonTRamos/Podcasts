@@ -258,24 +258,30 @@ describe('new episodes in the library', () => {
 
   const episode = (title: string, publishedAt: string | null) => ({ title, publishedAt, durationSeconds: 1800 })
 
-  it('shows each podcast’s count of new episodes, and none for a podcast without any', async () => {
+  it('counts a podcast’s most recent episode while it is new, and no other', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(Date.parse('2026-11-14T09:00:00.000Z'))
     const data = fakeDataApi()
     const busy = data.seedPodcast('https://feeds.example.com/busy.xml', { title: 'Busy Show' })
+    const begun = data.seedPodcast('https://feeds.example.com/begun.xml', { title: 'Begun Show' })
     const quiet = data.seedPodcast('https://feeds.example.com/quiet.xml', { title: 'Quiet Show' })
-    const [startedId] = data.ingest(busy, [
-      episode('Started', '2026-11-13T08:00:00.000Z'),
-      episode('Fresh', '2026-11-12T08:00:00.000Z'),
-      episode('Also fresh', '2026-11-11T08:00:00.000Z'),
+    data.ingest(busy, [
+      episode('Fresh', '2026-11-13T08:00:00.000Z'),
+      episode('Out the day before', '2026-11-12T08:00:00.000Z'),
       episode('Old', '2026-11-01T08:00:00.000Z'),
       episode('Undated', null),
     ])
-    data.ingest(quiet, [episode('Old', '2026-10-01T08:00:00.000Z')])
-    data.seedEpisodeState({ episodeId: startedId, podcastId: busy, positionSeconds: 60, played: false })
+    const [startedId] = data.ingest(begun, [
+      episode('Started', '2026-11-13T08:00:00.000Z'),
+      episode('Out the day before', '2026-11-12T08:00:00.000Z'),
+    ])
+    data.seedEpisodeState({ episodeId: startedId, podcastId: begun, positionSeconds: 60, played: false })
+    // Its latest came out four days ago.
+    data.ingest(quiet, [episode('Last week’s', '2026-11-10T08:00:00.000Z')])
     await renderSignedIn(data)
 
-    expect(await screen.findByRole('button', { name: /Busy Show, 2 new episodes/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Busy Show, 1 new episode$/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Begun Show' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Quiet Show' })).toBeInTheDocument()
   })
 

@@ -20,6 +20,7 @@ export function OlderEpisodes({
   more,
   inLibrary,
   stateOf,
+  isNew,
   onKept,
   onSetAdded,
   ...actions
@@ -36,6 +37,8 @@ export function OlderEpisodes({
   /** The episode as the library has it, if it does. */
   inLibrary: (episodeId: string) => Episode | undefined
   stateOf: (episodeId: string) => EpisodeState | undefined
+  /** Whether to call an episode the library has new. */
+  isNew: (episodeId: string) => boolean
   /** Called with an episode once it has been added to the library. */
   onKept: (episode: Episode) => void
   /** Adds an episode the library has to the podcast's Recently Added, or takes it out. */
@@ -64,7 +67,14 @@ export function OlderEpisodes({
             {more.map((found) => {
               const episode = inLibrary(found.id)
               return episode ? (
-                <EpisodeRow key={found.id} episode={episode} state={stateOf(found.id)} onSetAdded={onSetAdded} {...actions} />
+                <EpisodeRow
+                  key={found.id}
+                  episode={episode}
+                  state={stateOf(found.id)}
+                  isNew={isNew(found.id)}
+                  onSetAdded={onSetAdded}
+                  {...actions}
+                />
               ) : (
                 <FeedEpisodeRow key={found.id} episode={found} data={data} onKept={onKept} />
               )
