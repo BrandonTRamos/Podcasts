@@ -48,14 +48,14 @@
       }
       /* Each bar swells and shrinks about its middle, one after the next, so a wave runs across them. */
       #splash .bars path {
-        transform-origin: 0 314px;
+        transform-origin: 0 291px;
         animation: splash-bar 1.1s ease-in-out infinite;
       }
-      #splash .bars path:nth-child(1) { --low: 0.5; --high: 1.7; }
-      #splash .bars path:nth-child(2) { --low: 0.45; --high: 1.3; animation-delay: -0.9s; }
+      #splash .bars path:nth-child(1) { --low: 0.5; --high: 1.8; }
+      #splash .bars path:nth-child(2) { --low: 0.45; --high: 1.4; animation-delay: -0.9s; }
       #splash .bars path:nth-child(3) { --low: 0.4; --high: 1.1; animation-delay: -0.7s; }
-      #splash .bars path:nth-child(4) { --low: 0.45; --high: 1.5; animation-delay: -0.5s; }
-      #splash .bars path:nth-child(5) { --low: 0.5; --high: 1.9; animation-delay: -0.3s; }
+      #splash .bars path:nth-child(4) { --low: 0.45; --high: 1.4; animation-delay: -0.5s; }
+      #splash .bars path:nth-child(5) { --low: 0.5; --high: 1.8; animation-delay: -0.3s; }
       @keyframes splash-bar {
         0%, 100% { transform: scaleY(var(--low)); }
         50% { transform: scaleY(var(--high)); }
@@ -69,28 +69,42 @@
   <body>
     <div id="splash" role="status">
       <!-- The drawing of public/icon.svg, with each sound bar its own path. -->
-      <svg viewBox="96 144 320 240" aria-hidden="true">
-        <path d="M150 268 A106 106 0 0 1 362 268" fill="none" stroke="#f4e9cd" stroke-width="20" stroke-linecap="round"/>
-        <g transform="translate(152 314) scale(-0.62 1)">
-          <ellipse cx="56" cy="0" rx="19" ry="60" fill="#a9b6c2"/>
-          <rect x="-56" y="-60" width="112" height="120" fill="#c5cfd8"/>
-          <path d="M-24 -60 v120 M8 -60 v120 M40 -60 v120" stroke="#93a1ae" stroke-width="7"/>
-          <ellipse cx="-56" cy="0" rx="23" ry="60" fill="#e3e9ee"/>
-          <ellipse cx="-56" cy="0" rx="15" ry="49" fill="#56636f"/>
-        </g>
-        <g transform="translate(360 314) scale(0.62 1)">
-          <ellipse cx="56" cy="0" rx="19" ry="60" fill="#a9b6c2"/>
-          <rect x="-56" y="-60" width="112" height="120" fill="#c5cfd8"/>
-          <path d="M-24 -60 v120 M8 -60 v120 M40 -60 v120" stroke="#93a1ae" stroke-width="7"/>
-          <ellipse cx="-56" cy="0" rx="23" ry="60" fill="#e3e9ee"/>
-          <ellipse cx="-56" cy="0" rx="15" ry="49" fill="#56636f"/>
-        </g>
-        <g class="bars" fill="none" stroke="#f4e9cd" stroke-width="12" stroke-linecap="round">
-          <path d="M228 299 v30"/>
-          <path d="M242 284 v60"/>
-          <path d="M256 272 v84"/>
-          <path d="M270 290 v48"/>
-          <path d="M284 301 v26"/>
+      <svg viewBox="80 96 352 272" aria-hidden="true">
+        <defs>
+          <linearGradient id="splash-tin" gradientUnits="userSpaceOnUse" x1="0" y1="-69.2" x2="0" y2="69.2">
+            <stop offset="0" stop-color="#ccd2da"/>
+            <stop offset="0.28" stop-color="#eaecf0"/>
+            <stop offset="0.49" stop-color="#c0c7d2"/>
+            <stop offset="0.75" stop-color="#b4bcc6"/>
+            <stop offset="1" stop-color="#b0b8c4"/>
+          </linearGradient>
+          <linearGradient id="splash-rib" gradientUnits="userSpaceOnUse" x1="0" y1="-69.2" x2="0" y2="69.2">
+            <stop offset="0" stop-color="#a1abb9"/>
+            <stop offset="0.28" stop-color="#a5aebb"/>
+            <stop offset="0.49" stop-color="#969fae"/>
+            <stop offset="1" stop-color="#909bab"/>
+          </linearGradient>
+          <clipPath id="splash-can-side">
+            <path d="M0 -69.2 H-73.5 A22.5 69.2 0 0 0 -73.5 69.2 H0 Z"/>
+          </clipPath>
+          <g id="splash-can">
+            <g clip-path="url(#splash-can-side)">
+              <rect x="-96" y="-69.2" width="96" height="138.4" fill="url(#splash-tin)"/>
+              <path d="M-56.8 -73.5 a20.6 73.5 0 0 0 0 147 M-37.4 -73.5 a20.6 73.5 0 0 0 0 147 M-18 -73.5 a20.6 73.5 0 0 0 0 147" fill="none" stroke="url(#splash-rib)" stroke-width="5.5"/>
+            </g>
+            <ellipse rx="18.8" ry="69.2" fill="#eff0f3"/>
+            <ellipse cx="0.5" rx="13.3" ry="60.2" fill="#2e3c4c"/>
+          </g>
+        </defs>
+        <path d="M129 228.5 A127 127.5 0 0 1 383 228.5 H362 A106 103.5 0 0 0 150 228.5 Z" fill="#fdf3de"/>
+        <use href="#splash-can" transform="translate(181.3 292.5)"/>
+        <use href="#splash-can" transform="translate(330.7 292.5) scale(-1 1)"/>
+        <g class="bars" fill="none" stroke="#07e6ec" stroke-width="12" stroke-linecap="round">
+          <path d="M217 280 v22"/>
+          <path d="M236.5 266 v50"/>
+          <path d="M256 247 v88"/>
+          <path d="M275.5 266 v50"/>
+          <path d="M295 280 v22"/>
         </g>
       </svg>
       <p>Loading…</p>
