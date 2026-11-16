@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { formatClock } from './format'
 import { ChevronDownIcon, PauseIcon, PlayIcon, QueueIcon, SkipBackIcon, SkipForwardIcon } from './Icons'
 import { Artwork } from './LibraryScreen'
-import { type LoadedState, type Player, MAX_SPEED, MIN_SPEED, SKIP_BACK_SECONDS, SKIP_FORWARD_SECONDS, SPEED_STEP } from './player'
+import { useLongPress } from './longPress'
+import { type LoadedState, type Player, MAX_SPEED, MIN_SPEED, SKIP_CHOICES, type SkipDirection, SPEED_STEP } from './player'
 
 /** Stays at the foot of every screen but now playing while an episode is loaded. */
 export function MiniPlayer({ state, player, onOpen }: { state: LoadedState; player: Player; onOpen: () => void }) {
@@ -35,6 +36,10 @@ export function NowPlayingScreen({
   const { episode, position, duration, failed } = state
   // The slider stays out of the way until the speed shown is tapped.
   const [speedOpen, setSpeedOpen] = useState(false)
+  // Holding a skip button asks how far it should skip.
+  const [choosingSkip, setChoosingSkip] = useState<SkipDirection | null>(null)
+  const holdBack = useLongPress(() => setChoosingSkip('back'))
+  const holdForward = useLongPress(() => setChoosingSkip('forward'))
   return (
     <main className="now-playing">
       <nav>
@@ -70,23 +75,38 @@ export function NowPlayingScreen({
         <button
           type="button"
           className="icon-button"
+          {...holdBack}
           onClick={player.skipBack}
           disabled={failed}
-          aria-label={`Skip back ${SKIP_BACK_SECONDS} seconds`}
+          aria-label={`Skip back ${state.skip.back} seconds`}
+          aria-description="Hold to change how far it skips"
         >
-          <SkipBackIcon size={34} seconds={SKIP_BACK_SECONDS} />
+          <SkipBackIcon size={34} seconds={state.skip.back} />
         </button>
         <PlayPauseButton state={state} player={player} iconSize={32} />
         <button
           type="button"
           className="icon-button"
+          {...holdForward}
           onClick={player.skipForward}
           disabled={failed}
-          aria-label={`Skip forward ${SKIP_FORWARD_SECONDS} seconds`}
+          aria-label={`Skip forward ${state.skip.forward} seconds`}
+          aria-description="Hold to change how far it skips"
         >
-          <SkipForwardIcon size={34} seconds={SKIP_FORWARD_SECONDS} />
+          <SkipForwardIcon size={34} seconds={state.skip.forward} />
         </button>
       </div>
+      {choosingSkip && (
+        <SkipDialog
+          direction={choosingSkip}
+          seconds={state.skip[choosingSkip]}
+          onChoose={(seconds) => {
+            player.setSkip(choosingSkip, seconds)
+            setChoosingSkip(null)
+          }}
+          onClose={() => setChoosingSkip(null)}
+        />
+      )}
       <div className="now-playing-extras">
         <div className={speedOpen ? 'speed speed-open' : 'speed'}>
           <button
@@ -130,6 +150,58 @@ export function NowPlayingScreen({
         </button>
       </div>
     </main>
+  )
+}
+
+/**
+ * Asks how many seconds a skip button should move by, over the screen. Picking
+ * one closes it; so do Cancel, Escape and a tap outside it.
+ */
+function SkipDialog({
+  direction,
+  seconds,
+  onChoose,
+  onClose,
+}: {
+  direction: SkipDirection
+  /** What it skips by now. */
+  seconds: number
+  onChoose: (seconds: number) => void
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [onClose])
+
+  const title = direction === 'back' ? 'Skip back by' : 'Skip forward by'
+  return (
+    <div className="dialog-backdrop" onClick={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="skip-dialog-title">
+        <h2 id="skip-dialog-title">{title}</h2>
+        <div className="skip-choices" role="group" aria-label={title}>
+          {SKIP_CHOICES.map((choice) => (
+            <button
+              key={choice}
+              type="button"
+              aria-pressed={choice === seconds}
+              aria-label={`${choice} seconds`}
+              onClick={() => onChoose(choice)}
+            >
+              {choice}s
+            </button>
+          ))}
+        </div>
+        <div className="dialog-actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+      </section>
+    </div>
   )
 }
 

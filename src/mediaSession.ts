@@ -13,7 +13,7 @@ export function connectMediaSession(session: MediaSessionControls, player: Playe
     // A headset's play/pause button arrives as one of these two, by the playback state shown.
     ['play', () => player.resume()],
     ['pause', () => player.pause()],
-    // Fixed amounts, as in the app, whatever offset the OS suggests.
+    // The amounts chosen in the app, whatever offset the OS suggests.
     ['seekbackward', () => player.skipBack()],
     ['seekforward', () => player.skipForward()],
     ['seekto', ({ seekTime }) => seekTime !== undefined && player.seekTo(seekTime)],
