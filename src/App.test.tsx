@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
@@ -20,14 +20,18 @@ async function signIn(user: ReturnType<typeof userEvent.setup>, email: string, p
   await user.click(screen.getByRole('button', { name: 'Sign in' }))
 }
 
-describe('reloading', () => {
-  it('reloads the app from the library, so a newly deployed version shows without closing the installed app', async () => {
+describe('a new version', () => {
+  it('shows a banner at the foot of the screen once a new version is deployed, and reloads on Refresh', async () => {
     const auth = fakeAuth(owner)
     await auth.signIn(owner.email, owner.password)
     const device = new FakeDevice()
     render(<App services={{ auth, data: fakeDataApi(), audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device }} />)
+    await screen.findByRole('heading', { name: 'Library' })
+    expect(screen.queryByText('A new version is available.')).not.toBeInTheDocument()
 
-    await chooseLibraryAction(userEvent.setup(), 'Reload app')
+    act(() => device.deployNewVersion())
+    expect(await screen.findByText('A new version is available.')).toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Refresh' }))
 
     expect(device.reloads).toBe(1)
   })

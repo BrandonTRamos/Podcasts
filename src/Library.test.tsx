@@ -235,20 +235,20 @@ describe('the top of the library', () => {
 
   it('keeps importing, reloading and signing out behind More actions, and opens the file picker from there', async () => {
     const { user } = await renderSignedIn()
-    for (const name of ['Import OPML file', 'Reload app', 'Sign out']) {
+    for (const name of ['Import OPML file', 'Sign out']) {
       expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
     }
     const picker = vi.spyOn(HTMLInputElement.prototype, 'click')
 
     await user.click(screen.getByRole('button', { name: 'More actions' }))
-    for (const name of ['Import OPML file', 'Reload app', 'Sign out']) {
+    for (const name of ['Import OPML file', 'Sign out']) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument()
     }
     await user.click(screen.getByRole('button', { name: 'Import OPML file' }))
 
     expect(picker).toHaveBeenCalledTimes(1)
     expect(picker.mock.instances[0]).toBe(screen.getByLabelText('Import OPML file'))
-    expect(screen.queryByRole('button', { name: 'Reload app' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
     picker.mockRestore()
   })
 })

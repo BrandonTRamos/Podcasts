@@ -17,6 +17,7 @@ import { QueueScreen } from './QueueScreen'
 import { SearchScreen } from './SearchScreen'
 import { SettingsPill, SettingsScreen } from './SettingsScreen'
 import { type Tab, TabBar } from './TabBar'
+import { UpdateBanner } from './UpdateBanner'
 import type {
   AudioElement,
   Category,
@@ -188,6 +189,10 @@ export function SignedInApp({
       if (device.isOnline()) listening.sendUnsynced()
     })
   }, [listening, device])
+
+  // A deploy since the app opened doesn't reach it until it reloads, so say when one has.
+  const [newVersion, setNewVersion] = useState(false)
+  useEffect(() => device.watchForNewVersion(() => setNewVersion(true)), [device])
 
   // Live updates can be missed while the app is in the background (iOS
   // suspends it), so catch up on what other devices saved when it comes back.
@@ -421,7 +426,6 @@ export function SignedInApp({
         listening={listening}
         episodeActions={episodeActions}
         onOpenPodcast={openPodcast}
-        onReload={device.reload}
         onSignOut={onSignOut}
         opmlImport={opmlImport.state}
         onImportOpml={(file) => void opmlImport.importFile(file)}
@@ -453,6 +457,7 @@ export function SignedInApp({
       )}
       {!showingNowPlaying && (
         <div className="bottom-bars">
+          {newVersion && <UpdateBanner onRefresh={device.reload} />}
           {playerState.episode && <MiniPlayer state={playerState} player={player} onOpen={() => setNowPlayingOpen(true)} />}
           <TabBar current={tab} onSelect={(name) => setScreen(tabScreens[name])} />
         </div>

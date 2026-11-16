@@ -41,7 +41,6 @@ export function LibraryScreen({
   listening,
   episodeActions,
   onOpenPodcast,
-  onReload,
   onSignOut,
   opmlImport,
   onImportOpml,
@@ -61,8 +60,6 @@ export function LibraryScreen({
   opmlImport: ImportState
   onImportOpml: (file: File) => void
   onOpenPodcast: (podcastId: string) => void
-  /** Loads the app afresh, which shows a version deployed since it opened. */
-  onReload: () => void
   onSignOut: () => Promise<void>
 }) {
   const [adding, setAdding] = useState(false)
@@ -130,9 +127,6 @@ export function LibraryScreen({
           </button>
           <button type="button" onClick={() => opmlFile.current?.click()} disabled={importing}>
             Import OPML file
-          </button>
-          <button type="button" onClick={onReload}>
-            Reload app
           </button>
           <button type="button" onClick={() => void onSignOut()}>
             Sign out

@@ -1142,6 +1142,18 @@ export class FakeDevice implements Device {
     this.reloads++
   }
 
+  #newVersionListeners = new Set<() => void>()
+
+  readonly watchForNewVersion = (listener: () => void) => {
+    this.#newVersionListeners.add(listener)
+    return () => void this.#newVersionListeners.delete(listener)
+  }
+
+  /** A new version of the app is deployed, and the running app notices. */
+  deployNewVersion() {
+    this.#newVersionListeners.forEach((listener) => listener())
+  }
+
   /** Whether anything is keeping the screen on. */
   screenKeptOn() {
     return this.#holds.size > 0
