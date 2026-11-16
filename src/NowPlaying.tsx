@@ -144,8 +144,8 @@ export function NowPlayingScreen({
             </div>
           )}
         </div>
-        <button type="button" className="text-button" onClick={onOpenQueue}>
-          <QueueIcon size={22} />
+        <button type="button" onClick={onOpenQueue}>
+          <QueueIcon size={18} />
           Queue
         </button>
       </div>

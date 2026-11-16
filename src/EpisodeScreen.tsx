@@ -52,8 +52,8 @@ export function EpisodeScreen({
     <main className="episode">
       <nav>
         <button type="button" className="back" onClick={onBack} aria-label={`Back to ${backLabel}`}>
-          <ChevronLeftIcon size={22} />
-          {backLabel}
+          <ChevronLeftIcon size={18} />
+          <span>{backLabel}</span>
         </button>
       </nav>
       <header>
