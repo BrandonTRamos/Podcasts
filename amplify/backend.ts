@@ -7,7 +7,9 @@ import { backendFunctions, defineAlerts, deploymentType, readAlertsConfig } from
 import { auth } from './auth/resource'
 import { data } from './data/resource'
 import { ingestFeedFunction } from './functions/ingest-feed/resource'
+import { keepEpisodeFunction } from './functions/keep-episode/resource'
 import { refreshFeedsFunction } from './functions/refresh-feeds/resource'
+import { searchEpisodesFunction } from './functions/search-episodes/resource'
 import { searchPodcastsFunction } from './functions/search-podcasts/resource'
 import { stageDownloadFunction } from './functions/stage-download/resource'
 import { subscribeFunction } from './functions/subscribe/resource'
@@ -22,6 +24,8 @@ const backend = defineBackend({
   ingestFeedFunction,
   refreshFeedsFunction,
   searchPodcastsFunction,
+  searchEpisodesFunction,
+  keepEpisodeFunction,
   topPodcastsFunction,
   stageDownloadFunction,
 })

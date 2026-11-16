@@ -5,6 +5,7 @@ import { isInProgress, newestFirst } from './episodes'
 import type { Schema } from '../amplify/data/resource'
 import {
   type Episode,
+  type EpisodeSearch,
   LATEST_EPISODES_LIMIT,
   type Podcast,
   type PodcastSearch,
@@ -275,6 +276,19 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
         const { data, errors } = await client.models.Episode.get({ id: episodeId }, { selectionSet: ['id', 'showNotes'] })
         throwIfErrors(errors)
         return data?.showNotes ?? null
+      },
+
+      async searchEpisodes(podcastId, term): Promise<EpisodeSearch> {
+        const { data, errors } = await client.queries.searchEpisodes({ podcastId, term })
+        if (errors?.length || !data) throw new Error(errors?.map((e) => e.message).join('; ') ?? 'No result')
+        if (data.outcome !== 'found') return { outcome: 'feedUnavailable' }
+        return { outcome: 'found', episodes: data.episodes.map(toEpisode), more: data.more }
+      },
+
+      async keepEpisode(podcastId, episodeId) {
+        const { data, errors } = await client.mutations.keepEpisode({ podcastId, episodeId })
+        if (errors?.length || !data?.outcome) throw new Error(errors?.map((e) => e.message).join('; ') ?? 'No result')
+        return data.outcome
       },
 
       async searchPodcasts(term): Promise<PodcastSearch> {

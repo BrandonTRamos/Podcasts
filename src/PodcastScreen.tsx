@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useId, useMemo, useState } from 'react'
+import { wordMatcher } from '../amplify/feeds/matchWords'
 import { CategoryPicker } from './CategoryPicker'
 import { type EpisodeActions, EpisodeRow } from './EpisodeRow'
 import { newestFirst } from './episodes'
@@ -6,6 +7,8 @@ import { formatDateTime } from './format'
 import { ChevronLeftIcon, StarIcon } from './Icons'
 import { Artwork } from './LibraryScreen'
 import { type ListeningStore, useEpisodeStates } from './listening'
+import { useFeedSearch } from './feedSearch'
+import { OlderEpisodes } from './OlderEpisodes'
 import type { Category, DataApi, Episode, EpisodeState, FeedError, Podcast } from './services'
 import type { LoadState } from './SignedInApp'
 
@@ -15,6 +18,8 @@ export function PodcastScreen({
   podcast,
   categories,
   listening,
+  searchTerm,
+  onSearchTermChange,
   onBack,
   onUnsubscribe,
   ...actions
@@ -26,12 +31,17 @@ export function PodcastScreen({
   /** The listener's categories; undefined until loaded. */
   categories: Category[] | undefined
   listening: ListeningStore
+  /** What the listener is searching its episodes for; empty for nothing. Kept by the app, so it outlasts a visit to an episode. */
+  searchTerm: string
+  onSearchTermChange: (term: string) => void
   onBack: () => void
   /** Removes the podcast from the library. Rejects if that failed. */
   onUnsubscribe: () => Promise<void>
 } & EpisodeActions) {
   const [episodes, setEpisodes] = useState<LoadState<Episode>>({ status: 'loading' })
   const [unplayedOnly, setUnplayedOnly] = useState(false)
+  // Episodes added from the feed while this screen is open, listed at once rather than when the library next says so.
+  const [kept, setKept] = useState<Episode[]>([])
   const statesStatus = useEpisodeStates(listening, podcastId)
 
   useEffect(
@@ -76,10 +86,16 @@ export function PodcastScreen({
           podcast && <p>No episodes yet.</p>
         ) : (
           <EpisodeList
+            data={data}
+            podcastId={podcastId}
             episodes={episodes.items}
+            kept={kept}
+            onKept={(episode) => setKept((already) => [...already, episode])}
             stateOf={(episodeId) => listening.get(episodeId)}
             unplayedOnly={unplayedOnly}
             onUnplayedOnlyChange={setUnplayedOnly}
+            searchTerm={searchTerm}
+            onSearchTermChange={onSearchTermChange}
             {...actions}
           />
         ))}
@@ -87,19 +103,63 @@ export function PodcastScreen({
   )
 }
 
+/**
+ * A podcast's episodes, newest first, with a search of them: typing filters
+ * the list at once to the titles with every word (`matchWords.ts`), and
+ * submitting the search looks through the podcast's whole feed as well, for
+ * episodes older than the library keeps (see `OlderEpisodes`).
+ */
 function EpisodeList({
+  data,
+  podcastId,
   episodes,
+  kept,
+  onKept,
   stateOf,
   unplayedOnly,
   onUnplayedOnlyChange,
+  searchTerm,
+  onSearchTermChange,
   ...actions
 }: {
+  data: Pick<DataApi, 'searchEpisodes' | 'keepEpisode'>
+  podcastId: string
+  /** The podcast's episodes as the library has them. */
   episodes: Episode[]
+  /** Episodes added from the feed since the screen opened, which the library may not have delivered yet. */
+  kept: Episode[]
+  onKept: (episode: Episode) => void
   stateOf: (episodeId: string) => EpisodeState | undefined
   unplayedOnly: boolean
   onUnplayedOnlyChange: (unplayedOnly: boolean) => void
+  searchTerm: string
+  onSearchTermChange: (term: string) => void
 } & EpisodeActions) {
-  const shown = newestFirst(episodes).filter((episode) => !unplayedOnly || !stateOf(episode.id)?.played)
+  const formId = useId()
+  const term = searchTerm.trim()
+  const matches = useMemo(() => wordMatcher(term), [term])
+  const feed = useFeedSearch(data, podcastId)
+  // A search of the feed belongs to the words it was for: change them, and it no longer shows.
+  const load = feed.shown?.term === term ? feed.shown.load : null
+  const found = load?.status === 'done' && load.search.outcome === 'found' ? load.search.episodes : null
+
+  const inLibrary = new Map([...kept, ...episodes].filter((episode) => episode.podcastId === podcastId).map((episode) => [episode.id, episode]))
+  // An episode added from the feed's matches stays among them while they show, rather than jump up the page.
+  const keptIds = new Set(kept.map((episode) => episode.id))
+  const addedBelow = new Set(found?.filter((episode) => keptIds.has(episode.id)).map((episode) => episode.id))
+  const titled = [...inLibrary.values()].filter(
+    (episode) => (!matches || matches(episode.title)) && !addedBelow.has(episode.id),
+  )
+  const titledIds = new Set(titled.map((episode) => episode.id))
+  const wanted = (episode: Episode) => !unplayedOnly || !stateOf(episode.id)?.played
+  const shown = newestFirst(titled).filter(wanted)
+  const more = found?.filter((episode) => !titledIds.has(episode.id) && wanted(episode)) ?? null
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    if (matches && load?.status !== 'loading') void feed.search(term)
+  }
+
   return (
     <>
       <div className="episodes-heading">
@@ -114,14 +174,45 @@ function EpisodeList({
           />
         </label>
       </div>
+      <form id={formId} className="episode-search" role="search" onSubmit={handleSubmit}>
+        <label>
+          Search episodes
+          <input
+            type="search"
+            autoComplete="off"
+            enterKeyHint="search"
+            value={searchTerm}
+            onChange={(e) => onSearchTermChange(e.target.value)}
+          />
+        </label>
+      </form>
       {shown.length === 0 ? (
-        <p>No unplayed episodes.</p>
+        <p>
+          {!matches
+            ? 'No unplayed episodes.'
+            : unplayedOnly
+              ? `No unplayed episode titles match “${term}”.`
+              : `No episode titles match “${term}”.`}
+        </p>
       ) : (
         <ol className="episodes" aria-label="Episodes">
           {shown.map((episode) => (
             <EpisodeRow key={episode.id} episode={episode} state={stateOf(episode.id)} {...actions} />
           ))}
         </ol>
+      )}
+      {matches && (
+        <OlderEpisodes
+          data={data}
+          term={term}
+          formId={formId}
+          load={load}
+          more={more}
+          inLibrary={(episodeId) => inLibrary.get(episodeId)}
+          stateOf={stateOf}
+          onKept={onKept}
+          {...actions}
+        />
       )}
     </>
   )
