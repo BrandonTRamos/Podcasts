@@ -156,7 +156,8 @@ describe('searching a podcast’s older episodes', () => {
 
     // It stays where it was found, now with an episode's actions.
     await waitFor(() => expect(within(rowIn(list, fall.title)).getByRole('button', { name: 'More actions' })).toBeInTheDocument())
-    expect(within(list).queryByRole('button', { name: `Add ${fall.title}` })).not.toBeInTheDocument()
+    // Its Add button now says it is added: it is in Recently Added.
+    expect(within(list).getByRole('button', { name: `Add ${fall.title}` })).toHaveAttribute('aria-pressed', 'true')
 
     await user.click(within(list).getByRole('button', { name: fall.title }))
     expect(audio.src).toBe(`https://media.example.com/${fallId}.mp3`)

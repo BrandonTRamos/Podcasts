@@ -86,6 +86,9 @@ const schema = a
       // Queued episodes play lowest first. Absent when not queued: saving null
       // removes the attribute. Fractional, so a move is one write.
       queueOrder: a.float(),
+      // When the listener added it to its podcast's Recently Added. Absent when
+      // they have not: saving null removes the attribute.
+      addedAt: a.datetime(),
       // When the change last kept was made, by the device's clock (ISO 8601).
       // Absent on states saved before it was recorded: any change then wins.
       changedAt: a.datetime(),

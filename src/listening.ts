@@ -185,13 +185,15 @@ export function createListeningStore(
     const base = saved.get(episodeId)
     const changes = local.get(episodeId)
     if (!base && !changes) return undefined
-    const { podcastId, positionSeconds, played, queueOrder } = base ?? {
+    const { podcastId, positionSeconds, played, queueOrder, addedAt } = base ?? {
       podcastId: changes![0].podcastId,
       positionSeconds: 0,
       played: false,
       queueOrder: null,
+      addedAt: null,
     }
-    let state: EpisodeState = { episodeId, podcastId, positionSeconds, played, queueOrder }
+    // A copy kept by an earlier version of the app has no word of whether it was added.
+    let state: EpisodeState = { episodeId, podcastId, positionSeconds, played, queueOrder, addedAt: addedAt ?? null }
     for (const { change } of changes ?? []) state = { ...state, ...change }
     return state
   }

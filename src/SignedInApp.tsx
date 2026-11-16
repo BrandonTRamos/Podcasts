@@ -11,7 +11,7 @@ import { MiniPlayer, NowPlayingScreen } from './NowPlaying'
 import { useOnline } from './online'
 import { useOpmlImport } from './opmlImport'
 import { type PlayableEpisode, type SaveProgress, type TakeNext, usePlayer } from './player'
-import { PodcastScreen } from './PodcastScreen'
+import { PodcastScreen, type PodcastView } from './PodcastScreen'
 import { PullToRefresh } from './PullToRefresh'
 import { QueueScreen } from './QueueScreen'
 import { SearchScreen } from './SearchScreen'
@@ -259,8 +259,11 @@ export function SignedInApp({
 
   /** What the open podcast's episodes are searched for. Here, so it is still there on coming back from one of its episodes. */
   const [episodeSearch, setEpisodeSearch] = useState('')
+  /** Which of the open podcast's tabs shows. Here for the same reason. */
+  const [podcastView, setPodcastView] = useState<PodcastView>('episodes')
   const openPodcast = useCallback((podcastId: string) => {
     setEpisodeSearch('')
+    setPodcastView('episodes')
     setScreen({ name: 'podcast', podcastId })
   }, [])
 
@@ -413,6 +416,8 @@ export function SignedInApp({
         podcast={podcastById(screen.podcastId)}
         categories={categories.status === 'loaded' ? categories.items : undefined}
         listening={listening}
+        view={podcastView}
+        onSelectView={setPodcastView}
         searchTerm={episodeSearch}
         onSearchTermChange={setEpisodeSearch}
         onBack={() => setScreen({ name: 'library' })}

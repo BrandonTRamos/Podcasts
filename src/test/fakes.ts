@@ -268,6 +268,7 @@ export function fakeDataApi() {
       positionSeconds: 0,
       played: false,
       queueOrder: null,
+      addedAt: null,
       ...states.get(episodeId),
       ...change,
       updatedAt: timeAt(++tick),
@@ -681,7 +682,7 @@ export function fakeDataApi() {
       episodeId,
       podcastId,
       ...state
-    }: Omit<EpisodeState, 'queueOrder'> & Partial<Pick<EpisodeState, 'queueOrder'>>) {
+    }: Omit<EpisodeState, 'queueOrder' | 'addedAt'> & Partial<Pick<EpisodeState, 'queueOrder' | 'addedAt'>>) {
       storeState(episodeId, podcastId, state)
     },
     /** The listening state the backend holds for an episode. */
