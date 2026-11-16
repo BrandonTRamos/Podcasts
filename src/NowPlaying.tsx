@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { formatClock } from './format'
 import { ChevronDownIcon, PauseIcon, PlayIcon, QueueIcon, SkipBackIcon, SkipForwardIcon } from './Icons'
 import { Artwork } from './LibraryScreen'
@@ -32,6 +33,8 @@ export function NowPlayingScreen({
   onOpenQueue: () => void
 }) {
   const { episode, position, duration, failed } = state
+  // The slider stays out of the way until the speed shown is tapped.
+  const [speedOpen, setSpeedOpen] = useState(false)
   return (
     <main className="now-playing">
       <nav>
@@ -85,27 +88,41 @@ export function NowPlayingScreen({
         </button>
       </div>
       <div className="now-playing-extras">
-        <div className="speed">
+        <div className={speedOpen ? 'speed speed-open' : 'speed'}>
           <button
             type="button"
             className="speed-value"
-            onClick={() => player.setSpeed(1)}
-            disabled={state.speed === 1}
-            aria-label={`Speed ${formatSpeed(state.speed)}. Reset to normal speed`}
+            onClick={() => setSpeedOpen((open) => !open)}
+            aria-expanded={speedOpen}
+            aria-controls="speed-controls"
+            aria-label={`Speed ${formatSpeed(state.speed)}. ${speedOpen ? 'Hide' : 'Change'} speed`}
           >
             {formatSpeed(state.speed)}
           </button>
-          <input
-            type="range"
-            className="seek-bar speed-bar"
-            aria-label="Playback speed"
-            aria-valuetext={formatSpeed(state.speed)}
-            min={MIN_SPEED}
-            max={MAX_SPEED}
-            step={SPEED_STEP}
-            value={state.speed}
-            onChange={(e) => player.setSpeed(Number(e.target.value))}
-          />
+          {speedOpen && (
+            <div id="speed-controls" className="speed-controls">
+              <input
+                type="range"
+                className="seek-bar speed-bar"
+                aria-label="Playback speed"
+                aria-valuetext={formatSpeed(state.speed)}
+                min={MIN_SPEED}
+                max={MAX_SPEED}
+                step={SPEED_STEP}
+                value={state.speed}
+                onChange={(e) => player.setSpeed(Number(e.target.value))}
+              />
+              <button
+                type="button"
+                className="speed-reset"
+                onClick={() => player.setSpeed(1)}
+                disabled={state.speed === 1}
+                aria-label="Reset to normal speed"
+              >
+                1×
+              </button>
+            </div>
+          )}
         </div>
         <button type="button" className="text-button" onClick={onOpenQueue}>
           <QueueIcon size={22} />
