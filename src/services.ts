@@ -145,8 +145,34 @@ export interface DirectoryPodcast {
   podcastId: string | null
 }
 
+/** The genres the directory's charts can be browsed by. */
+export const DIRECTORY_GENRES = [
+  'arts',
+  'business',
+  'comedy',
+  'education',
+  'fiction',
+  'government',
+  'healthFitness',
+  'history',
+  'kidsFamily',
+  'leisure',
+  'music',
+  'news',
+  'religionSpirituality',
+  'science',
+  'societyCulture',
+  'sports',
+  'technology',
+  'trueCrime',
+  'tvFilm',
+] as const
+
+export type DirectoryGenre = (typeof DIRECTORY_GENRES)[number]
+
+/** What the directory answers a search or a chart with. */
 export type PodcastSearch =
-  /** The directory's matches, best first; empty when nothing matched. */
+  /** The directory's podcasts, best first; empty when it had none. */
   | { outcome: 'found'; podcasts: DirectoryPodcast[] }
   /** The directory couldn't be reached, or gave no usable answer. */
   | { outcome: 'directoryUnavailable' }
@@ -229,6 +255,11 @@ export interface DataApi {
   refreshPodcast(podcastId: string): Promise<void>
   /** Searches the public podcast directory by name. Throws when the backend can't be reached. */
   searchPodcasts(term: string): Promise<PodcastSearch>
+  /**
+   * The public directory's most popular podcasts, most popular first: in one
+   * genre, or with null over all. Throws when the backend can't be reached.
+   */
+  topPodcasts(genre: DirectoryGenre | null): Promise<PodcastSearch>
   /** Returns at once; the feed is fetched and checked in the background. */
   subscribeToFeed(feedUrl: string): Promise<SubscribeStart>
   /**

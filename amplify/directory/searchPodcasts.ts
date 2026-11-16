@@ -1,34 +1,14 @@
 import type { FeedStore } from '../feeds/feedStore'
-import { normaliseFeedUrl, withUrlsRedactedFromErrors } from '../feeds/feedUrl'
+import { withUrlsRedactedFromErrors } from '../feeds/feedUrl'
+import { askDirectory, DIRECTORY_ORIGIN, type DirectoryListing, type DirectoryResult, listingOf, markInLibrary } from './directory'
 
 export interface SearchPodcastsEvent {
   arguments: { term: string }
 }
 
-/** A podcast as the directory lists it. */
-export interface DirectoryPodcast {
-  title: string
-  author: string | null
-  artworkUrl: string | null
-  /** Public: the directory lists it. Normalised as the subscribe mutation stores it. */
-  feedUrl: string
-  /** The podcast's ID when it is already in the library; null when it is not. */
-  podcastId: string | null
-}
+export type SearchPodcastsResult = DirectoryResult
 
-/** A directory listing, before it is checked against the library. */
-type DirectoryListing = Omit<DirectoryPodcast, 'podcastId'>
-
-export interface SearchPodcastsResult {
-  /** `directoryUnavailable`: the directory could not be reached or gave no usable answer; `podcasts` is empty. */
-  outcome: 'found' | 'directoryUnavailable'
-  podcasts: DirectoryPodcast[]
-}
-
-/** The public directory: the iTunes Search API, which needs no key. */
-const DIRECTORY_URL = 'https://itunes.apple.com/search'
 const RESULT_LIMIT = 25
-const TIMEOUT_MS = 8_000
 
 /**
  * The `searchPodcasts` query. Asks the public directory for podcasts matching
@@ -43,13 +23,7 @@ export function createSearchPodcastsHandler({ store }: { store: FeedStore }) {
 
     const listed = await searchDirectory(term)
     if (!listed) return { outcome: 'directoryUnavailable', podcasts: [] }
-    if (listed.length === 0) return { outcome: 'found', podcasts: [] }
-
-    const library = new Map((await store.listPodcasts()).map((podcast) => [podcast.feedUrl, podcast.id]))
-    return {
-      outcome: 'found',
-      podcasts: listed.map((podcast) => ({ ...podcast, podcastId: library.get(podcast.feedUrl) ?? null })),
-    }
+    return { outcome: 'found', podcasts: await markInLibrary(store, listed) }
   })
 }
 
@@ -59,18 +33,8 @@ export function createSearchPodcastsHandler({ store }: { store: FeedStore }) {
  */
 async function searchDirectory(term: string): Promise<DirectoryListing[] | null> {
   const query = new URLSearchParams({ media: 'podcast', entity: 'podcast', limit: String(RESULT_LIMIT), term })
-  let body: unknown
-  try {
-    const response = await fetch(`${DIRECTORY_URL}?${query}`, { signal: AbortSignal.timeout(TIMEOUT_MS) })
-    if (!response.ok) {
-      console.warn(`searchPodcasts: directory answered ${response.status}`)
-      return null
-    }
-    body = await response.json()
-  } catch (error) {
-    console.warn(`searchPodcasts: directory unreachable or unreadable: ${error instanceof Error ? error.name : 'Error'}`)
-    return null
-  }
+  const body = await askDirectory('searchPodcasts', `${DIRECTORY_ORIGIN}/search?${query}`)
+  if (body === null) return null
 
   const results = (body as { results?: unknown } | null)?.results
   if (!Array.isArray(results)) {
@@ -79,23 +43,8 @@ async function searchDirectory(term: string): Promise<DirectoryListing[] | null>
   }
   const listings = new Map<string, DirectoryListing>()
   for (const entry of results) {
-    if (typeof entry !== 'object' || entry === null) continue
-    const result = entry as Record<string, unknown>
-    const feedUrl = httpUrl(nonBlankString(result.feedUrl))
-    const title = nonBlankString(result.collectionName) ?? nonBlankString(result.trackName)
-    if (!feedUrl || !title || listings.has(feedUrl)) continue
-    // Shown as an image's source, so it too must be http or https.
-    const artworkUrl = httpUrl(nonBlankString(result.artworkUrl600) ?? nonBlankString(result.artworkUrl100))
-    listings.set(feedUrl, { title, author: nonBlankString(result.artistName), artworkUrl, feedUrl })
+    const listing = listingOf(entry)
+    if (listing && !listings.has(listing.feedUrl)) listings.set(listing.feedUrl, listing)
   }
   return [...listings.values()]
-}
-
-/** The URL, normalised, if it is http or https; otherwise null. */
-function httpUrl(value: string | null): string | null {
-  return value === null ? null : normaliseFeedUrl(value)
-}
-
-function nonBlankString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim() : null
 }

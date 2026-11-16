@@ -1,9 +1,11 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend'
+import { DIRECTORY_GENRES } from '../directory/genres'
 import { ingestFeedFunction } from '../functions/ingest-feed/resource'
 import { refreshFeedsFunction } from '../functions/refresh-feeds/resource'
 import { searchPodcastsFunction } from '../functions/search-podcasts/resource'
 import { stageDownloadFunction } from '../functions/stage-download/resource'
 import { subscribeFunction } from '../functions/subscribe/resource'
+import { topPodcastsFunction } from '../functions/top-podcasts/resource'
 import { unsubscribeFunction } from '../functions/unsubscribe/resource'
 
 // Single-user app: every model is readable and writable by the signed-in user
@@ -195,6 +197,18 @@ const schema = a
       .returns(a.ref('SearchPodcastsResult').required())
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(searchPodcastsFunction)),
+
+    // The genres the directory's charts can be browsed by (directory/genres.ts).
+    DirectoryGenre: a.enum([...DIRECTORY_GENRES]),
+
+    // The public podcast directory's most popular podcasts, in one genre or,
+    // with none given, over all. Answers as a search does.
+    topPodcasts: a
+      .query()
+      .arguments({ genre: a.ref('DirectoryGenre') })
+      .returns(a.ref('SearchPodcastsResult').required())
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(topPodcastsFunction)),
   })
   .authorization((allow) => [
     allow.authenticated(),
@@ -203,6 +217,7 @@ const schema = a
     allow.resource(ingestFeedFunction),
     allow.resource(refreshFeedsFunction),
     allow.resource(searchPodcastsFunction),
+    allow.resource(topPodcastsFunction),
     allow.resource(stageDownloadFunction),
   ])
 

@@ -280,17 +280,13 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
       async searchPodcasts(term): Promise<PodcastSearch> {
         const { data, errors } = await client.queries.searchPodcasts({ term })
         if (errors?.length || !data) throw new Error(errors?.map((e) => e.message).join('; ') ?? 'No result')
-        if (data.outcome === 'directoryUnavailable') return { outcome: 'directoryUnavailable' }
-        return {
-          outcome: 'found',
-          podcasts: data.podcasts.map((podcast) => ({
-            title: podcast.title,
-            author: podcast.author ?? null,
-            artworkUrl: podcast.artworkUrl ?? null,
-            feedUrl: podcast.feedUrl,
-            podcastId: podcast.podcastId ?? null,
-          })),
-        }
+        return toPodcastSearch(data)
+      },
+
+      async topPodcasts(genre): Promise<PodcastSearch> {
+        const { data, errors } = await client.queries.topPodcasts({ genre })
+        if (errors?.length || !data) throw new Error(errors?.map((e) => e.message).join('; ') ?? 'No result')
+        return toPodcastSearch(data)
       },
 
       async subscribeToFeed(feedUrl): Promise<SubscribeStart> {
@@ -597,6 +593,21 @@ function toPodcast(record: {
     categoryId: record.categoryId ?? null,
     libraryOrder: record.libraryOrder ?? null,
     favoriteOrder: record.favoriteOrder ?? null,
+  }
+}
+
+/** A search's or a chart's answer, as the client holds it. */
+function toPodcastSearch(data: Schema['SearchPodcastsResult']['type']): PodcastSearch {
+  if (data.outcome === 'directoryUnavailable') return { outcome: 'directoryUnavailable' }
+  return {
+    outcome: 'found',
+    podcasts: data.podcasts.map((podcast) => ({
+      title: podcast.title,
+      author: podcast.author ?? null,
+      artworkUrl: podcast.artworkUrl ?? null,
+      feedUrl: podcast.feedUrl,
+      podcastId: podcast.podcastId ?? null,
+    })),
   }
 }
 
