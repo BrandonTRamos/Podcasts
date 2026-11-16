@@ -1,6 +1,6 @@
 /*
- * TinCan's look: the navy and cream of its icon on a plain page, in the
- * system font. Dark, with the cream leading on navy, follows the device
+ * TinCan's look: the navy and cream of its icon on a finely grained page, in
+ * the system font. Dark, with the cream leading on navy, follows the device
  * unless settings choose light or dark (`data-theme` on the root).
  */
 :root {
@@ -17,6 +17,8 @@
   --track: #c5cfd8;
   /* A favorite's star. */
   --star: #d4900f;
+  /* How strongly the page's grain shows. */
+  --grain: 0.09;
   --shadow: 0 8px 28px rgb(20 38 61 / 0.18);
   /* The floating tab bar: frosted, so the screen shows through as it scrolls underneath. */
   --tabbar-bg: rgb(255 255 255 / 0.78);
@@ -47,6 +49,7 @@
   --on-accent: #1f3a5f;
   --track: #56636f;
   --star: #f2c14e;
+  --grain: 0.085;
   --shadow: 0 8px 28px rgb(0 0 0 / 0.5);
   --tabbar-bg: rgb(26 42 63 / 0.78);
   --tabbar-border: rgb(255 255 255 / 0.08);
@@ -64,6 +67,7 @@
     --on-accent: #1f3a5f;
     --track: #56636f;
     --star: #f2c14e;
+    --grain: 0.085;
     --shadow: 0 8px 28px rgb(0 0 0 / 0.5);
     --tabbar-bg: rgb(26 42 63 / 0.78);
     --tabbar-border: rgb(255 255 255 / 0.08);
@@ -75,6 +79,25 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
+}
+
+/*
+ * The page's grain: fine noise in the ink's colour, faint, behind every
+ * screen and still as they scroll. The noise is a tile used as a mask, so the
+ * colour stays the theme's. What is raised over the page (a dialog, a sheet,
+ * a bar) keeps its plain fill. It sits under the screens only while the root
+ * element has no background of its own, the body's then being the canvas's.
+ */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--ink);
+  opacity: var(--grain);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  3.2 0 0 0 -1.25'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  3.2 0 0 0 -1.25'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  pointer-events: none;
 }
 
 main {
