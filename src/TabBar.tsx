@@ -12,8 +12,8 @@ const tabs: { tab: Tab; label: string; icon: ReactNode }[] = [
   { tab: 'search', label: 'Search', icon: <SearchIcon size={24} /> },
 ]
 
-/** Stays at the foot of every screen but now playing, and leads to each section in one tap. */
-export function TabBar({ current, onSelect }: { current: Tab; onSelect: (tab: Tab) => void }) {
+/** Stays at the foot of every screen but now playing, and leads to each section in one tap. On a screen in no section, no tab is current. */
+export function TabBar({ current, onSelect }: { current: Tab | null; onSelect: (tab: Tab) => void }) {
   return (
     <nav className="tab-bar" aria-label="Sections">
       {tabs.map(({ tab, label, icon }) => (

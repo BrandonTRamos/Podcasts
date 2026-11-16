@@ -4,6 +4,7 @@ import { forgetLibrary, withLocalCopy } from './localCopy'
 import type { Services, StoredSession } from './services'
 import { SignedInApp } from './SignedInApp'
 import { SignInScreen } from './SignInScreen'
+import { THEME_KEY, useTheme } from './theme'
 
 type Session =
   | { status: 'loading' }
@@ -20,6 +21,7 @@ type Session =
 export function App({ services }: { services: Services }) {
   const { auth, device } = services
   const [session, setSession] = useState<Session>({ status: 'loading' })
+  const [theme, chooseTheme] = useTheme(device.storage)
   const data = useMemo(() => withLocalCopy(services.data, device), [services.data, device])
 
   useEffect(() => {
@@ -75,14 +77,17 @@ export function App({ services }: { services: Services }) {
       device={device}
       sessionExpired={session.status === 'expired'}
       onSignIn={() => setSession({ status: 'signedOut' })}
+      theme={theme}
+      onChooseTheme={chooseTheme}
       onSignOut={async () => {
         try {
           await auth.signOut()
         } finally {
           // Signing out removes access from this device: what it keeps of the
           // library goes too, with changes not yet synced. Downloads stay, as
-          // their files do, and so do the records that name them.
-          forgetLibrary(device.storage, isDownloadRecord)
+          // their files do, and so do the records that name them, and the
+          // theme, which is the device's own.
+          forgetLibrary(device.storage, (key) => isDownloadRecord(key) || key === THEME_KEY)
           setSession({ status: 'signedOut' })
         }
       }}
