@@ -8,8 +8,9 @@ import type { DataApi, Episode, EpisodeState, KeepEpisodeOutcome } from './servi
  * the whole feed for the same words, show notes included, and what that finds
  * beyond the episodes listed above. The library keeps only a feed's newest
  * episodes, so most of these are older ones it doesn't have: each can be
- * added, and is then an episode like any other. The button submits the search
- * form, so the keyboard's search key does the same.
+ * added, and is then an episode like any other, in the podcast's Recently
+ * Added. The button submits the search form, so the keyboard's search key does
+ * the same.
  */
 export function OlderEpisodes({
   data,
@@ -20,6 +21,7 @@ export function OlderEpisodes({
   inLibrary,
   stateOf,
   onKept,
+  onSetAdded,
   ...actions
 }: {
   data: Pick<DataApi, 'keepEpisode'>
@@ -36,6 +38,8 @@ export function OlderEpisodes({
   stateOf: (episodeId: string) => EpisodeState | undefined
   /** Called with an episode once it has been added to the library. */
   onKept: (episode: Episode) => void
+  /** Adds an episode the library has to the podcast's Recently Added, or takes it out. */
+  onSetAdded: (episode: Episode, added: boolean) => void
 } & EpisodeActions) {
   const feedUnavailable = load?.status === 'done' && load.search.outcome === 'feedUnavailable'
   const cut = load?.status === 'done' && load.search.outcome === 'found' && load.search.more
@@ -60,7 +64,7 @@ export function OlderEpisodes({
             {more.map((found) => {
               const episode = inLibrary(found.id)
               return episode ? (
-                <EpisodeRow key={found.id} episode={episode} state={stateOf(found.id)} {...actions} />
+                <EpisodeRow key={found.id} episode={episode} state={stateOf(found.id)} onSetAdded={onSetAdded} {...actions} />
               ) : (
                 <FeedEpisodeRow key={found.id} episode={found} data={data} onKept={onKept} />
               )

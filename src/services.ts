@@ -88,10 +88,16 @@ export interface EpisodeState {
    * it is not queued. Fractional, so moving one episode is a single write.
    */
   queueOrder: number | null
+  /**
+   * When the listener added it to its podcast's Recently Added (ISO 8601), by
+   * its Add button or by adding it from the feed's older episodes. Null when
+   * they have not, or have taken it back out.
+   */
+  addedAt: string | null
 }
 
 /** Some fields of an episode's listening state, to change while leaving the others as they are. */
-export type EpisodeStateChange = Partial<Pick<EpisodeState, 'positionSeconds' | 'played' | 'queueOrder'>>
+export type EpisodeStateChange = Partial<Pick<EpisodeState, 'positionSeconds' | 'played' | 'queueOrder' | 'addedAt'>>
 
 export interface SavedEpisodeState extends EpisodeState {
   /** When the backend stored it (ISO 8601). The later of two saves wins. */

@@ -20,7 +20,7 @@ import {
 } from './services'
 
 const episodeFields = ['id', 'podcastId', 'title', 'publishedAt', 'durationSeconds', 'enclosureUrl'] as const
-const stateFields = ['id', 'podcastId', 'positionSeconds', 'played', 'queueOrder', 'updatedAt'] as const
+const stateFields = ['id', 'podcastId', 'positionSeconds', 'played', 'queueOrder', 'addedAt', 'updatedAt'] as const
 const podcastFields = ['id', 'title', 'author', 'artworkUrl', 'lastFetchedAt', 'lastFetchError', 'categoryId', 'libraryOrder', 'favoriteOrder'] as const
 const categoryFields = ['id', 'name'] as const
 
@@ -404,15 +404,16 @@ export function amplifyServices(): Pick<Services, 'auth' | 'data'> {
         const update = () => updateIfNotOutdone({ id: episodeId, ...change, changedAt })
         let result = await update()
         if (!result.data && failedCondition(result.errors)) {
-          const { queueOrder, ...rest } = change
+          const { queueOrder, addedAt, ...rest } = change
           result = await client.models.EpisodeState.create({
             id: episodeId,
             podcastId,
             positionSeconds: 0,
             played: false,
             ...rest,
-            // Left out rather than null when not queued, as an update leaves it.
+            // Left out rather than null when not queued or not added, as an update leaves them.
             ...(queueOrder != null && { queueOrder }),
+            ...(addedAt != null && { addedAt }),
             changedAt,
           })
           if (!result.data && failedCondition(result.errors)) {
@@ -560,6 +561,7 @@ const UPDATE_EPISODE_STATE = /* GraphQL */ `
       positionSeconds
       played
       queueOrder
+      addedAt
       changedAt
       createdAt
       updatedAt
@@ -573,6 +575,7 @@ interface StateRecord {
   positionSeconds: number
   played: boolean
   queueOrder?: number | null
+  addedAt?: string | null
   updatedAt: string
 }
 
@@ -637,8 +640,16 @@ function toEpisode(record: EpisodeFields): Episode {
 }
 
 function toSavedEpisodeState(record: StateRecord): SavedEpisodeState {
-  const { id, podcastId, positionSeconds, played, queueOrder, updatedAt } = record
-  return { episodeId: id, podcastId, positionSeconds, played, queueOrder: queueOrder ?? null, updatedAt }
+  const { id, podcastId, positionSeconds, played, queueOrder, addedAt, updatedAt } = record
+  return {
+    episodeId: id,
+    podcastId,
+    positionSeconds,
+    played,
+    queueOrder: queueOrder ?? null,
+    addedAt: addedAt ?? null,
+    updatedAt,
+  }
 }
 
 function throwIfErrors(errors: readonly { message: string }[] | undefined) {

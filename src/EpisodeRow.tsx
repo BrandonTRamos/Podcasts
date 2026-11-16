@@ -34,12 +34,15 @@ export interface EpisodeActions {
  * downloaded. While it plays, that button pauses it instead. Everything else a listener can do with it (mark it played, read
  * its show notes, queue it, download it) is behind its "More actions" button.
  * Shows its podcast's title and artwork too when the list mixes podcasts.
+ * On its podcast's own screen it has an Add button as well, which puts it in
+ * the podcast's Recently Added, or, once added, takes it back out.
  */
 export function EpisodeRow({
   episode,
   state,
   podcastTitle,
   artworkUrl,
+  onSetAdded,
   onPlay,
   onPause,
   isPlaying,
@@ -55,12 +58,20 @@ export function EpisodeRow({
   podcastTitle?: string
   /** Its podcast's artwork, shown at the start of the row; left out, the row has none. */
   artworkUrl?: string | null
+  /** Adds it to its podcast's Recently Added, or takes it out. Left out, the row has no Add button. */
+  onSetAdded?: (episode: Episode, added: boolean) => void
 } & EpisodeActions) {
   const played = state?.played ?? false
   const unavailable = unavailableNow(episode.id)
   const download = downloadOf(episode.id)
   const withArtwork = artworkUrl !== undefined
-  const className = ['episode-row', withArtwork && 'episode-row-with-artwork', played && 'episode-row-played']
+  const added = state?.addedAt != null
+  const className = [
+    'episode-row',
+    withArtwork && 'episode-row-with-artwork',
+    onSetAdded && 'episode-row-with-add',
+    played && 'episode-row-played',
+  ]
     .filter(Boolean)
     .join(' ')
   return (
@@ -100,6 +111,17 @@ export function EpisodeRow({
           <DownloadControl download={download} onDownload={() => onDownload(episode)} />
         )}
       </div>
+      {onSetAdded && (
+        <button
+          type="button"
+          className={added ? 'add-pill added' : 'add-pill outline'}
+          aria-label={`Add ${episode.title}`}
+          aria-pressed={added}
+          onClick={() => onSetAdded(episode, !added)}
+        >
+          {added ? 'Added' : 'Add'}
+        </button>
+      )}
       <MoreActions>
         <button type="button" onClick={() => onMarkPlayed(episode, !played)}>
           {played ? 'Mark unplayed' : 'Mark played'}

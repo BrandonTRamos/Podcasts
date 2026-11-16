@@ -397,7 +397,8 @@ button.back {
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.15);
 }
 
-.in-progress-empty {
+.in-progress-empty,
+.recently-added-empty {
   color: var(--muted);
 }
 
@@ -845,10 +846,8 @@ button.category-toggle {
   font-size: 0.875rem;
 }
 
+/* Over a podcast's episodes: the tabs that choose which show, and the filter of them. */
 .episodes-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   padding-top: 0.75rem;
   border-top: 1px solid var(--ink);
 }
@@ -856,6 +855,7 @@ button.category-toggle {
 .episode-filter {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.5rem;
   font-size: 0.875rem;
   font-weight: 400;
@@ -947,6 +947,22 @@ input.switch:checked::after {
 
 .episode-row-with-artwork > .artwork {
   align-self: start;
+}
+
+/* On a podcast's own screen: the Add button, between the episode and its other actions. */
+.episode-row-with-add {
+  grid-template-columns: 1fr auto auto;
+}
+
+/* The actions button beside it is wider than its dots. */
+.episode-row-with-add > .add-pill {
+  margin-right: -0.25rem;
+}
+
+/* Added: filled, where Add is an outline. */
+button.add-pill.added {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .episode-row h2,
