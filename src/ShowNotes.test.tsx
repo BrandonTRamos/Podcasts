@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
@@ -21,7 +21,11 @@ const episode = {
  */
 async function renderShow(
   showNotes: string | null,
-  { data = fakeDataApi(), positionSeconds }: { data?: FakeDataApi; positionSeconds?: number } = {},
+  { data = fakeDataApi(), positionSeconds, device = new FakeDevice() }: {
+    data?: FakeDataApi
+    positionSeconds?: number
+    device?: FakeDevice
+  } = {},
 ) {
   const podcastId = data.seedPodcast('https://feeds.example.com/show.xml', show)
   const [episodeId] = data.ingest(podcastId, [{ ...episode, showNotes }])
@@ -29,11 +33,11 @@ async function renderShow(
   const auth = fakeAuth(owner)
   await auth.signIn(owner.email, owner.password)
   const audio = new FakeAudio()
-  render(<App services={{ auth, data, audio, mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />)
+  render(<App services={{ auth, data, audio, mediaSession: new FakeMediaSession(), device }} />)
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: /The Example Show/ }))
   await screen.findByRole('list', { name: 'Episodes' })
-  return { audio, data, user, podcastId, episodeId }
+  return { audio, data, user, podcastId, episodeId, device }
 }
 
 /** Opens the episode's screen from the show's list. */
@@ -148,6 +152,183 @@ describe('links in show notes', () => {
     expect(article).toHaveAttribute('target', '_blank')
     expect(article.getAttribute('rel')?.split(' ')).toEqual(expect.arrayContaining(['noopener', 'noreferrer']))
     expect(within(notes).getByRole('link', { name: 'write in' })).toHaveAttribute('href', 'mailto:host@example.com')
+  })
+})
+
+describe('timestamps in show notes', () => {
+  it('starts at a plain-text timestamp instead of the saved position, then seeks without reloading', async () => {
+    const { audio, user } = await renderShow(
+      '(0:00) Intro\n(1:22) Robert Pattinson is James Bond\n(35:55) Ebenezer\n' +
+        '(1:00:08) Fjord\n(1:45:53) Interview\n75:30 Credits',
+      { positionSeconds: 600 },
+    )
+    await openEpisode(user)
+    const notes = await showNotes()
+
+    for (const [timestamp, seconds] of [
+      ['1:22', 82], ['35:55', 2155], ['1:00:08', 3608], ['1:45:53', 6353], ['75:30', 4530], ['0:00', 0],
+    ] as const) {
+      await user.click(within(notes).getByRole('button', { name: `Seek to ${timestamp}` }))
+      expect(audio.src).toBe(episode.enclosureUrl)
+      expect(audio.currentTime).toBe(seconds)
+      expect(audio.paused).toBe(false)
+      expect(audio.loads).toBe(1)
+    }
+    expect(notes).toHaveTextContent('(1:22) Robert Pattinson is James Bond')
+    expect(screen.getByRole('heading', { level: 1, name: episode.title })).toBeInTheDocument()
+  })
+
+  it('seeks HTML timestamps in paragraphs, formatting, tables and existing timestamp links', async () => {
+    const { audio, user } = await renderShow(
+      '<p>(<strong>01:22</strong>) Intro</p><table><tr><td>1:00:08</td><td>Fjord</td></tr></table>' +
+        '<p><a href="https://example.com/episode?t=2155"><em>35:55</em></a> Film</p>',
+    )
+    await openEpisode(user)
+    const notes = await showNotes()
+
+    await user.click(within(notes).getByRole('button', { name: 'Seek to 01:22' }))
+    expect(audio.currentTime).toBe(82)
+    await user.click(within(notes).getByRole('button', { name: 'Seek to 1:00:08' }))
+    expect(audio.currentTime).toBe(3608)
+    await user.click(within(notes).getByRole('button', { name: 'Seek to 35:55' }))
+    expect(audio.currentTime).toBe(2155)
+    expect(notes).toHaveTextContent('1:00:08 Fjord')
+    expect(within(notes).getByRole('button', { name: 'Seek to 01:22' }).closest('strong')).not.toBeNull()
+    expect(within(notes).queryByRole('link')).not.toBeInTheDocument()
+    expect(notes.querySelector('a button, button a')).toBeNull()
+  })
+
+  it('leaves web addresses and descriptive external links containing timestamps intact', async () => {
+    const { user } = await renderShow(
+      '<p>1:22 Intro https://example.com/1:22?t=1:00:08.</p>' +
+        '<a href="https://example.com/article">Read about 35:55</a>',
+    )
+    await openEpisode(user)
+    const notes = await showNotes()
+
+    expect(within(notes).getAllByRole('button')).toHaveLength(1)
+    expect(within(notes).getByRole('link', { name: 'https://example.com/1:22?t=1:00:08' }))
+      .toHaveAttribute('href', 'https://example.com/1:22?t=1:00:08')
+    expect(within(notes).getByRole('link', { name: 'Read about 35:55' })).toHaveAttribute('target', '_blank')
+    expect(notes.querySelector('a button')).toBeNull()
+  })
+
+  it('keeps malformed timestamps and numbers inside words as text', async () => {
+    const text = '1:2 1:60 1:60:00 1:23:99 abc1:22 1:22xyz 1:22.5 1.1:22 1:22:33:44 999999999999999999999:00'
+    const { user } = await renderShow(text)
+    await openEpisode(user)
+    const notes = await showNotes()
+
+    expect(within(notes).queryByRole('button')).not.toBeInTheDocument()
+    expect(notes).toHaveTextContent(text)
+  })
+
+  it('keeps a paused episode paused, and supports seeking with the keyboard', async () => {
+    const { audio, user } = await renderShow('0:00 Intro\n1:22 Topic')
+    await openEpisode(user)
+    await user.click(within(await showNotes()).getByRole('button', { name: 'Seek to 1:22' }))
+    act(() => audio.loadMetadata(3723))
+    await user.click(within(screen.getByRole('region', { name: 'Mini player' })).getByRole('button', { name: 'Pause' }))
+
+    const start = within(await showNotes()).getByRole('button', { name: 'Seek to 0:00' })
+    act(() => start.focus())
+    await user.keyboard('{Enter}')
+
+    expect(audio.currentTime).toBe(0)
+    expect(audio.paused).toBe(true)
+    expect(audio.loads).toBe(1)
+  })
+
+  it('applies the latest timestamp after metadata arrives if the browser ignores early seeks', async () => {
+    const { audio, user } = await renderShow('1:22 Intro\n35:55 Film\n0:00 Start')
+    audio.ignoreEarlySeeks()
+    await openEpisode(user)
+    const notes = await showNotes()
+    await user.click(within(notes).getByRole('button', { name: 'Seek to 1:22' }))
+    await user.click(within(notes).getByRole('button', { name: 'Seek to 35:55' }))
+    expect(audio.currentTime).toBe(0)
+
+    act(() => audio.loadMetadata(3723))
+
+    expect(audio.currentTime).toBe(2155)
+    expect(audio.paused).toBe(false)
+    expect(audio.loads).toBe(1)
+  })
+
+  it('can return to the start while an earlier timestamp is still waiting for metadata', async () => {
+    const { audio, user } = await renderShow('1:22 Intro\n0:00 Start')
+    audio.ignoreEarlySeeks()
+    await openEpisode(user)
+    const notes = await showNotes()
+    await user.click(within(notes).getByRole('button', { name: 'Seek to 1:22' }))
+    await user.click(within(notes).getByRole('button', { name: 'Seek to 0:00' }))
+
+    act(() => audio.loadMetadata(3723))
+
+    expect(audio.currentTime).toBe(0)
+  })
+
+  it('plays the notes’ episode when a different episode is loaded, saving the old position and leaving the queue', async () => {
+    const other = { ...episode, title: 'Earlier episode', publishedAt: '2026-11-01T08:00:00.000Z', enclosureUrl: 'https://media.example.com/other.mp3' }
+    const { audio, user, data, podcastId } = await renderShow('1:22 Topic')
+    let otherId = ''
+    act(() => { [otherId] = data.ingest(podcastId, [other]) })
+    await chooseAction(user, within(screen.getByRole('list', { name: 'Episodes' })).getAllByRole('listitem')[0], 'Add to queue')
+    await user.click(screen.getByRole('button', { name: other.title }))
+    act(() => audio.progressTo(300))
+    await openEpisode(user)
+
+    await user.click(within(await showNotes()).getByRole('button', { name: 'Seek to 1:22' }))
+
+    expect(audio.src).toBe(episode.enclosureUrl)
+    expect(audio.currentTime).toBe(82)
+    expect(audio.paused).toBe(false)
+    expect(data.savedState(otherId)).toMatchObject({ positionSeconds: 300 })
+    await user.click(screen.getByRole('button', { name: 'Queue' }))
+    expect(screen.getByText('Nothing queued.')).toBeInTheDocument()
+  })
+
+  it('disables timestamp seeking offline when the episode has no download', async () => {
+    const { audio, user, device } = await renderShow('1:22 Topic')
+    await openEpisode(user)
+    const notes = await showNotes()
+    act(() => device.goOffline())
+
+    const timestamp = within(notes).getByRole('button', { name: 'Seek to 1:22' })
+    expect(timestamp).toBeDisabled()
+    await user.click(timestamp)
+    expect(audio.src).toBe('')
+  })
+
+  it('seeks the downloaded copy while offline', async () => {
+    const device = new FakeDevice()
+    device.network.host(episode.enclosureUrl, new Uint8Array(1000))
+    const { audio, user } = await renderShow('1:22 Topic', { device })
+    await chooseAction(user, screen.getByRole('list', { name: 'Episodes' }), 'Download')
+    await screen.findByText('Downloaded')
+    await openEpisode(user)
+    act(() => device.goOffline())
+
+    await user.click(within(await showNotes()).getByRole('button', { name: 'Seek to 1:22' }))
+
+    expect(audio.src).toMatch(/^blob:/)
+    expect(audio.currentTime).toBe(82)
+    expect(audio.paused).toBe(false)
+  })
+
+  it('only creates seek buttons from surviving text, dropping feed-supplied handlers and controls', async () => {
+    const { audio, user } = await renderShow(
+      '<script>1:22</script><button onclick="alert(1)">2:22</button>' +
+        '<p onclick="alert(1)">3:22 Topic</p><a href="javascript:alert(1)" onclick="alert(1)">4:22</a>',
+    )
+    await openEpisode(user)
+    const notes = await showNotes()
+
+    expect(within(notes).getAllByRole('button')).toHaveLength(2)
+    expect(notes.textContent).not.toMatch(/1:22|2:22/)
+    expect(notes.querySelector('[onclick], [href], script')).toBeNull()
+    await user.click(within(notes).getByRole('button', { name: 'Seek to 4:22' }))
+    expect(audio.currentTime).toBe(262)
   })
 })
 

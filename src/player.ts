@@ -311,9 +311,11 @@ export function createPlayer(
       update({ position: Math.max(seconds, 0) })
       return
     }
-    pendingStart = null
     // Only the file's own length bounds a seek: the feed's can be wrong.
     const position = Math.min(Math.max(seconds, 0), fileDuration() ?? Infinity)
+    // A timestamp (or another seek) can be tapped while the file is still
+    // loading. Retry that latest choice when early seeks are ignored by iOS.
+    pendingStart = fileDuration() === null ? position : null
     audio.currentTime = position
     update({ position })
   }

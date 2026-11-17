@@ -17,10 +17,16 @@ import { createElement, Fragment, type ReactNode } from 'react'
  * can't reach back into the app.
  *
  * Plain text keeps its paragraphs and line breaks, and its web addresses
- * become links.
+ * become links. Timestamps become app-owned seek buttons in either format.
  */
-export function ShowNotes({ notes }: { notes: ShowNotesState }) {
-  const rendered = notes.status === 'loaded' && notes.notes !== null ? sanitise(notes.notes) : null
+export function ShowNotes({ notes, onSeek, seekDisabled = false }: {
+  notes: ShowNotesState
+  onSeek: (seconds: number) => void
+  seekDisabled?: boolean
+}) {
+  const rendered = notes.status === 'loaded' && notes.notes !== null
+    ? sanitise(notes.notes, { onSeek, disabled: seekDisabled })
+    : null
   return (
     <section
       aria-label="Show notes"
@@ -37,8 +43,13 @@ export function ShowNotes({ notes }: { notes: ShowNotesState }) {
 /** Show notes as they arrive: null once loaded means the episode has none. */
 export type ShowNotesState = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; notes: string | null }
 
-function sanitise(notes: string): Rendered {
-  return looksLikeHtml(notes) ? fromHtml(notes) : fromPlainText(notes)
+interface TimestampControls {
+  onSeek: (seconds: number) => void
+  disabled: boolean
+}
+
+function sanitise(notes: string, timestamps: TimestampControls): Rendered {
+  return looksLikeHtml(notes) ? fromHtml(notes, timestamps) : fromPlainText(notes, timestamps)
 }
 
 interface Rendered {
@@ -82,7 +93,7 @@ const STRUCTURAL = new Set(['p', 'br', 'div', 'pre', 'blockquote', 'ul', 'ol', '
 
 const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml'
 
-function fromHtml(html: string): Rendered {
+function fromHtml(html: string, timestamps: TimestampControls): Rendered {
   const body = new DOMParser().parseFromString(html, 'text/html').body
   const result = { hasText: false, structured: false }
 
@@ -94,7 +105,7 @@ function fromHtml(html: string): Rendered {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent ?? ''
       if (text.trim()) result.hasText = true
-      return insideLink ? text : linkify(text)
+      return insideLink ? text : linkify(text, timestamps)
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return null
     const element = node as Element
@@ -104,6 +115,13 @@ function fromHtml(html: string): Rendered {
     if (DROPPED.has(name)) return null
     if (STRUCTURAL.has(name)) result.structured = true
     if (name === 'a') {
+      // Publishers sometimes make a timestamp a web link already. Seek here
+      // instead, without putting a button inside an external link.
+      const label = element.textContent?.trim() ?? ''
+      const seconds = timestampSeconds(label)
+      if (!insideLink && seconds !== null) {
+        return <TimestampButton seconds={seconds} label={label} controls={timestamps}>{children(element, true)}</TimestampButton>
+      }
       const href = insideLink ? null : safeHref(element.getAttribute('href'))
       if (href === null) return children(element, insideLink)
       return <ExternalLink href={href}>{children(element, true)}</ExternalLink>
@@ -120,7 +138,7 @@ function fromHtml(html: string): Rendered {
   return { content, hasText: result.hasText, keepLineBreaks: !result.structured }
 }
 
-function fromPlainText(notes: string): Rendered {
+function fromPlainText(notes: string, timestamps: TimestampControls): Rendered {
   const paragraphs = decodeEntities(notes)
     .replace(/\r\n?/g, '\n')
     .split(/\n[^\S\n]*\n\s*/)
@@ -132,7 +150,7 @@ function fromPlainText(notes: string): Rendered {
         {paragraph.split('\n').map((line, j) => (
           <Fragment key={j}>
             {j > 0 && <br />}
-            {linkify(line)}
+            {linkify(line, timestamps)}
           </Fragment>
         ))}
       </p>
@@ -162,19 +180,70 @@ function trimTrailingPunctuation(url: string): string {
   return trimmed
 }
 
-function linkify(text: string): ReactNode {
+function linkify(text: string, timestamps: TimestampControls): ReactNode {
   const parts: ReactNode[] = []
   let last = 0
   for (const match of text.matchAll(URL_IN_TEXT)) {
     const url = trimTrailingPunctuation(match[0])
     const href = safeHref(url)
     if (href === null) continue
-    parts.push(text.slice(last, match.index), <ExternalLink key={match.index} href={href}>{url}</ExternalLink>)
+    parts.push(
+      <Fragment key={match.index}>
+        {timestampify(text.slice(last, match.index), timestamps)}
+        <ExternalLink href={href}>{url}</ExternalLink>
+      </Fragment>,
+    )
     last = match.index + url.length
+  }
+  if (parts.length === 0) return timestampify(text, timestamps)
+  parts.push(<Fragment key="tail">{timestampify(text.slice(last), timestamps)}</Fragment>)
+  return parts
+}
+
+/** Whole m:ss or h:mm:ss values, including minutes beyond 59 in the two-part form. */
+function timestampSeconds(text: string): number | null {
+  if (!/^(?:\d+:[0-5]\d:[0-5]\d|\d+:[0-5]\d)$/.test(text)) return null
+  const seconds = text.split(':').reduce((total, part) => total * 60 + Number(part), 0)
+  return Number.isSafeInteger(seconds) ? seconds : null
+}
+
+/** Don't turn a fragment of a malformed time, word, or decimal into a seek. */
+const TIMESTAMP_IN_TEXT = /(?<![\w:.])(?:\d+:[0-5]\d:[0-5]\d|\d+:[0-5]\d)(?![\w:]|\.\d)/g
+
+function timestampify(text: string, controls: TimestampControls): ReactNode {
+  const parts: ReactNode[] = []
+  let last = 0
+  for (const match of text.matchAll(TIMESTAMP_IN_TEXT)) {
+    const seconds = timestampSeconds(match[0])
+    if (seconds === null) continue
+    parts.push(
+      text.slice(last, match.index),
+      <TimestampButton key={match.index} seconds={seconds} label={match[0]} controls={controls}>{match[0]}</TimestampButton>,
+    )
+    last = match.index + match[0].length
   }
   if (parts.length === 0) return text
   parts.push(text.slice(last))
   return parts
+}
+
+function TimestampButton({ seconds, label, controls, children }: {
+  seconds: number
+  label: string
+  controls: TimestampControls
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      className="show-notes-timestamp"
+      aria-label={`Seek to ${label}`}
+      disabled={controls.disabled}
+      onClick={() => controls.onSeek(seconds)}
+    >
+      {children}
+    </button>
+  )
 }
 
 /** An absolute http, https or mailto address, or null for anything else: scripts, data, or a relative address into the app. */
