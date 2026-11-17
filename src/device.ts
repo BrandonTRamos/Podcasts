@@ -1,4 +1,5 @@
 import { createFileClient } from './opfsFiles'
+import { createPlaybackLog, localStorageText } from './playbackLog'
 import type { Device, DeviceFiles, DeviceStorage, ScreenHold } from './services'
 
 /**
@@ -10,6 +11,7 @@ export function browserDevice(): Device {
   return {
     files: originPrivateFiles(),
     storage: localStorageRecords('tincan.device.'),
+    playbackLog: createPlaybackLog(localStorageText('tincan.playbackLog')),
     fetch: (url, init) => fetch(url, init),
     isOnline: () => navigator.onLine,
     watchConnectivity(listener) {

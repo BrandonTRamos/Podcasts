@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { connectMediaSession, offerNextTrack } from './mediaSession'
-import type { AudioElement, MediaSessionControls } from './services'
+import type { AudioElement, MediaSessionControls, PlaybackLog } from './services'
 
 /** How far each skip moves until the listener picks otherwise. */
 export const DEFAULT_SKIP: SkipSeconds = { back: 15, forward: 30 }
@@ -16,6 +16,8 @@ export interface SkipSeconds {
 export type SkipDirection = keyof SkipSeconds
 /** While playing, the position is saved no more often than this. Each save is a write to the backend. */
 export const SAVE_INTERVAL_MS = 60_000
+/** A file played again that has not moved after this long is stuck. One that plays starts within a second or so. */
+export const STUCK_MS = 4_000
 /** The range of playback speeds the listener can slide between; 1 is normal speed. */
 export const MIN_SPEED = 0.5
 export const MAX_SPEED = 3
@@ -91,6 +93,12 @@ export type LocalCopyOf = (episodeId: string) => string | null
  *
  * When an episode plays to the end, it takes the next from the queue and
  * plays that, setting its source within the `ended` event itself.
+ *
+ * A loaded file played again (after a pause) whose position has not moved
+ * `STUCK_MS` later is loaded afresh at that position and played, once. On an
+ * iPhone, pressing play on the lock screen after a long pause can leave the
+ * element saying it plays while nothing comes out. A file loading for the
+ * first time is left alone: a slow network is no reason to start over.
  */
 export interface Player {
   getState(): PlayerState
@@ -139,6 +147,8 @@ export function createPlayer(
   takeNext: TakeNext,
   localCopyOf: LocalCopyOf,
   initialSkip: SkipSeconds = DEFAULT_SKIP,
+  /** Told, in a line, when the player steps in to rescue playback. */
+  report: (line: string) => void = () => {},
 ): Player {
   let state: PlayerState = { episode: null, speed: initialSpeed, skip: initialSkip }
   const listeners = new Set<() => void>()
@@ -151,6 +161,8 @@ export function createPlayer(
   let pendingStart: number | null = null
   /** The loaded episode was cued, and its file has not loaded: the element holds nothing yet. */
   let cued = false
+  /** Runs out when the file played again has stayed put for `STUCK_MS`. */
+  let stuckTimer: ReturnType<typeof setTimeout> | null = null
 
   function set(next: PlayerState) {
     state = next
@@ -231,6 +243,25 @@ export function createPlayer(
     })
   }
 
+  /** Plays the loaded file on from where it is, and loads it afresh if it then stays put. */
+  function playOn() {
+    attemptPlay()
+    stopWatchingForStuck()
+    if (audio.paused) return
+    const from = audio.currentTime
+    stuckTimer = setTimeout(() => {
+      stuckTimer = null
+      if (!state.episode || state.failed || audio.paused || audio.currentTime !== from) return
+      report(`stuck at ${from.toFixed(1)}: loading afresh`)
+      load(state.episode, from)
+    }, STUCK_MS)
+  }
+
+  function stopWatchingForStuck() {
+    if (stuckTimer !== null) clearTimeout(stuckTimer)
+    stuckTimer = null
+  }
+
   /** The next queued episode other than the one loaded, which, if queued too, leaves the queue. */
   function takeNextOther() {
     let next = takeNext()
@@ -241,6 +272,7 @@ export function createPlayer(
   /** Loads the episode in place of whatever is loaded, and starts it. */
   function load(episode: PlayableEpisode, startAt: number) {
     loadCount++
+    stopWatchingForStuck()
     cued = false
     const start = Math.max(startAt, 0)
     const duration = episode.durationSeconds
@@ -264,7 +296,7 @@ export function createPlayer(
       return
     }
     if (state.episode && state.episode.id === episode.id && !state.failed) {
-      attemptPlay()
+      playOn()
       return
     }
     // The element is about to be reused, so take its position for the episode it holds now.
@@ -314,7 +346,7 @@ export function createPlayer(
 
     resume() {
       if (cued && state.episode) load(state.episode, state.position)
-      else if (state.episode && !state.failed) attemptPlay()
+      else if (state.episode && !state.failed) playOn()
     },
 
     pause() {
@@ -359,6 +391,7 @@ export function createPlayer(
 
     stop() {
       loadCount++
+      stopWatchingForStuck()
       cued = false
       pendingStart = null
       audio.pause()
@@ -421,8 +454,8 @@ function storeSkip(skip: SkipSeconds) {
  * A player for this audio element, for the life of the calling component,
  * shown on and controlled from the OS media controls. It saves the position
  * whenever the app goes to the background, and keeps the chosen speed and skips on
- * this device for the next launch. `saveProgress`, `takeNext` and `localCopyOf`
- * are taken once, when the player is made, so later values are ignored. `hasNext` says
+ * this device for the next launch. `saveProgress`, `takeNext`, `localCopyOf`
+ * and `log` are taken once, when the player is made, so later values are ignored. `hasNext` says
  * whether anything is queued, for the OS controls' next button.
  */
 export function usePlayer(
@@ -432,10 +465,13 @@ export function usePlayer(
   takeNext: TakeNext,
   localCopyOf: LocalCopyOf,
   hasNext: boolean,
+  log: PlaybackLog,
 ): { player: Player; state: PlayerState } {
   // The engine attaches to the element only while subscribed, so a discarded
   // instance (React may call the initialiser twice) leaves nothing behind.
-  const [player] = useState(() => createPlayer(audio, saveProgress, storedSpeed(), takeNext, localCopyOf, storedSkip()))
+  const [player] = useState(() =>
+    createPlayer(audio, saveProgress, storedSpeed(), takeNext, localCopyOf, storedSkip(), (line) => log.record(`player ${line}`)),
+  )
   const state = useSyncExternalStore(player.subscribe, player.getState)
   useEffect(() => () => player.stop(), [player])
   useEffect(() => connectMediaSession(mediaSession, player), [mediaSession, player])

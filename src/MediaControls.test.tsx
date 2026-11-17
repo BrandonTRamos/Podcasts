@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
+import { STUCK_MS } from './player'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 import { chooseLibraryAction } from './test/ui'
 
@@ -36,11 +37,12 @@ async function renderShow({ artworkUrl = show.artworkUrl }: { artworkUrl?: strin
   const mediaSession = new FakeMediaSession()
   const auth = fakeAuth(owner)
   await auth.signIn(owner.email, owner.password)
-  render(<App services={{ auth, data, audio, mediaSession, device: new FakeDevice() }} />)
+  const device = new FakeDevice()
+  render(<App services={{ auth, data, audio, mediaSession, device }} />)
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: /The Example Show/ }))
   await screen.findByRole('list', { name: 'Episodes' })
-  return { audio, mediaSession, user }
+  return { audio, mediaSession, device, user }
 }
 
 function miniPlayer() {
@@ -241,5 +243,112 @@ describe('headphone and Bluetooth buttons', () => {
     act(() => mediaSession.press('play'))
     expect(audio.paused).toBe(false)
     expect(audio.currentTime).toBe(600)
+  })
+})
+
+// On an iPhone, pressing play on the lock screen after a long pause can leave
+// the element saying it plays while its position stays put and nothing is heard.
+describe('a file that stays stuck after play is pressed', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Plays the first episode to ten minutes in, pauses it, and presses play on the lock screen. */
+  async function pressPlayAfterAPause() {
+    const shown = await renderShow()
+    const { audio, mediaSession, user } = shown
+    await user.click(screen.getByRole('button', { name: first.title }))
+    act(() => audio.loadMetadata(2712))
+    act(() => audio.progressTo(600))
+    act(() => mediaSession.press('pause'))
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
+    act(() => mediaSession.press('play'))
+    return shown
+  }
+
+  const wait = (ms: number) => act(() => void vi.advanceTimersByTime(ms))
+
+  it('is loaded afresh at the same place and played', async () => {
+    const { audio, mediaSession } = await pressPlayAfterAPause()
+    expect(audio.loads).toBe(1)
+
+    wait(STUCK_MS)
+
+    expect(audio.loads).toBe(2)
+    expect(audio.src).toBe(first.enclosureUrl)
+    expect(audio.currentTime).toBe(600)
+    expect(audio.paused).toBe(false)
+    expect(mediaSession.playbackState).toBe('playing')
+    expect(mediaSession.metadata).toMatchObject({ title: first.title })
+  })
+
+  it('is left alone until then', async () => {
+    const { audio } = await pressPlayAfterAPause()
+
+    wait(STUCK_MS - 1)
+
+    expect(audio.loads).toBe(1)
+  })
+
+  it('is left alone once it moves', async () => {
+    const { audio } = await pressPlayAfterAPause()
+
+    act(() => audio.progressTo(601))
+    wait(STUCK_MS)
+
+    expect(audio.loads).toBe(1)
+  })
+
+  it('is left alone when paused again', async () => {
+    const { audio, mediaSession } = await pressPlayAfterAPause()
+
+    act(() => mediaSession.press('pause'))
+    wait(STUCK_MS)
+
+    expect(audio.loads).toBe(1)
+    expect(audio.paused).toBe(true)
+  })
+
+  it('is loaded afresh only once, however long it stays stuck', async () => {
+    const { audio } = await pressPlayAfterAPause()
+
+    wait(STUCK_MS)
+    wait(STUCK_MS * 3)
+
+    expect(audio.loads).toBe(2)
+  })
+
+  it('is loaded afresh when played from the app too', async () => {
+    const { audio, mediaSession, user } = await pressPlayAfterAPause()
+    act(() => mediaSession.press('pause'))
+
+    await user.click(within(miniPlayer()).getByRole('button', { name: 'Play' }))
+    wait(STUCK_MS)
+
+    expect(audio.loads).toBe(2)
+  })
+
+  it('goes in the playback log', async () => {
+    const { device } = await pressPlayAfterAPause()
+
+    wait(STUCK_MS)
+
+    expect(device.playbackLog.lines().at(-1)).toMatch(/stuck at 600\.0/)
+  })
+})
+
+describe('a new episode slow to start', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('is left to load, as a slow network is no reason to start over', async () => {
+    const { audio, user } = await renderShow()
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
+
+    await user.click(screen.getByRole('button', { name: first.title }))
+    act(() => void vi.advanceTimersByTime(STUCK_MS * 3))
+
+    expect(audio.loads).toBe(1)
   })
 })

@@ -5,6 +5,7 @@ import { amplifyServices } from './amplifyServices'
 import { App } from './App'
 import { browserDevice } from './device'
 import { browserMediaSession, claimPlaybackAudioSession } from './mediaSession'
+import { recordPlayback } from './playbackLog'
 import { dismissSplash } from './splash'
 import './index.css'
 
@@ -30,14 +31,17 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 if (outputs) {
   Amplify.configure(outputs)
   claimPlaybackAudioSession()
+  const audio = new Audio()
+  const device = browserDevice()
+  recordPlayback(device.playbackLog, audio)
   root.render(
     <StrictMode>
       <App
         services={{
           ...amplifyServices(),
-          audio: new Audio(),
-          mediaSession: browserMediaSession(),
-          device: browserDevice(),
+          audio,
+          mediaSession: browserMediaSession(device.playbackLog),
+          device,
         }}
       />
     </StrictMode>,

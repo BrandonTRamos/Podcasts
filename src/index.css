@@ -1547,6 +1547,18 @@ button.mini-player-open {
   font-size: 0.875rem;
 }
 
+.settings button + .settings-hint {
+  margin-top: 0.625rem;
+}
+
+/* Shown only where the browser won't copy the log: to be selected and copied by hand. */
+.playback-log {
+  width: 100%;
+  margin-top: 0.625rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+}
+
 /* Now playing */
 .now-playing {
   display: flex;

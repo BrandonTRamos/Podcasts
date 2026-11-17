@@ -1,5 +1,5 @@
 import type { PlayableEpisode, Player } from './player'
-import type { MediaSessionControls } from './services'
+import type { MediaSessionControls, PlaybackLog } from './services'
 
 /**
  * Shows the player on the OS media controls (lock screen, notification
@@ -82,8 +82,9 @@ export function offerNextTrack(session: MediaSessionControls, player: Player, ha
 /**
  * The browser's media session, or controls that do nothing where it has none.
  * Each call is guarded, as browsers throw on actions or states they do not support.
+ * Every control pressed goes in the log, before the app acts on it.
  */
-export function browserMediaSession(): MediaSessionControls {
+export function browserMediaSession(log: PlaybackLog): MediaSessionControls {
   if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) {
     return { setMetadata() {}, setPlaybackState() {}, setPositionState() {}, setActionHandler() {} }
   }
@@ -100,7 +101,17 @@ export function browserMediaSession(): MediaSessionControls {
     setPlaybackState: (state) => attempt(() => (session.playbackState = state)),
     // Called with nothing, it clears the position.
     setPositionState: (state) => attempt(() => (state ? session.setPositionState(state) : session.setPositionState())),
-    setActionHandler: (action, handler) => attempt(() => session.setActionHandler(action, handler)),
+    setActionHandler: (action, handler) =>
+      attempt(() =>
+        session.setActionHandler(
+          action,
+          handler &&
+            ((details) => {
+              log.record(`control ${action}`)
+              handler(details)
+            }),
+        ),
+      ),
   }
 }
 
