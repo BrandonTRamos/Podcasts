@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { STALL_MS } from './downloads'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseAction, openActions } from './test/ui'
+import { chooseAction, openActions, openShowNotes } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = { title: 'The Example Show', artworkUrl: 'https://cdn.example.com/show/artwork.jpg' }
@@ -383,7 +383,7 @@ describe('downloading an episode', () => {
 
   it('downloads from the episode’s own screen', async () => {
     const { device, user } = await setUp()
-    await chooseAction(user, row(first.title), 'Show notes')
+    await openShowNotes(user, row(first.title))
     await screen.findByRole('heading', { level: 1, name: first.title })
 
     await user.click(screen.getByRole('button', { name: 'Download' }))

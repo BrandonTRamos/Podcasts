@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { formatClock } from './format'
-import { ChevronDownIcon, PauseIcon, PlayIcon, QueueIcon, SkipBackIcon, SkipForwardIcon } from './Icons'
+import { ChevronDownIcon, InfoIcon, PauseIcon, PlayIcon, QueueIcon, SkipBackIcon, SkipForwardIcon } from './Icons'
 import { Artwork } from './LibraryScreen'
 import { useLongPress } from './longPress'
 import { type LoadedState, type Player, MAX_SPEED, MIN_SPEED, SKIP_CHOICES, type SkipDirection, SPEED_STEP } from './player'
@@ -26,11 +26,14 @@ export function NowPlayingScreen({
   state,
   player,
   onClose,
+  onOpenShowNotes,
   onOpenQueue,
 }: {
   state: LoadedState
   player: Player
   onClose: () => void
+  /** Opens the screen of the episode playing, with its show notes. */
+  onOpenShowNotes: () => void
   onOpenQueue: () => void
 }) {
   const { episode, position, duration, failed } = state
@@ -45,6 +48,9 @@ export function NowPlayingScreen({
       <nav>
         <button type="button" className="icon-button" onClick={onClose} aria-label="Close now playing">
           <ChevronDownIcon size={26} />
+        </button>
+        <button type="button" className="icon-button" onClick={onOpenShowNotes} aria-label="Show notes">
+          <InfoIcon size={26} />
         </button>
       </nav>
       <Artwork url={episode.artworkUrl} size="hero" />

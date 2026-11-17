@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseAction, chooseLibraryAction, openActions } from './test/ui'
+import { chooseAction, chooseLibraryAction, openActions, openShowNotes } from './test/ui'
 
 // Managing downloads: what is stored on this device, how much room it takes,
 // and freeing it; and badges that stay true when the OS clears a download.
@@ -119,6 +119,20 @@ describe('the downloads screen', () => {
     expect(within(row(first.title)).getByText('1.0 KB')).toBeInTheDocument()
     expect(within(row(second.title)).getByText('2.5 KB')).toBeInTheDocument()
     expect(screen.getByText('3.5 KB used on this device')).toBeInTheDocument()
+  })
+
+  it('opens a downloaded episode’s show notes, and comes back from them', async () => {
+    const { user } = await setUp()
+    await download(user, show.title, first.title)
+    await openDownloads(user)
+
+    await openShowNotes(user, row(first.title))
+
+    expect(await screen.findByRole('heading', { level: 1, name: first.title })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Show notes' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Downloads' })).toHaveAttribute('aria-current', 'page')
+    await user.click(screen.getByRole('button', { name: 'Back to Downloads' }))
+    expect(titlesIn('Downloaded episodes')).toEqual([first.title])
   })
 
   it('still lists downloads, with their sizes, after a relaunch', async () => {

@@ -90,7 +90,16 @@ export const StarIcon = ({ filled = false, ...props }: IconProps & { filled?: bo
   </Icon>
 )
 
-export const ArrowUpIcon = (props: IconProps) => (
+/** An "i" in a circle: more about what it sits beside. */
+export const InfoIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7.75h.01" strokeWidth={2.6} />
+    <path d="M10.5 11.25H12V16M10 16h4" />
+  </Icon>
+)
+
+export const ArrowUpIcon =(props: IconProps) => (
   <Icon {...props}>
     <path d="M12 19V5M6 11l6-6 6 6" />
   </Icon>

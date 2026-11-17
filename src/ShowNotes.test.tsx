@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 import hostileShowNotes from './test/fixtures/hostile-show-notes.html?raw'
-import { chooseAction } from './test/ui'
+import { chooseAction, openShowNotes } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = { title: 'The Example Show', author: 'Example Media' }
@@ -39,7 +39,7 @@ async function renderShow(
 /** Opens the episode's screen from the show's list. */
 async function openEpisode(user: ReturnType<typeof userEvent.setup>) {
   const [item] = within(screen.getByRole('list', { name: 'Episodes' })).getAllByRole('listitem')
-  await chooseAction(user, item, 'Show notes')
+  await openShowNotes(user, item)
   await screen.findByRole('heading', { level: 1, name: episode.title })
 }
 
@@ -214,10 +214,40 @@ describe('the episode screen’s place in the app', () => {
     await user.click(await screen.findByRole('button', { name: 'Latest' }))
     const list = await screen.findByRole('list', { name: 'Latest episodes' })
 
-    await chooseAction(user, list, 'Show notes')
+    await openShowNotes(user, list)
 
     expect(await showNotes()).toHaveTextContent('Plain notes.')
     await user.click(screen.getByRole('button', { name: 'Back to Latest episodes' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Latest episodes' })).toBeInTheDocument()
+  })
+
+  it('opens from the queue, and goes back there', async () => {
+    const { user } = await renderShow('Plain notes.')
+    await chooseAction(user, screen.getByRole('list', { name: 'Episodes' }), 'Add to queue')
+    await user.click(screen.getByRole('button', { name: 'Queue' }))
+
+    await openShowNotes(user, await screen.findByRole('list', { name: 'Queued episodes' }))
+
+    expect(await showNotes()).toHaveTextContent('Plain notes.')
+    expect(screen.getByRole('button', { name: 'Queue' })).toHaveAttribute('aria-current', 'page')
+    await user.click(screen.getByRole('button', { name: 'Back to Queue' }))
+    expect(await screen.findByRole('list', { name: 'Queued episodes' })).toHaveTextContent(episode.title)
+  })
+
+  it('opens from now playing, and goes back there', async () => {
+    const { audio, user } = await renderShow('Plain notes.')
+    await user.click(screen.getByRole('button', { name: episode.title }))
+    await user.click(within(screen.getByRole('region', { name: 'Mini player' })).getByRole('button', { name: new RegExp(episode.title) }))
+
+    await user.click(screen.getByRole('button', { name: 'Show notes' }))
+
+    expect(await showNotes()).toHaveTextContent('Plain notes.')
+    expect(screen.getByRole('heading', { level: 1, name: episode.title })).toBeInTheDocument()
+    expect(audio.paused).toBe(false)
+    await user.click(screen.getByRole('button', { name: 'Back to Now Playing' }))
+    expect(screen.getByRole('button', { name: 'Close now playing' })).toBeInTheDocument()
+    // Closing it shows the screen it was opened over, as before.
+    await user.click(screen.getByRole('button', { name: 'Close now playing' }))
+    expect(screen.getByRole('list', { name: 'Episodes' })).toBeInTheDocument()
   })
 })
