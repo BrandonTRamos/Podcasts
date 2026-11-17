@@ -1304,8 +1304,89 @@ button.show-notes-button {
   margin-top: 0.875rem;
 }
 
+.show-notes-area {
+  margin-top: 1.25rem;
+}
+
+/* Notes or Links: two pills over the card, the one showing filled in. */
+.show-notes-sections {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.show-notes-sections button {
+  color: var(--ink);
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+.show-notes-sections button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* The notes' card: raised over the page's grain on the plain fill, as the app's panels are. */
+.show-notes-card {
+  padding: 1rem 1.125rem;
+  border-radius: 1.125rem;
+  background: var(--bg);
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 1px 3px rgb(20 38 61 / 0.06);
+}
+
 .show-notes {
+  font-size: 0.9375rem;
+  line-height: 1.55;
   overflow-wrap: anywhere;
+}
+
+.show-notes p {
+  margin-block: 0.75rem;
+}
+
+/* The card's own padding is the room above the first line and under the last. */
+.show-notes > :first-child {
+  margin-top: 0;
+}
+
+.show-notes > :last-child {
+  margin-bottom: 0;
+}
+
+/* The notes' links by themselves: one to a row, what the notes call it over where it leads. */
+.show-notes-links ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.show-notes-links li {
+  display: grid;
+  gap: 0.125rem;
+  padding-block: 0.625rem;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.show-notes-links li:first-child {
+  padding-top: 0;
+}
+
+.show-notes-links li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.show-notes-links a {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.show-notes-links span {
+  color: var(--muted);
+  font-size: 0.8125rem;
 }
 
 button.show-notes-timestamp {
