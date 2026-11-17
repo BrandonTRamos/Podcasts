@@ -309,6 +309,14 @@ export function SignedInApp({
     listening.dequeue(episode.id)
   }
 
+  /** Seeks the notes' episode, preserving pause if loaded, or starts it at that point. */
+  function seekEpisode(episode: Episode, seconds: number) {
+    const current = player.getState()
+    if (current.episode && current.episode.id === episode.id && !current.failed) player.seekTo(seconds)
+    else player.play(toPlayable(episode), seconds)
+    listening.dequeue(episode.id)
+  }
+
   const unavailable = (episodeId: string) => !online && downloads.get(episodeId).status !== 'downloaded'
 
   const episodeActions: EpisodeActions = {
@@ -392,6 +400,7 @@ export function SignedInApp({
           if (fromNowPlaying) setNowPlayingOpen(true)
         }}
         onPlay={playEpisode}
+        onSeek={seekEpisode}
         download={downloads.get(episode.id)}
         onDownload={downloads.download}
         unavailable={unavailable(episode.id)}

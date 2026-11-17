@@ -1308,6 +1308,17 @@ button.show-notes-button {
   overflow-wrap: anywhere;
 }
 
+button.show-notes-timestamp {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 /* Notes with no paragraphs or breaks of their own separate lines with newlines alone. */
 .show-notes-line-breaks {
   white-space: pre-line;

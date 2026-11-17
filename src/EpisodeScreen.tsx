@@ -16,6 +16,7 @@ export function EpisodeScreen({
   backLabel,
   onBack,
   onPlay,
+  onSeek,
   download,
   onDownload,
   unavailable,
@@ -28,6 +29,7 @@ export function EpisodeScreen({
   backLabel: string
   onBack: () => void
   onPlay: (episode: Episode) => void
+  onSeek: (episode: Episode, seconds: number) => void
   download: DownloadState
   onDownload: (episode: Episode) => void
   /** It can't play now: the device is offline and it is not downloaded. */
@@ -72,7 +74,11 @@ export function EpisodeScreen({
         <DownloadControl download={download} onDownload={() => onDownload(episode)} />
       </header>
       {statesStatus === 'failed' && <p role="alert">Couldn’t load what you’ve played.</p>}
-      <ShowNotes notes={notes} />
+      <ShowNotes
+        notes={notes}
+        onSeek={(seconds) => onSeek(episode, seconds)}
+        seekDisabled={statesStatus === 'loading' || unavailable}
+      />
     </main>
   )
 }
