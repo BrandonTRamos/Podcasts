@@ -1,4 +1,4 @@
-import { createElement, Fragment, type ReactNode } from 'react'
+import { createElement, Fragment, type ReactNode, useState } from 'react'
 
 /**
  * An episode's show notes, safe to display. Feeds write them as HTML or as
@@ -18,26 +18,93 @@ import { createElement, Fragment, type ReactNode } from 'react'
  *
  * Plain text keeps its paragraphs and line breaks, and its web addresses
  * become links. Timestamps become app-owned seek buttons in either format.
+ *
+ * They sit on a card. Notes with text have two pills above it: Notes, and
+ * Links, which lists the links found in them by themselves. Notes with no
+ * links have nothing behind Links, so it can't be chosen.
  */
 export function ShowNotes({ notes, onSeek, seekDisabled = false }: {
   notes: ShowNotesState
   onSeek: (seconds: number) => void
   seekDisabled?: boolean
 }) {
+  const [chosen, setChosen] = useState<'notes' | 'links'>('notes')
   const rendered = notes.status === 'loaded' && notes.notes !== null
     ? sanitise(notes.notes, { onSeek, disabled: seekDisabled })
     : null
+  const links = rendered?.links ?? []
+  const showing = links.length > 0 ? chosen : 'notes'
   return (
-    <section
-      aria-label="Show notes"
-      className={rendered?.keepLineBreaks ? 'show-notes show-notes-line-breaks' : 'show-notes'}
-    >
-      {notes.status === 'loading' && <p>Loading show notes…</p>}
-      {notes.status === 'failed' && <p role="alert">Couldn’t load the show notes.</p>}
-      {notes.status === 'loaded' &&
-        (rendered?.hasText ? rendered.content : <p className="show-notes-empty">This episode has no show notes.</p>)}
+    <div className="show-notes-area">
+      {rendered?.hasText && (
+        <div className="show-notes-sections" role="group" aria-label="Show notes sections">
+          <button type="button" aria-pressed={showing === 'notes'} onClick={() => setChosen('notes')}>
+            Notes
+          </button>
+          <button
+            type="button"
+            aria-pressed={showing === 'links'}
+            disabled={links.length === 0}
+            onClick={() => setChosen('links')}
+          >
+            Links
+          </button>
+        </div>
+      )}
+      <div className="show-notes-card">
+        {showing === 'links' ? (
+          <NoteLinks links={links} />
+        ) : (
+          <section
+            aria-label="Show notes"
+            className={rendered?.keepLineBreaks ? 'show-notes show-notes-line-breaks' : 'show-notes'}
+          >
+            {notes.status === 'loading' && <p>Loading show notes…</p>}
+            {notes.status === 'failed' && <p role="alert">Couldn’t load the show notes.</p>}
+            {notes.status === 'loaded' &&
+              (rendered?.hasText ? rendered.content : <p className="show-notes-empty">This episode has no show notes.</p>)}
+          </section>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** A link found in the notes: where it leads, and what the notes call it (the address itself, when they only wrote that). */
+interface NoteLink {
+  href: string
+  label: string
+}
+
+/** The notes' links by themselves, each once, in the order the notes have them. */
+function NoteLinks({ links }: { links: NoteLink[] }) {
+  return (
+    <section aria-label="Links" className="show-notes-links">
+      <ul>
+        {links.map(({ href, label }) => (
+          <li key={href}>
+            <ExternalLink href={href}>{label}</ExternalLink>
+            {!isAddress(label, href) && <span>{shortAddress(href)}</span>}
+          </li>
+        ))}
+      </ul>
     </section>
   )
+}
+
+/** Whether a link's label is just its address, written out. */
+function isAddress(label: string, href: string): boolean {
+  return safeHref(label) === href || label === shortAddress(href)
+}
+
+/** Where a link leads, in brief: a web address's site, or who an email goes to. */
+function shortAddress(href: string): string {
+  const url = new URL(href)
+  return url.protocol === 'mailto:' ? url.pathname : url.host.replace(/^www\./, '')
+}
+
+function addLink(links: NoteLink[], link: NoteLink) {
+  if (!links.some((each) => each.href === link.href)) links.push(link)
 }
 
 /** Show notes as they arrive: null once loaded means the episode has none. */
@@ -49,11 +116,15 @@ interface TimestampControls {
 }
 
 function sanitise(notes: string, timestamps: TimestampControls): Rendered {
-  return looksLikeHtml(notes) ? fromHtml(notes, timestamps) : fromPlainText(notes, timestamps)
+  const links: NoteLink[] = []
+  const rendered = looksLikeHtml(notes) ? fromHtml(notes, timestamps, links) : fromPlainText(notes, timestamps, links)
+  return { ...rendered, links }
 }
 
 interface Rendered {
   content: ReactNode
+  /** The links in it, each once, in order. */
+  links: NoteLink[]
   /** Whether any of it is text worth showing. */
   hasText: boolean
   /** HTML with no paragraphs or breaks of its own, whose line breaks are all it has to separate lines. */
@@ -93,7 +164,7 @@ const STRUCTURAL = new Set(['p', 'br', 'div', 'pre', 'blockquote', 'ul', 'ol', '
 
 const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml'
 
-function fromHtml(html: string, timestamps: TimestampControls): Rendered {
+function fromHtml(html: string, timestamps: TimestampControls, links: NoteLink[]): Omit<Rendered, 'links'> {
   const body = new DOMParser().parseFromString(html, 'text/html').body
   const result = { hasText: false, structured: false }
 
@@ -105,7 +176,7 @@ function fromHtml(html: string, timestamps: TimestampControls): Rendered {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent ?? ''
       if (text.trim()) result.hasText = true
-      return insideLink ? text : linkify(text, timestamps)
+      return insideLink ? text : linkify(text, timestamps, links)
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return null
     const element = node as Element
@@ -124,6 +195,7 @@ function fromHtml(html: string, timestamps: TimestampControls): Rendered {
       }
       const href = insideLink ? null : safeHref(element.getAttribute('href'))
       if (href === null) return children(element, insideLink)
+      addLink(links, { href, label: label || href })
       return <ExternalLink href={href}>{children(element, true)}</ExternalLink>
     }
     const tag = KEPT.has(name) ? name : AS_DIV.has(name) ? 'div' : HEADINGS[name]
@@ -138,7 +210,7 @@ function fromHtml(html: string, timestamps: TimestampControls): Rendered {
   return { content, hasText: result.hasText, keepLineBreaks: !result.structured }
 }
 
-function fromPlainText(notes: string, timestamps: TimestampControls): Rendered {
+function fromPlainText(notes: string, timestamps: TimestampControls, links: NoteLink[]): Omit<Rendered, 'links'> {
   const paragraphs = decodeEntities(notes)
     .replace(/\r\n?/g, '\n')
     .split(/\n[^\S\n]*\n\s*/)
@@ -150,7 +222,7 @@ function fromPlainText(notes: string, timestamps: TimestampControls): Rendered {
         {paragraph.split('\n').map((line, j) => (
           <Fragment key={j}>
             {j > 0 && <br />}
-            {linkify(line, timestamps)}
+            {linkify(line, timestamps, links)}
           </Fragment>
         ))}
       </p>
@@ -180,13 +252,14 @@ function trimTrailingPunctuation(url: string): string {
   return trimmed
 }
 
-function linkify(text: string, timestamps: TimestampControls): ReactNode {
+function linkify(text: string, timestamps: TimestampControls, links: NoteLink[]): ReactNode {
   const parts: ReactNode[] = []
   let last = 0
   for (const match of text.matchAll(URL_IN_TEXT)) {
     const url = trimTrailingPunctuation(match[0])
     const href = safeHref(url)
     if (href === null) continue
+    addLink(links, { href, label: url })
     parts.push(
       <Fragment key={match.index}>
         {timestampify(text.slice(last, match.index), timestamps)}

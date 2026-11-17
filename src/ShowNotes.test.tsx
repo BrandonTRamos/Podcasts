@@ -153,6 +153,53 @@ describe('links in show notes', () => {
     expect(article.getAttribute('rel')?.split(' ')).toEqual(expect.arrayContaining(['noopener', 'noreferrer']))
     expect(within(notes).getByRole('link', { name: 'write in' })).toHaveAttribute('href', 'mailto:host@example.com')
   })
+
+  it('are listed by themselves under Links, each once, with where they lead', async () => {
+    const { user } = await renderShow(
+      '<p>Read <a href="https://www.example.com/article">the article</a>, <a href="https://www.example.com/article">again</a>, ' +
+        'or <a href="mailto:host@example.com">write in</a>. Sponsor: https://example.com/sponsor. 1:22 Intro</p>',
+    )
+    await openEpisode(user)
+    await showNotes()
+    const sections = screen.getByRole('group', { name: 'Show notes sections' })
+    expect(within(sections).getByRole('button', { name: 'Notes' })).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(within(sections).getByRole('button', { name: 'Links' }))
+
+    expect(within(sections).getByRole('button', { name: 'Links' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('region', { name: 'Show notes' })).not.toBeInTheDocument()
+    const rows = within(screen.getByRole('region', { name: 'Links' })).getAllByRole('listitem')
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'the articleexample.com',
+      'write inhost@example.com',
+      'https://example.com/sponsor',
+    ])
+    const article = within(rows[0]).getByRole('link', { name: 'the article' })
+    expect(article).toHaveAttribute('href', 'https://www.example.com/article')
+    expect(article).toHaveAttribute('target', '_blank')
+    expect(article.getAttribute('rel')?.split(' ')).toEqual(expect.arrayContaining(['noopener', 'noreferrer']))
+
+    await user.click(within(sections).getByRole('button', { name: 'Notes' }))
+
+    expect(await showNotes()).toHaveTextContent('Sponsor: https://example.com/sponsor.')
+  })
+
+  it('leave Links with nothing to choose when the notes have none', async () => {
+    const { user } = await renderShow('<p>No links here, and <a href="/library">a relative one</a> is no link.</p>')
+    await openEpisode(user)
+    await showNotes()
+
+    expect(await screen.findByRole('button', { name: 'Links' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Notes' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('have no place to be listed when the episode has no show notes', async () => {
+    const { user } = await renderShow(null)
+    await openEpisode(user)
+
+    expect(await showNotes()).toHaveTextContent('This episode has no show notes.')
+    expect(screen.queryByRole('group', { name: 'Show notes sections' })).not.toBeInTheDocument()
+  })
 })
 
 describe('timestamps in show notes', () => {
