@@ -34,6 +34,7 @@ import {
   LATEST_EPISODES_LIMIT,
 } from '../services'
 import { isInProgress, newestFirst } from '../episodes'
+import { createPlaybackLog, memoryText } from '../playbackLog'
 import { wordMatcher } from '../../amplify/feeds/matchWords'
 
 const SESSION_KEY = 'fake-auth-session'
@@ -728,6 +729,8 @@ export class FakeAudio extends EventTarget implements AudioElement {
   ended = false
   #refuseNextPlay = false
   #ignoresEarlySeeks = false
+  /** How many times a file has been loaded: each starts from nothing. */
+  loads = 0
 
   get src() {
     return this.#src
@@ -735,6 +738,7 @@ export class FakeAudio extends EventTarget implements AudioElement {
 
   set src(url: string) {
     this.#src = url
+    if (url) this.loads++
     // As in a real element, a new load returns to the default rate.
     this.playbackRate = this.defaultPlaybackRate
     this.paused = true
@@ -1197,6 +1201,7 @@ export class FakeDeviceStorage implements DeviceStorage {
 export class FakeDevice implements Device {
   readonly files = new FakeDeviceFiles()
   readonly storage = new FakeDeviceStorage()
+  readonly playbackLog = createPlaybackLog(memoryText())
   readonly network = new FakeNetwork()
   readonly fetch: Fetch = (url, init) => this.network.fetch(url, init)
   /** How many times the app asked for persistent storage. */

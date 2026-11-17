@@ -456,6 +456,18 @@ export interface DeviceStorage {
 }
 
 /**
+ * What playback has done lately on this device, kept across launches: for
+ * working out why it went wrong where no debugger reaches, the lock screen of
+ * a phone above all. Settings hands it over to be copied.
+ */
+export interface PlaybackLog {
+  /** Adds a line, stamped with the time. Once the log is full, the oldest line goes. */
+  record(line: string): void
+  /** Every line kept, oldest first. */
+  lines(): string[]
+}
+
+/**
  * The device's own facilities: its file storage, small records, the network,
  * and the screen. `device.ts` implements them with browser APIs; tests
  * substitute fakes.
@@ -463,6 +475,7 @@ export interface DeviceStorage {
 export interface Device {
   files: DeviceFiles
   storage: DeviceStorage
+  playbackLog: PlaybackLog
   fetch: Fetch
   /** Whether the device has a network connection, as the browser judges it. False means certainly offline. */
   isOnline(): boolean

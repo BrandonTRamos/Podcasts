@@ -171,6 +171,7 @@ export function SignedInApp({
     takeNext,
     downloads.localCopy,
     queue.length > 0,
+    device.playbackLog,
   )
   const loaded = playerState.episode
 
@@ -417,7 +418,7 @@ export function SignedInApp({
       />
     )
   } else if (screen.name === 'settings') {
-    content = <SettingsScreen theme={theme} onChooseTheme={onChooseTheme} />
+    content = <SettingsScreen theme={theme} onChooseTheme={onChooseTheme} playbackLog={device.playbackLog} />
   } else if (screen.name === 'search') {
     content = (
       <SearchScreen
