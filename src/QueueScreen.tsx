@@ -1,5 +1,5 @@
 import { DownloadedBadge } from './DownloadControl'
-import { UnavailableOffline } from './EpisodeRow'
+import { ShowNotesButton, UnavailableOffline } from './EpisodeRow'
 import { formatDuration } from './format'
 import { ArrowDownIcon, ArrowUpIcon } from './Icons'
 import type { ListeningStatus } from './listening'
@@ -11,6 +11,7 @@ export function QueueScreen({
   status,
   podcastTitleOf,
   onPlay,
+  onOpen,
   onMove,
   onRemove,
   downloaded,
@@ -20,6 +21,8 @@ export function QueueScreen({
   status: ListeningStatus
   podcastTitleOf: (podcastId: string) => string | undefined
   onPlay: (episode: Episode) => void
+  /** Opens the episode's own screen, with its show notes. */
+  onOpen: (episode: Episode) => void
   /** Moves the episode to this place in the queue, counting from 0. */
   onMove: (episodeId: string, index: number) => void
   onRemove: (episodeId: string) => void
@@ -46,11 +49,14 @@ export function QueueScreen({
                       {episode.title}
                     </button>
                   </h2>
-                  <p className="episode-meta">
-                    {podcastTitle}
-                    {podcastTitle && episode.durationSeconds !== null && ' · '}
-                    {episode.durationSeconds !== null && formatDuration(episode.durationSeconds)}
-                  </p>
+                  <div className="episode-facts">
+                    <ShowNotesButton episode={episode} onOpen={onOpen} />
+                    <p className="episode-meta">
+                      {podcastTitle}
+                      {podcastTitle && episode.durationSeconds !== null && ' · '}
+                      {episode.durationSeconds !== null && formatDuration(episode.durationSeconds)}
+                    </p>
+                  </div>
                   {downloaded(episode.id) && <DownloadedBadge />}
                   {unavailable(episode.id) && <UnavailableOffline />}
                 </div>

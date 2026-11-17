@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseAction } from './test/ui'
+import { chooseAction, openShowNotes } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 
@@ -135,7 +135,7 @@ describe('the library’s In Progress tab', () => {
     const { user } = await launch(data)
     await openInProgress(user)
 
-    await chooseAction(user, rowInProgress('Monday'), 'Show notes')
+    await openShowNotes(user, rowInProgress('Monday'))
     await user.click(await screen.findByRole('button', { name: 'Back to In Progress' }))
 
     expect(await screen.findByRole('list', { name: 'In progress' })).toBeInTheDocument()

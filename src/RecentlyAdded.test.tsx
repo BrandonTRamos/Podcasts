@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseAction } from './test/ui'
+import { chooseAction, openShowNotes } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = { title: 'The Example Show' }
@@ -144,7 +144,7 @@ describe('a podcast’s Recently Added', () => {
     const { user } = await renderShow()
     await user.click(tab('Recently Added'))
 
-    await chooseAction(user, rowIn(recent(), sequel.title), 'Show notes')
+    await openShowNotes(user, rowIn(recent(), sequel.title))
     await screen.findByRole('heading', { level: 1, name: sequel.title })
     await user.click(screen.getByRole('button', { name: /Back to/ }))
 

@@ -1036,6 +1036,40 @@ button.play-circle {
   box-shadow: inset 0 0 0 1.5px var(--accent);
 }
 
+/* An episode's show notes: a small "i", the size of the play button it often sits beside. */
+button.show-notes-button {
+  width: 2rem;
+  height: 2rem;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: none;
+}
+
+/* Beside the play button: drawn smaller than its tap area, so pulled in to sit as close as the line's other facts. */
+.episode-line > .show-notes-button {
+  margin-inline: -0.25rem -0.125rem;
+}
+
+/* Under a title where there is no play button: the "i", then what there is to say about the episode. */
+.episode-facts {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+/* The icon's own edge, not its tap area's, lines up with the title above. */
+.episode-facts > .show-notes-button {
+  flex: none;
+  margin-left: -0.25rem;
+}
+
+.episode-facts > .episode-meta {
+  min-width: 0;
+  margin: 0;
+}
+
 .episode-new {
   color: var(--accent);
   font-weight: 700;
@@ -1122,10 +1156,6 @@ button.play-circle {
 .queued-episode {
   flex: 1;
   min-width: 0;
-}
-
-.queued .episode-meta {
-  margin: 0.125rem 0 0;
 }
 
 .queued .episode-downloaded {
@@ -1557,7 +1587,9 @@ button.mini-player-open {
 }
 
 .now-playing > nav {
-  margin-left: -0.75rem;
+  display: flex;
+  justify-content: space-between;
+  margin-inline: -0.75rem;
 }
 
 .now-playing-titles {

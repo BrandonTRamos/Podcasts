@@ -1,7 +1,7 @@
 import { DownloadControl, DownloadedBadge } from './DownloadControl'
 import type { DownloadState } from './downloads'
 import { formatDate, formatDuration } from './format'
-import { PauseIcon, PlayIcon } from './Icons'
+import { InfoIcon, PauseIcon, PlayIcon } from './Icons'
 import { Artwork } from './LibraryScreen'
 import type { QueuePlace } from './listening'
 import { MoreActions } from './MoreActions'
@@ -30,8 +30,9 @@ export interface EpisodeActions {
 /**
  * One episode in a list: its date, its title (tap to play, as the play button
  * beside its length does), how far through it is, and whether it is queued or
- * downloaded. While it plays, that button pauses it instead. Everything else a listener can do with it (mark it played, read
- * its show notes, queue it, download it) is behind its "More actions" button.
+ * downloaded. While it plays, that button pauses it instead. The "i" beside
+ * that button opens its show notes. Everything else a listener can do with it
+ * (mark it played, queue it, download it) is behind its "More actions" button.
  * Shows its podcast's title and artwork too when the list mixes podcasts.
  * On its podcast's own screen it has an Add button as well, which puts it in
  * the podcast's Recently Added, or, once added, takes it back out.
@@ -104,6 +105,7 @@ export function EpisodeRow({
               <PlayIcon size={16} />
             </button>
           )}
+          <ShowNotesButton episode={episode} onOpen={onOpen} />
           <ListeningProgress episode={episode} state={state} isNew={isNew} />
           {state?.queueOrder != null && <span className="episode-queued">Queued</span>}
           {download.status === 'downloaded' && <DownloadedBadge />}
@@ -128,9 +130,6 @@ export function EpisodeRow({
         <button type="button" onClick={() => onMarkPlayed(episode, !played)}>
           {played ? 'Mark unplayed' : 'Mark played'}
         </button>
-        <button type="button" onClick={() => onOpen(episode)}>
-          Show notes
-        </button>
         <button type="button" onClick={() => onQueue(episode, 'next')}>
           Play next
         </button>
@@ -144,6 +143,23 @@ export function EpisodeRow({
         )}
       </MoreActions>
     </li>
+  )
+}
+
+/**
+ * Opens an episode's show notes: the small "i" wherever an episode is shown.
+ * Named for its episode, so those in a list are told apart.
+ */
+export function ShowNotesButton<E extends { title: string }>({ episode, onOpen }: { episode: E; onOpen: (episode: E) => void }) {
+  return (
+    <button
+      type="button"
+      className="show-notes-button"
+      onClick={() => onOpen(episode)}
+      aria-label={`Show notes for ${episode.title}`}
+    >
+      <InfoIcon size={24} />
+    </button>
   )
 }
 

@@ -64,17 +64,33 @@ function findPodcast(podcasts: LoadState<Podcast>, podcastId: string): Podcast |
 /** The screens that pulling down from the top refreshes: those a tab opens, but search, whose results are its own. */
 const PULL_TO_REFRESH: ReadonlySet<Screen['name']> = new Set(['library', 'latest', 'queue', 'downloads'])
 
-/** A screen that lists episodes, from which one can be opened: the library lists those in progress. */
-type ListScreen = { name: 'podcast'; podcastId: string } | { name: 'latest' } | { name: 'library' }
-
-type Screen =
-  | ListScreen
+/** A screen a tab or another screen leads to; an episode's own screen is opened over one of these. */
+type MainScreen =
+  | { name: 'podcast'; podcastId: string }
+  | { name: 'latest' }
+  | { name: 'library' }
   | { name: 'queue' }
   | { name: 'search' }
   | { name: 'downloads' }
   | { name: 'settings' }
-  /** One episode, opened from a list, to which going back returns. */
-  | { name: 'episode'; episode: Episode; from: ListScreen }
+
+/** What an episode's back button calls the screen it returns to; a podcast goes by its title. The library lists episodes in progress. */
+const BACK_LABELS: Record<Exclude<MainScreen['name'], 'podcast'>, string> = {
+  latest: 'Latest episodes',
+  library: 'In Progress',
+  queue: 'Queue',
+  search: 'Search',
+  downloads: 'Downloads',
+  settings: 'Settings',
+}
+
+type Screen =
+  | MainScreen
+  /**
+   * One episode, with its show notes. Going back returns to the screen it was
+   * opened from or, opened from now playing, to now playing over that screen.
+   */
+  | { name: 'episode'; episode: Episode; from: MainScreen; fromNowPlaying: boolean }
 
 export function SignedInApp({
   data: backend,
@@ -298,17 +314,19 @@ export function SignedInApp({
     onPlay: playEpisode,
     onPause: player.pause,
     isPlaying: (episodeId) => playerState.episode !== null && playerState.playing && playerState.episode.id === episodeId,
-    onOpen: (episode) => {
-      if (screen.name === 'podcast' || screen.name === 'latest' || screen.name === 'library') {
-        setScreen({ name: 'episode', episode, from: screen })
-      }
-    },
+    onOpen: (episode) => openEpisode(episode),
     onQueue: (episode, where) => listening.enqueue(episode, where),
     onMarkPlayed: (episode, played) =>
       listening.update(episode.id, episode.podcastId, played ? { played } : { played, positionSeconds: 0 }),
     onDownload: downloads.download,
     downloadOf: downloads.get,
     unavailable,
+  }
+
+  /** Opens the episode's own screen, with its show notes, over the current one. */
+  function openEpisode(episode: Episode, fromNowPlaying = false) {
+    setScreen({ name: 'episode', episode, from: screen.name === 'episode' ? screen.from : screen, fromNowPlaying })
+    setNowPlayingOpen(false)
   }
 
   function openQueue() {
@@ -320,26 +338,21 @@ export function SignedInApp({
    * The tab the current screen belongs to: a podcast is in the library, and an
    * episode is where it was opened from. Settings, opened from the top, is in none.
    */
-  const tab: Tab | null =
-    screen.name === 'settings'
-      ? null
-      : screen.name === 'podcast'
-        ? 'library'
-        : screen.name === 'episode'
-          ? screen.from.name === 'latest'
-            ? 'latest'
-            : 'library'
-          : screen.name
+  const under = screen.name === 'episode' ? screen.from : screen
+  const tab: Tab | null = under.name === 'settings' ? null : under.name === 'podcast' ? 'library' : under.name
 
   const showingNowPlaying = nowPlayingOpen && playerState.episode !== null
 
   let content
   if (nowPlayingOpen && playerState.episode) {
+    const { id, podcastId, title, durationSeconds, enclosureUrl } = playerState.episode
     content = (
       <NowPlayingScreen
         state={playerState}
         player={player}
         onClose={() => setNowPlayingOpen(false)}
+        // The player doesn't keep when an episode came out, so its screen goes without the date.
+        onOpenShowNotes={() => openEpisode({ id, podcastId, title, durationSeconds, enclosureUrl, publishedAt: null }, true)}
         onOpenQueue={openQueue}
       />
     )
@@ -350,6 +363,7 @@ export function SignedInApp({
         status={listening.queueStatus()}
         podcastTitleOf={(podcastId) => podcastById(podcastId)?.title}
         onPlay={playEpisode}
+        onOpen={openEpisode}
         onMove={(episodeId, index) => listening.moveInQueue(episodeId, index)}
         onRemove={(episodeId) => listening.dequeue(episodeId)}
         downloaded={(episodeId) => downloads.get(episodeId).status === 'downloaded'}
@@ -357,7 +371,7 @@ export function SignedInApp({
       />
     )
   } else if (screen.name === 'episode') {
-    const { episode, from } = screen
+    const { episode, from, fromNowPlaying } = screen
     content = (
       <EpisodeScreen
         key={episode.id}
@@ -366,13 +380,16 @@ export function SignedInApp({
         podcastTitle={podcastById(episode.podcastId)?.title}
         listening={listening}
         backLabel={
-          from.name === 'latest'
-            ? 'Latest episodes'
-            : from.name === 'library'
-              ? 'In Progress'
-              : (podcastById(from.podcastId)?.title ?? 'Podcast')
+          fromNowPlaying
+            ? 'Now Playing'
+            : from.name === 'podcast'
+              ? (podcastById(from.podcastId)?.title ?? 'Podcast')
+              : BACK_LABELS[from.name]
         }
-        onBack={() => setScreen(from)}
+        onBack={() => {
+          setScreen(from)
+          if (fromNowPlaying) setNowPlayingOpen(true)
+        }}
         onPlay={playEpisode}
         download={downloads.get(episode.id)}
         onDownload={downloads.download}
@@ -394,6 +411,7 @@ export function SignedInApp({
         downloads={downloads.list()}
         podcastTitleOf={(podcastId) => podcastById(podcastId)?.title}
         onPlay={playEpisode}
+        onOpen={openEpisode}
         onDownload={downloads.download}
         onRemove={removeDownload}
       />

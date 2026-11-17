@@ -190,7 +190,7 @@ describe('an episode’s other actions', () => {
 
     await user.click(more)
 
-    for (const name of ['Mark played', 'Show notes', 'Play next', 'Add to queue', 'Download']) {
+    for (const name of ['Mark played', 'Play next', 'Add to queue', 'Download']) {
       expect(within(row).getByRole('button', { name })).toBeInTheDocument()
     }
     await user.keyboard('{Escape}')

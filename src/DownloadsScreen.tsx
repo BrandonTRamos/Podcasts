@@ -1,5 +1,6 @@
 import { DownloadPreparing, DownloadProgress } from './DownloadControl'
 import { type StoredDownload, storedBytes } from './downloads'
+import { ShowNotesButton } from './EpisodeRow'
 import { formatSize } from './format'
 import type { Episode } from './services'
 
@@ -13,12 +14,15 @@ export function DownloadsScreen({
   downloads,
   podcastTitleOf,
   onPlay,
+  onOpen,
   onDownload,
   onRemove,
 }: {
   downloads: StoredDownload[]
   podcastTitleOf: (podcastId: string) => string | undefined
   onPlay: (episode: Episode) => void
+  /** Opens the episode's own screen, with its show notes. */
+  onOpen: (episode: Episode) => void
   /** Downloads it, again or from where it stopped. */
   onDownload: (episode: Episode) => void
   /** Deletes what is stored of it, cancelling its download if running, and forgets it. */
@@ -47,7 +51,7 @@ export function DownloadsScreen({
               if (state.status !== 'downloading' && state.status !== 'interrupted') return null
               return (
                 <li key={episodeId}>
-                  <DownloadHeading episode={episode} podcastTitleOf={podcastTitleOf} />
+                  <DownloadHeading episode={episode} podcastTitleOf={podcastTitleOf} onOpen={onOpen} />
                   <div className="episode-download">
                     {state.status === 'downloading' && state.preparing ? (
                       <DownloadPreparing />
@@ -81,7 +85,7 @@ export function DownloadsScreen({
           <ul className="downloads-list" aria-label="Downloaded episodes">
             {downloaded.map((download) => (
               <li key={download.episodeId}>
-                <DownloadHeading episode={download.episode} podcastTitleOf={podcastTitleOf} onPlay={onPlay} />
+                <DownloadHeading episode={download.episode} podcastTitleOf={podcastTitleOf} onPlay={onPlay} onOpen={onOpen} />
                 <div className="episode-download">
                   <span>{formatSize(storedBytes(download.state))}</span>
                   <button type="button" onClick={() => onRemove(download.episodeId)}>
@@ -103,7 +107,7 @@ export function DownloadsScreen({
               const { episodeId, episode } = download
               return (
                 <li key={episodeId}>
-                  <DownloadHeading episode={episode} podcastTitleOf={podcastTitleOf} />
+                  <DownloadHeading episode={episode} podcastTitleOf={podcastTitleOf} onOpen={onOpen} />
                   <div className="episode-download">
                     {episode && (
                       <button type="button" onClick={() => onDownload(episode)}>
@@ -124,15 +128,20 @@ export function DownloadsScreen({
   )
 }
 
-/** A download's episode title and podcast, as far as they are known; the title plays it when given `onPlay`. */
+/**
+ * A download's episode title and podcast, as far as they are known, with the
+ * way to its show notes; the title plays it when given `onPlay`.
+ */
 function DownloadHeading({
   episode,
   podcastTitleOf,
   onPlay,
+  onOpen,
 }: {
   episode: Episode | null
   podcastTitleOf: (podcastId: string) => string | undefined
   onPlay?: (episode: Episode) => void
+  onOpen: (episode: Episode) => void
 }) {
   const podcastTitle = episode && podcastTitleOf(episode.podcastId)
   return (
@@ -146,10 +155,15 @@ function DownloadHeading({
           (episode?.title ?? 'Unknown episode')
         )}
       </h3>
-      {podcastTitle && (
-        <p className="episode-meta">
-          <span>{podcastTitle}</span>
-        </p>
+      {episode && (
+        <div className="episode-facts">
+          <ShowNotesButton episode={episode} onOpen={onOpen} />
+          {podcastTitle && (
+            <p className="episode-meta">
+              <span>{podcastTitle}</span>
+            </p>
+          )}
+        </div>
       )}
     </>
   )
