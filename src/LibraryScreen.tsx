@@ -4,7 +4,7 @@ import type { EpisodeActions } from './EpisodeRow'
 import { InProgressEpisodes } from './InProgressEpisodes'
 import { favoritesOf, FAVORITES, inListOrder, type LibrarySection, librarySections, OTHER, type Placement, placementsFor } from './categories'
 import { ChevronDownIcon, PlusIcon, StarIcon } from './Icons'
-import { type LibraryDrag, LIFTED_INSET, useLibraryDrag } from './libraryDrag'
+import { type LibraryDrag, useLibraryDrag } from './libraryDrag'
 import type { ListeningStore } from './listening'
 import { MoreActions } from './MoreActions'
 import { useNewEpisodeCounts } from './newEpisodes'
@@ -512,7 +512,7 @@ function DraggedPodcast({
   newCount: number
 }) {
   return (
-    <div ref={card} className="dragged-podcast" aria-hidden="true" style={{ width: drag.width + 2 * LIFTED_INSET }}>
+    <div ref={card} className="dragged-podcast" aria-hidden="true" style={{ width: drag.width }}>
       <div className="podcasts dragged-card">
         <PodcastRow podcast={drag.podcast} newCount={newCount} />
       </div>

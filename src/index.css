@@ -20,6 +20,9 @@
   /* How strongly the page's grain shows. */
   --grain: 0.09;
   --shadow: 0 8px 28px rgb(20 38 61 / 0.18);
+  /* A card: a row of a list, or a panel, raised a little over the page's grain on a plain fill. */
+  --card: #ffffff;
+  --card-shadow: 0 0 0 1px rgb(20 38 61 / 0.07), 0 1px 2px rgb(20 38 61 / 0.06), 0 6px 18px -8px rgb(20 38 61 / 0.18);
   /* The floating tab bar: frosted, so the screen shows through as it scrolls underneath. */
   --tabbar-bg: rgb(255 255 255 / 0.78);
   --tabbar-border: rgb(20 38 61 / 0.1);
@@ -51,6 +54,8 @@
   --star: #f2c14e;
   --grain: 0.085;
   --shadow: 0 8px 28px rgb(0 0 0 / 0.5);
+  --card: #142033;
+  --card-shadow: 0 0 0 1px rgb(255 255 255 / 0.07), 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 20px -8px rgb(0 0 0 / 0.55);
   --tabbar-bg: rgb(26 42 63 / 0.78);
   --tabbar-border: rgb(255 255 255 / 0.08);
   --tab-pill: rgb(255 255 255 / 0.09);
@@ -69,6 +74,8 @@
     --star: #f2c14e;
     --grain: 0.085;
     --shadow: 0 8px 28px rgb(0 0 0 / 0.5);
+    --card: #142033;
+    --card-shadow: 0 0 0 1px rgb(255 255 255 / 0.07), 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 20px -8px rgb(0 0 0 / 0.55);
     --tabbar-bg: rgb(26 42 63 / 0.78);
     --tabbar-border: rgb(255 255 255 / 0.08);
     --tab-pill: rgb(255 255 255 / 0.09);
@@ -459,6 +466,25 @@ button.back > span {
   padding: 0;
 }
 
+/* Each row of a list is a card of its own, with a gap to the next. */
+.podcasts button,
+.episode-row,
+.queued li,
+.downloads-list li,
+.search-results li {
+  box-sizing: border-box;
+  border-radius: 1rem;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+}
+
+.episodes > li + li,
+.queued > li + li,
+.downloads-list > li + li,
+.search-results > li + li {
+  margin-top: 0.5rem;
+}
+
 .podcasts button {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -467,35 +493,15 @@ button.back > span {
   align-content: center;
   align-items: center;
   width: 100%;
-  padding: 0.625rem 0;
-  border-bottom: 1px solid var(--line);
+  padding: 0.625rem 0.75rem;
 }
 
-/*
- * A category: its heading opens and closes it. The rule between categories
- * belongs to the heading below it, so it slides with the heading while a
- * podcast is dragged.
- */
-.category:not(:has(~ .category)) {
-  border-bottom: 1px solid var(--line);
-}
-
+/* A category: its heading opens and closes it. */
 .category-heading {
   position: relative;
   display: flex;
   align-items: center;
   gap: 0.25rem;
-}
-
-.category + .category .category-heading::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto;
-  border-top: 1px solid var(--line);
-}
-
-.category-heading.drop-into::before {
-  display: none;
 }
 
 .category-heading h2 {
@@ -555,8 +561,13 @@ button.category-toggle {
   font-size: 0.875rem;
 }
 
-/* Press and hold a podcast to drag it: no text selection or link menu on the way. */
+/*
+ * Press and hold a podcast to drag it: no text selection or link menu on the
+ * way. The gap under its card is the row's own, so the places to drop meet
+ * edge to edge and the room left for a dragged podcast keeps the gap.
+ */
 .podcasts li {
+  padding-bottom: 0.5rem;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
@@ -617,13 +628,11 @@ button.category-toggle {
   will-change: transform;
 }
 
+/* Lifted, the row's card grows a little and casts a deeper shadow. */
 .dragged-card {
-  box-sizing: border-box;
   margin: 0;
-  padding: 0 0.75rem;
-  border-radius: 0.75rem;
-  background: var(--bg);
-  box-shadow: var(--shadow), 0 0 0 1px var(--line);
+  border-radius: 1rem;
+  box-shadow: var(--shadow);
   transform: scale(1.03);
   animation: lift 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -633,10 +642,6 @@ button.category-toggle {
     transform: scale(0.975);
     box-shadow: none;
   }
-}
-
-.dragged-card button {
-  border-bottom: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -649,11 +654,6 @@ button.category-toggle {
   .dragged-card {
     animation: none;
   }
-}
-
-/* A category's podcasts sit under its heading, its own rule closing them. */
-.category .podcasts li:last-child button {
-  border-bottom: 0;
 }
 
 .podcast-artwork {
@@ -670,7 +670,7 @@ button.category-toggle {
   min-width: 1.25rem;
   height: 1.25rem;
   padding: 0 0.375rem;
-  border: 2px solid var(--bg);
+  border: 2px solid var(--card);
   border-radius: 999px;
   background: var(--accent);
   color: var(--on-accent);
@@ -886,9 +886,14 @@ button.category-toggle {
   font-weight: 400;
 }
 
+/* The list's first card keeps clear of the filter over it. */
+.episodes-heading + .episodes {
+  margin-top: 0.75rem;
+}
+
 /* The search of a podcast's episodes, over their list. */
 .episode-search {
-  margin-block: 0.75rem 0.25rem;
+  margin-block: 0.75rem;
 }
 
 /* Under the list while it is searched: the search of the whole feed, and what it finds beyond the list. */
@@ -907,7 +912,7 @@ button.category-toggle {
 }
 
 .older-episodes h3 {
-  margin: 0;
+  margin: 0 0 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--ink);
   font-size: 1rem;
@@ -957,8 +962,7 @@ input.switch:checked::after {
   grid-template-columns: 1fr auto;
   align-items: center;
   column-gap: 0.5rem;
-  padding-block: 0.875rem;
-  border-bottom: 1px solid var(--line);
+  padding: 0.875rem 0.75rem;
 }
 
 .episode-row-main {
@@ -1149,8 +1153,8 @@ button.show-notes-button {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding-block: 0.75rem;
-  border-bottom: 1px solid var(--line);
+  /* Less at the end, where the buttons bring room of their own. */
+  padding: 0.75rem 0.5rem 0.75rem 0.75rem;
 }
 
 .queued-episode {
@@ -1179,7 +1183,7 @@ button.show-notes-button {
 }
 
 .downloads section > h2 {
-  margin-top: 1.25rem;
+  margin-block: 1.25rem 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--ink);
 }
@@ -1190,8 +1194,7 @@ button.show-notes-button {
 }
 
 .downloads-list li {
-  padding-block: 0.75rem;
-  border-bottom: 1px solid var(--line);
+  padding: 0.75rem;
 }
 
 .downloads-list .episode-download {
@@ -1249,8 +1252,7 @@ button.show-notes-button {
   grid-template-rows: auto auto;
   column-gap: 0.75rem;
   align-items: center;
-  padding-block: 0.625rem;
-  border-bottom: 1px solid var(--line);
+  padding: 0.625rem 0.75rem;
 }
 
 .search-results .artwork {
@@ -1325,14 +1327,12 @@ button.show-notes-button {
   color: var(--on-accent);
 }
 
-/* The notes' card: raised over the page's grain on the plain fill, as the app's panels are. */
+/* The notes' card: raised over the page's grain on the plain fill, as a list's rows are. */
 .show-notes-card {
   padding: 1rem 1.125rem;
   border-radius: 1.125rem;
-  background: var(--bg);
-  box-shadow:
-    0 0 0 1px var(--line),
-    0 1px 3px rgb(20 38 61 / 0.06);
+  background: var(--card);
+  box-shadow: var(--card-shadow);
 }
 
 .show-notes {

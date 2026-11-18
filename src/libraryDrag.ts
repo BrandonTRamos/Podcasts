@@ -31,8 +31,6 @@ const OPEN_AFTER_MS = 700
 /** How close to the screen's top, or to the tab bar, a drag scrolls the page. */
 const EDGE_PX = 72
 const TAB_BAR_PX = 96
-/** How far the lifted card reaches past its row on each side (its padding, in `.dragged-card`). */
-export const LIFTED_INSET = 12
 const SLIDE = { duration: 220, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }
 
 /** A place to drop, measured where the page lays it out (in page coordinates, unmoved by animation). */
@@ -96,7 +94,7 @@ export function useLibraryDrag({
   function placeGhost() {
     const now = current.current
     if (ghost.current && now && !now.settling) {
-      ghost.current.style.transform = `translate3d(${now.left - LIFTED_INSET}px, ${point.current.y - now.grabY}px, 0)`
+      ghost.current.style.transform = `translate3d(${now.left}px, ${point.current.y - now.grabY}px, 0)`
     }
   }
 
@@ -280,13 +278,12 @@ function settle(root: HTMLElement, drag: LibraryDrag, card: HTMLElement | null, 
   const into = gap ?? heading
   if (!card || !into || !animates()) return finish()
   const rect = into.getBoundingClientRect()
-  const x = drag.left - LIFTED_INSET
   const lands = gap !== null
   const glide = card.animate(
     [
       { transform: card.style.transform, opacity: 1 },
       {
-        transform: `translate3d(${x}px, ${lands ? rect.top : rect.top + rect.height / 2 - drag.height / 2}px, 0) scale(${lands ? 1 : 0.85})`,
+        transform: `translate3d(${drag.left}px, ${lands ? rect.top : rect.top + rect.height / 2 - drag.height / 2}px, 0) scale(${lands ? 1 : 0.85})`,
         opacity: lands ? 1 : 0,
       },
     ],
