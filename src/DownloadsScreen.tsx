@@ -35,15 +35,17 @@ export function DownloadsScreen({
 
   return (
     <main className="downloads">
-      <h1>Downloads</h1>
-      {downloads.length === 0 ? (
-        <p>Nothing is downloaded to this device.</p>
-      ) : (
-        <p className="downloads-used">{formatSize(used)} used on this device</p>
-      )}
+      <div className="tray">
+        <h1>Downloads</h1>
+        {downloads.length === 0 ? (
+          <p>Nothing is downloaded to this device.</p>
+        ) : (
+          <p className="downloads-used">{formatSize(used)} used on this device</p>
+        )}
+      </div>
 
       {inProgress.length > 0 && (
-        <section>
+        <section className="tray">
           <h2>Downloading</h2>
           <ul className="downloads-list" aria-label="Downloads in progress">
             {inProgress.map((download) => {
@@ -80,7 +82,7 @@ export function DownloadsScreen({
       )}
 
       {downloaded.length > 0 && (
-        <section>
+        <section className="tray">
           <h2>Downloaded</h2>
           <ul className="downloads-list" aria-label="Downloaded episodes">
             {downloaded.map((download) => (
@@ -99,7 +101,7 @@ export function DownloadsScreen({
       )}
 
       {lost.length > 0 && (
-        <section>
+        <section className="tray">
           <h2>Lost</h2>
           <p>These were downloaded, but this device has since cleared them, most likely to free space.</p>
           <ul className="downloads-list" aria-label="Lost downloads">

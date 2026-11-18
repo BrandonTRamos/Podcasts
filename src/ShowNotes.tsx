@@ -35,7 +35,7 @@ export function ShowNotes({ notes, onSeek, seekDisabled = false }: {
   const links = rendered?.links ?? []
   const showing = links.length > 0 ? chosen : 'notes'
   return (
-    <div className="show-notes-area">
+    <div className="show-notes-area tray">
       {rendered?.hasText && (
         <div className="show-notes-sections" role="group" aria-label="Show notes sections">
           <button type="button" aria-pressed={showing === 'notes'} onClick={() => setChosen('notes')}>

@@ -58,7 +58,7 @@ export function EpisodeScreen({
           <span>{backLabel}</span>
         </button>
       </nav>
-      <header>
+      <header className="tray">
         <h1>{episode.title}</h1>
         <EpisodeMeta episode={episode} podcastTitle={podcastTitle} />
         <button

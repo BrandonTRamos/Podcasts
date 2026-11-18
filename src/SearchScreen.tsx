@@ -135,25 +135,27 @@ export function SearchScreen({
 
   return (
     <main className="search">
-      <h1>Search</h1>
-      <form className="search-form" role="search" onSubmit={handleSubmit}>
-        <label>
-          Podcast name
-          <input type="search" autoComplete="off" value={term} onChange={(e) => handleTerm(e.target.value)} />
-        </label>
-        <button type="submit" className="primary" disabled={listing.kind === 'search' && load.status === 'loading'}>
-          Search
-        </button>
-      </form>
-      <div className="genres" role="group" aria-label="Top shows by genre">
-        <button type="button" aria-pressed={browsing(null)} onClick={() => browse(null)}>
-          Top shows
-        </button>
-        {DIRECTORY_GENRES.map((each) => (
-          <button key={each} type="button" aria-pressed={browsing(each)} onClick={() => browse(each)}>
-            {genreNames[each]}
+      <div className="tray">
+        <h1>Search</h1>
+        <form className="search-form" role="search" onSubmit={handleSubmit}>
+          <label>
+            Podcast name
+            <input type="search" autoComplete="off" value={term} onChange={(e) => handleTerm(e.target.value)} />
+          </label>
+          <button type="submit" className="primary" disabled={listing.kind === 'search' && load.status === 'loading'}>
+            Search
           </button>
-        ))}
+        </form>
+        <div className="genres" role="group" aria-label="Top shows by genre">
+          <button type="button" aria-pressed={browsing(null)} onClick={() => browse(null)}>
+            Top shows
+          </button>
+          {DIRECTORY_GENRES.map((each) => (
+            <button key={each} type="button" aria-pressed={browsing(each)} onClick={() => browse(each)}>
+              {genreNames[each]}
+            </button>
+          ))}
+        </div>
       </div>
       {load.status === 'loading' && <p role="status">{words.loading}</p>}
       {load.status === 'offline' && <p role="alert">{words.offline}</p>}
@@ -162,7 +164,7 @@ export function SearchScreen({
       )}
       {found?.length === 0 && <p role="status">{words.empty}</p>}
       {found && found.length > 0 && (
-        <ul className="search-results" aria-label={words.results}>
+        <ul className="search-results tray" aria-label={words.results}>
           {found.map((result) => (
             <SearchResult
               key={`${shown.number} ${result.feedUrl}`}
