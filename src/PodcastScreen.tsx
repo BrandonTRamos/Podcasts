@@ -81,20 +81,22 @@ export function PodcastScreen({
         </button>
       </nav>
       {podcast ? (
-        <header>
-          <Artwork url={podcast.artworkUrl} size="large" />
-          <div>
-            <h1>{podcast.title}</h1>
-            {podcast.author && <p className="podcast-author">{podcast.author}</p>}
-            {categories && <CategoryPicker podcast={podcast} categories={categories} data={data} />}
-            <Unsubscribe podcastTitle={podcast.title} onUnsubscribe={onUnsubscribe} />
-          </div>
-          <FavoriteToggle podcast={podcast} data={data} />
-        </header>
+        <div className="tray">
+          <header>
+            <Artwork url={podcast.artworkUrl} size="large" />
+            <div>
+              <h1>{podcast.title}</h1>
+              {podcast.author && <p className="podcast-author">{podcast.author}</p>}
+              {categories && <CategoryPicker podcast={podcast} categories={categories} data={data} />}
+              <Unsubscribe podcastTitle={podcast.title} onUnsubscribe={onUnsubscribe} />
+            </div>
+            <FavoriteToggle podcast={podcast} data={data} />
+          </header>
+          <FeedHealth podcast={podcast} refresh={(id) => data.refreshPodcast(id)} />
+        </div>
       ) : (
         <p>Loading…</p>
       )}
-      {podcast && <FeedHealth podcast={podcast} refresh={(id) => data.refreshPodcast(id)} />}
       {/* Wait for the listening state too, so an episode tapped at once still resumes. */}
       {(episodes.status === 'loading' || statesStatus === 'loading') && podcast && <p>Loading episodes…</p>}
       {episodes.status === 'failed' && <p role="alert">Couldn’t load the episodes.</p>}
@@ -198,7 +200,7 @@ function EpisodeList({
   }
 
   return (
-    <>
+    <div className="tray">
       <div className="episodes-heading">
         <div className="segmented" role="tablist" aria-label="Episodes shown">
           {views.map(({ view: each, label }) => (
@@ -291,7 +293,7 @@ function EpisodeList({
           )}
         </>
       )}
-    </>
+    </div>
   )
 }
 

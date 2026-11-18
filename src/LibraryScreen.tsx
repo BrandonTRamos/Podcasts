@@ -113,26 +113,41 @@ export function LibraryScreen({
 
   return (
     <main ref={main} className={drag ? 'library dragging' : 'library'}>
-      <header>
-        <div className="library-title">
-          <h1>Library</h1>
-          {count > 0 && <p className="library-count">{count === 1 ? '1 podcast' : `${count} podcasts`}</p>}
+      <div className="tray">
+        <header>
+          <div className="library-title">
+            <h1>Library</h1>
+            {count > 0 && <p className="library-count">{count === 1 ? '1 podcast' : `${count} podcasts`}</p>}
+          </div>
+          <button type="button" className="icon-button" onClick={() => setAdding(true)} aria-label="Add podcast">
+            <PlusIcon size={22} />
+          </button>
+          <MoreActions>
+            <button type="button" onClick={() => setEditing({ action: 'create' })} disabled={categories.status !== 'loaded'}>
+              New category
+            </button>
+            <button type="button" onClick={() => opmlFile.current?.click()} disabled={importing}>
+              Import OPML file
+            </button>
+            <button type="button" onClick={() => void onSignOut()}>
+              Sign out
+            </button>
+          </MoreActions>
+        </header>
+        <div className="segmented" role="tablist" aria-label="Library view">
+          {views.map(({ view: each, label }) => (
+            <button
+              key={each}
+              type="button"
+              role="tab"
+              aria-selected={each === view}
+              onClick={() => onSelectView(each)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-        <button type="button" className="icon-button" onClick={() => setAdding(true)} aria-label="Add podcast">
-          <PlusIcon size={22} />
-        </button>
-        <MoreActions>
-          <button type="button" onClick={() => setEditing({ action: 'create' })} disabled={categories.status !== 'loaded'}>
-            New category
-          </button>
-          <button type="button" onClick={() => opmlFile.current?.click()} disabled={importing}>
-            Import OPML file
-          </button>
-          <button type="button" onClick={() => void onSignOut()}>
-            Sign out
-          </button>
-        </MoreActions>
-      </header>
+      </div>
       {adding && (
         <AddPodcastDialog
           data={data}
@@ -166,19 +181,6 @@ export function LibraryScreen({
           onClose={() => setDeleting(null)}
         />
       )}
-      <div className="segmented" role="tablist" aria-label="Library view">
-        {views.map(({ view: each, label }) => (
-          <button
-            key={each}
-            type="button"
-            role="tab"
-            aria-selected={each === view}
-            onClick={() => onSelectView(each)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
       <OpmlImport state={opmlImport} onImport={onImportOpml} input={opmlFile} busy={importing} />
       {view === 'inProgress' ? (
         <InProgressEpisodes
@@ -199,15 +201,16 @@ export function LibraryScreen({
                 sections.map((section) =>
                   // With no categories, every podcast shows as one list, under no heading.
                   categoryList.length === 0 && section.key !== FAVORITES_SECTION ? (
-                    <PodcastList
-                      key={section.key}
-                      label="Podcasts"
-                      section={section}
-                      newCounts={newCounts}
-                      drag={drag}
-                      bind={bind}
-                      onOpen={onOpenPodcast}
-                    />
+                    <div key={section.key} className="tray">
+                      <PodcastList
+                        label="Podcasts"
+                        section={section}
+                        newCounts={newCounts}
+                        drag={drag}
+                        bind={bind}
+                        onOpen={onOpenPodcast}
+                      />
+                    </div>
                   ) : (
                     <CategorySection
                       key={section.key}
@@ -353,7 +356,7 @@ function CategorySection({
   const name = sectionName(section)
   const targeted = drag?.target.section === key
   return (
-    <section className="category" aria-label={name}>
+    <section className="category tray" aria-label={name} data-flip={`section:${key}`}>
       <div
         className={targeted && !open ? 'category-heading drop-into' : 'category-heading'}
         data-drop="heading"

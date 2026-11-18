@@ -64,9 +64,11 @@ export function LatestScreen({
 
   return (
     <main className="latest">
-      <h1>Latest episodes</h1>
-      {statesStatus === 'failed' && <p role="alert">Couldn’t load what you’ve played.</p>}
-      {content}
+      <div className="tray">
+        <h1>Latest episodes</h1>
+        {statesStatus === 'failed' && <p role="alert">Couldn’t load what you’ve played.</p>}
+        {content}
+      </div>
     </main>
   )
 }

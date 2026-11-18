@@ -48,8 +48,8 @@ interface Zone {
  * `data-drop="row"` (with `data-section` and `data-index`), headings with
  * `data-drop="heading"`, which put it first in that section, and the gap it
  * would fill with `data-drop="gap"`. Whatever should slide when the gap moves
- * carries `data-flip` (a key unique in the library); a podcast's row is
- * bound, and keyed, by the same key.
+ * carries `data-flip` (a key unique in the library), a section's tray and the
+ * rows in it alike; a podcast's row is bound, and keyed, by the same key.
  *
  * The lifted podcast follows the finger without React rendering; the library
  * renders only when where it would land changes, and everything that moves
@@ -166,10 +166,17 @@ export function useLibraryDrag({
     if (!root || (!first && !now)) return
     const last = layout(root)
     if (first && animates()) {
+      const tops = new Map(last.flips)
       for (const [element, top] of last.flips) {
         const from = first.get(element.dataset.flip!)
-        if (from === undefined || Math.abs(from - top) < 0.5) continue
-        element.animate([{ transform: `translateY(${from - top}px)` }, { transform: 'none' }], SLIDE)
+        if (from === undefined) continue
+        // What it sits in (a row in its section) carries it as that slides: it slides only the rest of its way.
+        const holder = element.parentElement?.closest<HTMLElement>('[data-flip]')
+        const holderFrom = holder ? first.get(holder.dataset.flip!) : undefined
+        const carried = holder && holderFrom !== undefined ? holderFrom - tops.get(holder)! : 0
+        const by = from - top - carried
+        if (Math.abs(by) < 0.5) continue
+        element.animate([{ transform: `translateY(${by}px)` }, { transform: 'none' }], SLIDE)
       }
     }
     if (!now) return

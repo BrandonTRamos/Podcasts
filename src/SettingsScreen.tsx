@@ -29,8 +29,10 @@ export function SettingsScreen({
 }) {
   return (
     <main className="settings">
-      <h1>Settings</h1>
-      <section aria-labelledby="settings-appearance">
+      <div className="tray">
+        <h1>Settings</h1>
+      </div>
+      <section className="tray" aria-labelledby="settings-appearance">
         <h2 id="settings-appearance">Appearance</h2>
         <fieldset className="segmented">
           <legend className="visually-hidden">Theme</legend>
@@ -70,7 +72,7 @@ function CopyPlaybackLog({ log }: { log: PlaybackLog }) {
   }
 
   return (
-    <section aria-labelledby="settings-playback-log">
+    <section className="tray" aria-labelledby="settings-playback-log">
       <h2 id="settings-playback-log">Playback log</h2>
       <button type="button" className="outline" onClick={() => void copy()}>
         Copy playback log

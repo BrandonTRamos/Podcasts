@@ -20,9 +20,17 @@
   /* How strongly the page's grain shows. */
   --grain: 0.09;
   --shadow: 0 8px 28px rgb(20 38 61 / 0.18);
-  /* A card: a row of a list, or a panel, raised a little over the page's grain on a plain fill. */
+  /*
+   * A tray: a plain panel over the page's grain, holding a screen's title or one of its sections.
+   * A card: a row of a list, raised a little on its tray. Each has its own fill and rule for what is on it.
+   */
+  --tray: #eaeff3;
+  --tray-fill: rgb(20 38 61 / 0.08);
+  --tray-line: rgb(20 38 61 / 0.1);
   --card: #ffffff;
-  --card-shadow: 0 0 0 1px rgb(20 38 61 / 0.07), 0 1px 2px rgb(20 38 61 / 0.06), 0 6px 18px -8px rgb(20 38 61 / 0.18);
+  --card-shadow: 0 0 0 1px rgb(20 38 61 / 0.05), 0 1px 2px rgb(20 38 61 / 0.07);
+  --card-fill: #eef2f5;
+  --card-line: #e3e9ee;
   /* The floating tab bar: frosted, so the screen shows through as it scrolls underneath. */
   --tabbar-bg: rgb(255 255 255 / 0.78);
   --tabbar-border: rgb(20 38 61 / 0.1);
@@ -32,7 +40,7 @@
   --pill-top: calc(env(safe-area-inset-top) + 0.625rem);
   --tabbar-gap: max(0.75rem, calc(env(safe-area-inset-bottom) - 0.375rem));
   /* The page's side gutter, and how wide a screen gets on a big display. */
-  --gutter: 1.25rem;
+  --gutter: 0.75rem;
   --page: 40rem;
 }
 
@@ -54,8 +62,13 @@
   --star: #f2c14e;
   --grain: 0.085;
   --shadow: 0 8px 28px rgb(0 0 0 / 0.5);
-  --card: #142033;
-  --card-shadow: 0 0 0 1px rgb(255 255 255 / 0.07), 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 20px -8px rgb(0 0 0 / 0.55);
+  --tray: #152136;
+  --tray-fill: rgb(255 255 255 / 0.07);
+  --tray-line: rgb(255 255 255 / 0.09);
+  --card: #1d2d45;
+  --card-shadow: 0 0 0 1px rgb(255 255 255 / 0.06), 0 1px 2px rgb(0 0 0 / 0.25);
+  --card-fill: rgb(255 255 255 / 0.08);
+  --card-line: rgb(255 255 255 / 0.1);
   --tabbar-bg: rgb(26 42 63 / 0.78);
   --tabbar-border: rgb(255 255 255 / 0.08);
   --tab-pill: rgb(255 255 255 / 0.09);
@@ -74,8 +87,13 @@
     --star: #f2c14e;
     --grain: 0.085;
     --shadow: 0 8px 28px rgb(0 0 0 / 0.5);
-    --card: #142033;
-    --card-shadow: 0 0 0 1px rgb(255 255 255 / 0.07), 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 20px -8px rgb(0 0 0 / 0.55);
+    --tray: #152136;
+    --tray-fill: rgb(255 255 255 / 0.07);
+    --tray-line: rgb(255 255 255 / 0.09);
+    --card: #1d2d45;
+    --card-shadow: 0 0 0 1px rgb(255 255 255 / 0.06), 0 1px 2px rgb(0 0 0 / 0.25);
+    --card-fill: rgb(255 255 255 / 0.08);
+    --card-line: rgb(255 255 255 / 0.1);
     --tabbar-bg: rgb(26 42 63 / 0.78);
     --tabbar-border: rgb(255 255 255 / 0.08);
     --tab-pill: rgb(255 255 255 / 0.09);
@@ -268,7 +286,7 @@ main > nav {
   align-items: center;
   justify-content: space-between;
   min-height: 2.75rem;
-  margin: -0.25rem 0 0.25rem -0.375rem;
+  margin: -0.25rem 0 0.5rem -0.375rem;
 }
 
 /* A pill naming where it leads, its chevron tucked close to the leading edge. */
@@ -361,7 +379,8 @@ button.back > span {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.625rem;
+  margin: 0.125rem 0 0.75rem;
+  padding-left: 0.375rem;
 }
 
 .library-title {
@@ -369,7 +388,7 @@ button.back > span {
 }
 
 .library header h1 {
-  margin: 0.25rem 0 0;
+  margin: 0;
 }
 
 .library-count {
@@ -452,10 +471,6 @@ button.back > span {
   margin-block: 0 0.5rem;
 }
 
-.opml-import > :last-child {
-  margin-bottom: 1rem;
-}
-
 .podcasts,
 .episodes,
 .queued,
@@ -466,7 +481,55 @@ button.back > span {
   padding: 0;
 }
 
-/* Each row of a list is a card of its own, with a gap to the next. */
+/*
+ * A tray: a plain panel over the page's grain. A screen's title sits in one,
+ * and so does each of its sections, so that no text sits on the grain itself.
+ * A line a screen shows by itself (it is loading, it found nothing) gets one
+ * of its own, as does what an OPML import has to say.
+ */
+.tray,
+.with-tab-bar main > p,
+.opml-import:has([role]) {
+  box-sizing: border-box;
+  margin: 0 0 0.5rem;
+  padding: 0.625rem;
+  border-radius: 1.25rem;
+  background: var(--tray);
+  /* A control on a tray is filled a shade darker than the tray, and a rule on it drawn to show there. */
+  --fill: var(--tray-fill);
+  --line: var(--tray-line);
+}
+
+.with-tab-bar main > p {
+  padding: 0.75rem 1rem;
+}
+
+.opml-import:has([role]) {
+  padding: 0.75rem 1rem 0.25rem;
+}
+
+/* Text in a tray stands a little in from where its cards and controls start. */
+.tray > h1 {
+  margin: 0.125rem 0.375rem 0.625rem;
+}
+
+.tray > h1:last-child {
+  margin-bottom: 0.125rem;
+}
+
+.tray > p {
+  margin: 0.5rem 0.375rem;
+}
+
+.tray > p:last-child {
+  margin-bottom: 0.25rem;
+}
+
+.tray > .segmented:last-child {
+  margin-bottom: 0;
+}
+
+/* Each row of a list is a card of its own on the tray, with a gap to the next. */
 .podcasts button,
 .episode-row,
 .queued li,
@@ -476,6 +539,8 @@ button.back > span {
   border-radius: 1rem;
   background: var(--card);
   box-shadow: var(--card-shadow);
+  --fill: var(--card-fill);
+  --line: var(--card-line);
 }
 
 .episodes > li + li,
@@ -496,12 +561,30 @@ button.back > span {
   padding: 0.625rem 0.75rem;
 }
 
-/* A category: its heading opens and closes it. */
+/*
+ * A category is a tray: its heading opens and closes it. Closed, the tray is
+ * the heading alone; open, its podcasts sit under the heading.
+ */
+.category {
+  padding-block: 0;
+  transition: box-shadow 0.15s;
+}
+
+.category:has(> .podcasts, > .category-empty) {
+  padding-bottom: 0.625rem;
+}
+
+/* The gap under a tray's last podcast is the tray's own padding. */
+.tray > .podcasts:last-child {
+  margin-bottom: -0.5rem;
+}
+
 .category-heading {
   position: relative;
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  padding-inline: 0.375rem;
 }
 
 .category-heading h2 {
@@ -555,8 +638,8 @@ button.category-toggle {
   color: var(--muted);
 }
 
-.category-empty {
-  margin: 0 0 0.75rem;
+.category > .category-empty {
+  margin: 0 0.375rem 0.25rem;
   color: var(--muted);
   font-size: 0.875rem;
 }
@@ -604,19 +687,9 @@ button.category-toggle {
   box-sizing: border-box;
 }
 
-/* A closed section the dragged podcast would go into. */
-.category-heading {
-  border-radius: 0.75rem;
-  transition:
-    background-color 0.15s,
-    box-shadow 0.15s;
-}
-
-.category-heading.drop-into {
-  background: var(--fill);
-  box-shadow:
-    0 0 0 0.5rem var(--fill),
-    0 0 0 calc(0.5rem + 1.5px) var(--accent);
+/* A closed section the dragged podcast would go into: its tray, ringed. */
+.category:has(> .drop-into) {
+  box-shadow: 0 0 0 1.5px var(--accent);
 }
 
 .dragged-podcast {
@@ -730,7 +803,8 @@ button.category-toggle {
   display: flex;
   gap: 1rem;
   align-items: flex-start;
-  margin-block: 0.25rem 0.75rem;
+  margin: 0 0 0.75rem;
+  padding: 0.25rem 0.25rem 0;
 }
 
 .podcast header h1 {
@@ -750,7 +824,7 @@ button.category-toggle {
 
 .favorite-toggle {
   flex: none;
-  margin: -0.375rem -0.625rem 0 0;
+  margin: -0.375rem -0.375rem 0 0;
   text-align: right;
 }
 
@@ -852,7 +926,8 @@ button.category-toggle {
   align-items: center;
   justify-content: space-between;
   gap: 0 0.75rem;
-  margin-bottom: 0.5rem;
+  padding: 0.625rem 0.25rem 0.125rem 0.375rem;
+  border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 0.8125rem;
 }
@@ -872,16 +947,12 @@ button.category-toggle {
 }
 
 /* Over a podcast's episodes: the tabs that choose which show, and the filter of them. */
-.episodes-heading {
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--ink);
-}
-
 .episode-filter {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 0.5rem;
+  padding-inline: 0.375rem;
   font-size: 0.875rem;
   font-weight: 400;
 }
@@ -898,11 +969,11 @@ button.category-toggle {
 
 /* Under the list while it is searched: the search of the whole feed, and what it finds beyond the list. */
 .older-episodes {
-  padding-block: 1rem 0.5rem;
+  padding-top: 0.75rem;
 }
 
 .older-episodes > p {
-  margin: 0.5rem 0 0;
+  margin: 0.5rem 0.375rem 0;
   font-size: 0.875rem;
 }
 
@@ -912,9 +983,9 @@ button.category-toggle {
 }
 
 .older-episodes h3 {
-  margin: 0 0 0.75rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--ink);
+  margin: 0.75rem 0;
+  padding: 0.75rem 0.375rem 0;
+  border-top: 1px solid var(--line);
   font-size: 1rem;
 }
 
@@ -1177,15 +1248,18 @@ button.show-notes-button {
 }
 
 /* Downloads */
-.downloads-used {
-  margin: 0 0 1rem;
+/* Under the screen's title: how much room the downloads take, or that there are none. */
+.downloads .tray > h1 {
+  margin-bottom: 0.125rem;
+}
+
+.downloads .tray > h1 + p {
+  margin: 0 0.375rem 0.25rem;
   color: var(--muted);
 }
 
 .downloads section > h2 {
-  margin-block: 1.25rem 0.75rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--ink);
+  margin: 0.25rem 0.375rem 0.75rem;
 }
 
 .downloads section > p {
@@ -1207,15 +1281,15 @@ button.show-notes-button {
   grid-template-columns: 1fr auto;
   gap: 0.5rem;
   align-items: end;
-  margin-block: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
 }
 
-/* The charts to browse: one row that scrolls sideways out to the screen's edges, the chart showing filled in. */
+/* The charts to browse: one row that scrolls sideways out to its tray's edges, the chart showing filled in. */
 .genres {
   display: flex;
   gap: 0.5rem;
-  margin: 0 calc(-1 * var(--gutter)) 0.5rem;
-  padding: 0.125rem var(--gutter) 0.375rem;
+  margin: 0 -0.625rem;
+  padding: 0.125rem 0.625rem;
   overflow-x: auto;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
@@ -1287,9 +1361,7 @@ button.show-notes-button {
 
 /* One episode */
 .episode header {
-  margin-block: 0.25rem 1rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--line);
+  padding: 1rem;
 }
 
 .episode h1 {
@@ -1298,7 +1370,13 @@ button.show-notes-button {
   letter-spacing: -0.01em;
 }
 
+/* The header is a tray of the title's own width: what is under the title starts where it does. */
+.episode header > p {
+  margin-inline: 0;
+}
+
 .episode .episode-meta {
+  margin-block: 0 0.125rem;
   font-size: 0.875rem;
 }
 
@@ -1306,15 +1384,11 @@ button.show-notes-button {
   margin-top: 0.875rem;
 }
 
-.show-notes-area {
-  margin-top: 1.25rem;
-}
-
 /* Notes or Links: two pills over the card, the one showing filled in. */
 .show-notes-sections {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.625rem;
 }
 
 .show-notes-sections button {
@@ -1327,12 +1401,14 @@ button.show-notes-button {
   color: var(--on-accent);
 }
 
-/* The notes' card: raised over the page's grain on the plain fill, as a list's rows are. */
+/* The notes' card: raised on its tray, as a list's rows are. */
 .show-notes-card {
   padding: 1rem 1.125rem;
-  border-radius: 1.125rem;
+  border-radius: 1rem;
   background: var(--card);
   box-shadow: var(--card-shadow);
+  --fill: var(--card-fill);
+  --line: var(--card-line);
 }
 
 .show-notes {
@@ -1650,12 +1726,12 @@ button.mini-player-open {
 }
 
 /* Settings */
-.settings section {
-  margin-top: 1rem;
+.settings h2 {
+  margin: 0.25rem 0.375rem 0.625rem;
 }
 
-.settings h2 {
-  margin-bottom: 0.625rem;
+.settings section > button {
+  margin-left: 0.375rem;
 }
 
 .settings fieldset {

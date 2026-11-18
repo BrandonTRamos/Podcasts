@@ -53,7 +53,7 @@ export function InProgressEpisodes({
       {shown.length === 0 ? (
         <p className="in-progress-empty">Nothing in progress. Episodes you start and don’t finish show here.</p>
       ) : (
-        <ol className="episodes" aria-label="In progress">
+        <ol className="episodes tray" aria-label="In progress">
           {shown.map(({ episode }) => {
             const podcast = podcastOf(episode.podcastId)
             return (
