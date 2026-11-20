@@ -1,4 +1,5 @@
 import { createElement, Fragment, type ReactNode, useState } from 'react'
+import { decodeEntities, looksLikeHtml, timestampSeconds } from './notesText'
 
 /**
  * An episode's show notes, safe to display. Feeds write them as HTML or as
@@ -131,11 +132,6 @@ interface Rendered {
   keepLineBreaks: boolean
 }
 
-/** A tag, as the feed would write it: plain text with a stray "<" or "<3" in it isn't HTML. */
-function looksLikeHtml(notes: string): boolean {
-  return /<\/?[a-z][a-z0-9]*(\s[^<>]*)?\/?>/i.test(notes)
-}
-
 /** Removed, with everything inside them. */
 const DROPPED = new Set([
   'script', 'style', 'link', 'meta', 'base', 'title', 'head', 'template', 'noscript', 'noembed', 'noframes',
@@ -232,12 +228,6 @@ function fromPlainText(notes: string, timestamps: TimestampControls, links: Note
   }
 }
 
-/** Text with character references ("&amp;", "&#8217;") read as the characters they stand for, and no markup. */
-function decodeEntities(text: string): string {
-  if (!/&(#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);?/i.test(text)) return text
-  return new DOMParser().parseFromString(text.replace(/</g, '&lt;'), 'text/html').body.textContent ?? text
-}
-
 /** Web addresses in running text. Punctuation that ends a sentence isn't part of one. */
 const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>"]+/gi
 
@@ -271,13 +261,6 @@ function linkify(text: string, timestamps: TimestampControls, links: NoteLink[])
   if (parts.length === 0) return timestampify(text, timestamps)
   parts.push(<Fragment key="tail">{timestampify(text.slice(last), timestamps)}</Fragment>)
   return parts
-}
-
-/** Whole m:ss or h:mm:ss values, including minutes beyond 59 in the two-part form. */
-function timestampSeconds(text: string): number | null {
-  if (!/^(?:\d+:[0-5]\d:[0-5]\d|\d+:[0-5]\d)$/.test(text)) return null
-  const seconds = text.split(':').reduce((total, part) => total * 60 + Number(part), 0)
-  return Number.isSafeInteger(seconds) ? seconds : null
 }
 
 /** Don't turn a fragment of a malformed time, word, or decimal into a seek. */

@@ -1792,8 +1792,42 @@ button.mini-player-open {
   margin-top: 0.75rem;
 }
 
+/* The seek bar and its times sit in a tray, with the chapter playing above them when the notes list chapters. */
 .seek {
   margin-top: 1.25rem;
+  margin-bottom: 0;
+  padding: 0.75rem 0.875rem 0.625rem;
+}
+
+.chapter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.chapter-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chapter-number {
+  font-variant-numeric: tabular-nums;
+}
+
+.chapter-step {
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
 }
 
 .seek-bar {
@@ -1807,10 +1841,15 @@ button.mini-player-open {
   cursor: pointer;
 }
 
+/* A chapter's start notches the track in the colour of what is behind it. */
+.seek-bar {
+  --mark: var(--tray);
+}
+
 .seek-bar::-webkit-slider-runnable-track {
   height: 0.375rem;
   border-radius: 0.1875rem;
-  background: var(--line);
+  background: var(--chapter-marks, none), var(--line);
 }
 
 .seek-bar::-webkit-slider-thumb {
@@ -1825,7 +1864,7 @@ button.mini-player-open {
 .seek-bar::-moz-range-track {
   height: 0.375rem;
   border-radius: 0.1875rem;
-  background: var(--line);
+  background: var(--chapter-marks, none), var(--line);
 }
 
 .seek-bar::-moz-range-progress {

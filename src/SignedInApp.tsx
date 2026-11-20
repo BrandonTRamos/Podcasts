@@ -357,6 +357,7 @@ export function SignedInApp({
     const { id, podcastId, title, durationSeconds, enclosureUrl } = playerState.episode
     content = (
       <NowPlayingScreen
+        data={data}
         state={playerState}
         player={player}
         onClose={() => setNowPlayingOpen(false)}
