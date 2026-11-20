@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { type CSSProperties, useEffect, useState } from 'react'
+import { type Chapter, chapterIndexAt, nextChapterStart, previousChapterStart, useChapters } from './chapters'
 import { formatClock } from './format'
-import { ChevronDownIcon, InfoIcon, PauseIcon, PlayIcon, QueueIcon, SkipBackIcon, SkipForwardIcon } from './Icons'
+import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, InfoIcon, PauseIcon, PlayIcon, QueueIcon, SkipBackIcon, SkipForwardIcon } from './Icons'
 import { Artwork } from './LibraryScreen'
 import { useLongPress } from './longPress'
 import { type LoadedState, type Player, MAX_SPEED, MIN_SPEED, SKIP_CHOICES, type SkipDirection, SPEED_STEP } from './player'
+import type { DataApi } from './services'
 
 /** Stays at the foot of every screen but now playing while an episode is loaded. */
 export function MiniPlayer({ state, player, onOpen }: { state: LoadedState; player: Player; onOpen: () => void }) {
@@ -23,12 +25,15 @@ export function MiniPlayer({ state, player, onOpen }: { state: LoadedState; play
 
 /** The focused view of what is playing, with the full set of controls. */
 export function NowPlayingScreen({
+  data,
   state,
   player,
   onClose,
   onOpenShowNotes,
   onOpenQueue,
 }: {
+  /** Where the episode's show notes, and so its chapters, come from. */
+  data: Pick<DataApi, 'getShowNotes'>
   state: LoadedState
   player: Player
   onClose: () => void
@@ -43,6 +48,7 @@ export function NowPlayingScreen({
   const [choosingSkip, setChoosingSkip] = useState<SkipDirection | null>(null)
   const holdBack = useLongPress(() => setChoosingSkip('back'))
   const holdForward = useLongPress(() => setChoosingSkip('forward'))
+  const chapters = playableChapters(useChapters(data, episode.id), duration)
   return (
     <main className="now-playing">
       <nav>
@@ -59,10 +65,14 @@ export function NowPlayingScreen({
         <h1>{episode.title}</h1>
       </div>
       {failed && <FailedMessage />}
-      <div className="seek">
+      <div className="seek tray">
+        {chapters.length > 0 && (
+          <ChapterSteps chapters={chapters} position={position} disabled={failed} onSeek={player.seekTo} />
+        )}
         <input
           type="range"
           className="seek-bar"
+          style={chapterMarks(chapters, duration)}
           aria-label="Seek"
           aria-valuetext={`${formatClock(position)} of ${duration === null ? 'unknown length' : formatClock(duration)}`}
           min={0}
@@ -157,6 +167,83 @@ export function NowPlayingScreen({
       </div>
     </main>
   )
+}
+
+/** The chapters inside the episode's length, if two or more are: a feed's list can run past the file's end. */
+function playableChapters(chapters: Chapter[], duration: number | null): Chapter[] {
+  const playable = duration === null ? chapters : chapters.filter((chapter) => chapter.start < duration)
+  return playable.length >= 2 ? playable : NO_CHAPTERS
+}
+
+const NO_CHAPTERS: Chapter[] = []
+
+/**
+ * The chapter playing, and buttons to the one before and the one after. Back
+ * returns to the start of this chapter, unless only just into it.
+ */
+function ChapterSteps({ chapters, position, disabled, onSeek }: {
+  chapters: Chapter[]
+  position: number
+  disabled: boolean
+  onSeek: (seconds: number) => void
+}) {
+  const index = chapterIndexAt(chapters, position)
+  const previous = previousChapterStart(chapters, position)
+  const next = nextChapterStart(chapters, position)
+  return (
+    <div className="chapter">
+      <p className="chapter-title">
+        {index < 0 ? (
+          `${chapters.length} chapters`
+        ) : (
+          <>
+            <span className="chapter-number" aria-hidden="true">
+              Ch {index + 1} / {chapters.length}
+            </span>
+            <span className="visually-hidden">
+              Chapter {index + 1} of {chapters.length}:{' '}
+            </span>
+            <span aria-hidden="true"> · </span>
+            {chapters[index].title}
+          </>
+        )}
+      </p>
+      <button
+        type="button"
+        className="chapter-step"
+        aria-label="Previous chapter"
+        disabled={disabled || previous === null}
+        onClick={() => previous !== null && onSeek(previous)}
+      >
+        <ChevronLeftIcon size={20} />
+      </button>
+      <button
+        type="button"
+        className="chapter-step"
+        aria-label="Next chapter"
+        disabled={disabled || next === null}
+        onClick={() => next !== null && onSeek(next)}
+      >
+        <ChevronRightIcon size={20} />
+      </button>
+    </div>
+  )
+}
+
+/**
+ * A notch in the seek bar's track where each chapter after the first starts,
+ * under where the thumb's centre sits at that time. Drawn as gradients the
+ * track's own CSS layers over its colour.
+ */
+function chapterMarks(chapters: Chapter[], duration: number | null): CSSProperties | undefined {
+  if (!duration || chapters.length === 0) return undefined
+  const marks = chapters
+    .filter((chapter) => chapter.start > 0)
+    .map((chapter) => {
+      const at = `(0.5rem + (100% - 1rem) * ${chapter.start / duration})`
+      return `linear-gradient(to right, transparent calc(${at} - 1px), var(--mark) 0 calc(${at} + 1px), transparent 0)`
+    })
+  return marks.length > 0 ? ({ '--chapter-marks': marks.join(', ') } as CSSProperties) : undefined
 }
 
 /**
