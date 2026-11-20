@@ -62,3 +62,31 @@ export function recentlyAdded(
 export function isInProgress(state: Pick<EpisodeState, 'positionSeconds' | 'played'> | undefined): boolean {
   return state !== undefined && !state.played && state.positionSeconds > 0
 }
+
+/** How long an episode can run and still count as short, for the "< 30 min" filter. */
+export const SHORT_EPISODE_SECONDS = 30 * 60
+
+/** The quick filters over the latest episodes, one at a time. */
+export type LatestFilter = 'all' | 'unplayed' | 'favorites' | 'short'
+
+/**
+ * Whether an episode passes a quick filter: unplayed (started counts), from a
+ * favorite podcast, or of a known length under half an hour.
+ */
+export function passesFilter(
+  filter: LatestFilter,
+  episode: Episode,
+  state: EpisodeState | undefined,
+  isFavorite: (podcastId: string) => boolean,
+): boolean {
+  switch (filter) {
+    case 'all':
+      return true
+    case 'unplayed':
+      return !state?.played
+    case 'favorites':
+      return isFavorite(episode.podcastId)
+    case 'short':
+      return episode.durationSeconds !== null && episode.durationSeconds < SHORT_EPISODE_SECONDS
+  }
+}

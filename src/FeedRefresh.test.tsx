@@ -299,6 +299,77 @@ describe('the latest episodes', () => {
     expect(await screen.findByRole('heading', { name: 'Library' })).toBeInTheDocument()
   })
 
+  describe('quick filters', () => {
+    const filter = (name: string | RegExp) =>
+      within(screen.getByRole('group', { name: 'Quick filters' })).getByRole('button', { name })
+
+    it('shows all of them at first, with how many there are', async () => {
+      const { data } = backendWithTwoShows()
+      const { user } = await renderSignedIn(data)
+      await openLatest(user)
+
+      await latestItems()
+      expect(filter('All (3)')).toHaveAttribute('aria-pressed', 'true')
+      expect(filter('Unplayed')).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('narrows the list to those unplayed, then back to all', async () => {
+      const { data, showId, showOld, showNew } = backendWithTwoShows()
+      data.seedEpisodeState({ episodeId: showOld, podcastId: showId, positionSeconds: 0, played: true })
+      data.seedEpisodeState({ episodeId: showNew, podcastId: showId, positionSeconds: 600, played: false })
+      const { user } = await renderSignedIn(data)
+      await openLatest(user)
+      await latestItems()
+
+      await user.click(filter('Unplayed'))
+
+      expect(filter('Unplayed')).toHaveAttribute('aria-pressed', 'true')
+      expect(headings(await latestItems())).toEqual(['Show: newest', 'Other: middle'])
+
+      await user.click(filter(/^All/))
+      expect(headings(await latestItems())).toEqual(['Show: newest', 'Other: middle', 'Show: oldest'])
+    })
+
+    it('narrows the list to the favorites’ episodes, or says there are none', async () => {
+      const data = fakeDataApi()
+      const showId = data.seedPodcast(showUrl, { ...show, favoriteOrder: 1 })
+      const otherId = data.seedPodcast(otherUrl, other)
+      data.ingest(showId, [{ title: 'Show: one', publishedAt: '2026-11-01T08:00:00.000Z', durationSeconds: 1800 }])
+      data.ingest(otherId, [{ title: 'Other: one', publishedAt: '2026-11-05T08:00:00.000Z', durationSeconds: 1800 }])
+      const { user } = await renderSignedIn(data)
+      await openLatest(user)
+      await latestItems()
+
+      await user.click(filter('Favorites'))
+
+      expect(headings(await latestItems())).toEqual(['Show: one'])
+    })
+
+    it('says when no episode passes the filter', async () => {
+      const { data } = backendWithTwoShows()
+      const { user } = await renderSignedIn(data)
+      await openLatest(user)
+      await latestItems()
+
+      await user.click(filter('Favorites'))
+
+      expect(await screen.findByText('No episodes from your favorites.')).toBeInTheDocument()
+      expect(screen.queryByRole('list', { name: 'Latest episodes' })).not.toBeInTheDocument()
+    })
+
+    it('narrows the list to those under 30 minutes', async () => {
+      const { data, otherId } = backendWithTwoShows()
+      data.ingest(otherId, [{ title: 'Other: quick', publishedAt: '2026-11-06T08:00:00.000Z', durationSeconds: 19 * 60 }])
+      const { user } = await renderSignedIn(data)
+      await openLatest(user)
+      await latestItems()
+
+      await user.click(filter('< 30 min'))
+
+      expect(headings(await latestItems())).toEqual(['Other: quick'])
+    })
+  })
+
   it('says when the list cannot be loaded', async () => {
     const data = fakeDataApi()
     data.seedPodcast(showUrl, show)
