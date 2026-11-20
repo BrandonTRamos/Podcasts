@@ -1,11 +1,22 @@
 import { useEffect, useState } from 'react'
 import { type EpisodeActions, EpisodeRow } from './EpisodeRow'
-import { newEpisodeIds, newestFirst } from './episodes'
+import { type LatestFilter, newEpisodeIds, newestFirst, passesFilter } from './episodes'
+import { StarIcon } from './Icons'
 import { type ListeningStore, useEpisodeStatesOfEach } from './listening'
 import type { DataApi, Episode, Podcast } from './services'
 import type { LoadState } from './SignedInApp'
 
-/** The newest episodes across every subscription, newest first, kept current as refreshes find new ones. */
+const emptyMessages: Record<Exclude<LatestFilter, 'all'>, string> = {
+  unplayed: 'No unplayed episodes.',
+  favorites: 'No episodes from your favorites.',
+  short: 'No episodes under 30 minutes.',
+}
+
+/**
+ * The newest episodes across every subscription, newest first, kept current as
+ * refreshes find new ones. Quick filters over the list narrow it to those
+ * unplayed, from a favorite, or short.
+ */
 export function LatestScreen({
   data,
   listening,
@@ -14,9 +25,10 @@ export function LatestScreen({
 }: {
   data: Pick<DataApi, 'observeLatestEpisodes'>
   listening: ListeningStore
-  podcastOf: (podcastId: string) => Pick<Podcast, 'title' | 'artworkUrl'> | undefined
+  podcastOf: (podcastId: string) => Pick<Podcast, 'title' | 'artworkUrl' | 'favoriteOrder'> | undefined
 } & EpisodeActions) {
   const [episodes, setEpisodes] = useState<LoadState<Episode>>({ status: 'loading' })
+  const [filter, setFilter] = useState<LatestFilter>('all')
   const [statesArrived, setStatesArrived] = useState(false)
   const podcastIds = episodes.status === 'loaded' ? episodes.items.map((episode) => episode.podcastId) : []
   const statesStatus = useEpisodeStatesOfEach(listening, podcastIds)
@@ -42,23 +54,56 @@ export function LatestScreen({
   else {
     // The list holds the most recent episode of every podcast it holds any of, so new is judged within it.
     const fresh = newEpisodeIds(episodes.items, (episodeId) => listening.get(episodeId))
+    const isFavorite = (podcastId: string) => (podcastOf(podcastId)?.favoriteOrder ?? null) !== null
+    const shown = newestFirst(episodes.items).filter((episode) =>
+      passesFilter(filter, episode, listening.get(episode.id), isFavorite),
+    )
+    const filters = (
+      <div className="quick-filters" role="group" aria-label="Quick filters">
+        {(
+          [
+            ['all', `All (${episodes.items.length})`],
+            ['unplayed', 'Unplayed'],
+            [
+              'favorites',
+              <>
+                <StarIcon filled size={14} />
+                Favorites
+              </>,
+            ],
+            ['short', '< 30 min'],
+          ] as const
+        ).map(([key, label]) => (
+          <button key={key} type="button" aria-pressed={filter === key} onClick={() => setFilter(key)}>
+            {label}
+          </button>
+        ))}
+      </div>
+    )
     content = (
-      <ol className="episodes" aria-label="Latest episodes">
-        {newestFirst(episodes.items).map((episode) => {
-          const podcast = podcastOf(episode.podcastId)
-          return (
-            <EpisodeRow
-              key={episode.id}
-              episode={episode}
-              state={listening.get(episode.id)}
-              isNew={fresh.has(episode.id)}
-              podcastTitle={podcast?.title}
-              artworkUrl={podcast?.artworkUrl ?? null}
-              {...actions}
-            />
-          )
-        })}
-      </ol>
+      <>
+        {filters}
+        {shown.length === 0 && filter !== 'all' ? (
+          <p>{emptyMessages[filter]}</p>
+        ) : (
+          <ol className="episodes" aria-label="Latest episodes">
+            {shown.map((episode) => {
+              const podcast = podcastOf(episode.podcastId)
+              return (
+                <EpisodeRow
+                  key={episode.id}
+                  episode={episode}
+                  state={listening.get(episode.id)}
+                  isNew={fresh.has(episode.id)}
+                  podcastTitle={podcast?.title}
+                  artworkUrl={podcast?.artworkUrl ?? null}
+                  {...actions}
+                />
+              )
+            })}
+          </ol>
+        )}
+      </>
     )
   }
 
