@@ -60,7 +60,7 @@ export function NowPlayingScreen({
         </button>
       </nav>
       <Artwork url={episode.artworkUrl} size="hero" />
-      <div className="now-playing-titles">
+      <div className="now-playing-titles tray">
         {episode.podcastTitle && <p className="podcast-author">{episode.podcastTitle}</p>}
         <h1>{episode.title}</h1>
       </div>
