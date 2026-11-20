@@ -848,13 +848,15 @@ button.category-toggle {
 
 .category-picker label {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
 }
 
 .category-picker select {
+  flex: 0 0 16rem;
   min-width: 0;
-  max-width: 12rem;
+  max-width: 100%;
   height: 2.25rem;
   padding: 0 0.625rem;
   border: 0;
