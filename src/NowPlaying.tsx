@@ -59,11 +59,13 @@ export function NowPlayingScreen({
           <InfoIcon size={26} />
         </button>
       </nav>
-      <Artwork url={episode.artworkUrl} size="hero" />
-      <div className="now-playing-titles tray">
-        {episode.podcastTitle && <p className="podcast-author">{episode.podcastTitle}</p>}
-        <h1>{episode.title}</h1>
-      </div>
+      <header className="now-playing-header tray">
+        <Artwork url={episode.artworkUrl} size="hero" />
+        <div className="now-playing-titles">
+          {episode.podcastTitle && <p className="podcast-author">{episode.podcastTitle}</p>}
+          <h1>{episode.title}</h1>
+        </div>
+      </header>
       {failed && <FailedMessage />}
       <div className="seek tray">
         {chapters.length > 0 && (
