@@ -67,7 +67,7 @@ export function LatestScreen({
             [
               'favorites',
               <>
-                <StarIcon filled size={14} />
+                <StarIcon filled size={12} />
                 Favorites
               </>,
             ],
