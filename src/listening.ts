@@ -30,8 +30,12 @@ export function resumePosition(state: EpisodeState | undefined): number | null {
 export interface ListeningStore {
   /** The episode's state as this device knows it, or undefined if it has never been played. */
   get(episodeId: string): EpisodeState | undefined
-  /** Changes these fields of the episode's state here at once, and saves them. */
-  update(episodeId: string, podcastId: string, change: EpisodeStateChange): void
+  /**
+   * Changes these fields of the episode's state here at once, and saves them.
+   * The change is taken as made now, unless `changedAt` (ISO 8601) says it was
+   * made earlier and is only now being reported.
+   */
+  update(episodeId: string, podcastId: string, change: EpisodeStateChange, changedAt?: string): void
   /** Keeps one podcast's episode states current. Returns a function that stops watching. */
   watch(podcastId: string): () => void
   /** Whether a watched podcast's states have arrived. */
@@ -198,9 +202,9 @@ export function createListeningStore(
     return state
   }
 
-  function update(episodeId: string, podcastId: string, change: EpisodeStateChange) {
+  function update(episodeId: string, podcastId: string, change: EpisodeStateChange, changedAt = new Date().toISOString()) {
     if (forgotten.has(podcastId)) return
-    const entry: LocalChange = { podcastId, change, changedAt: new Date().toISOString(), sending: false }
+    const entry: LocalChange = { podcastId, change, changedAt, sending: false }
     // An earlier change still waiting whose every field this one sets again
     // is outdone by it either way, so only this one need be sent.
     const earlier = (local.get(episodeId) ?? []).filter(

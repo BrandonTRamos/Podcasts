@@ -1,12 +1,21 @@
 import type { PlayableEpisode, Player } from './player'
 import type { MediaSessionControls, PlaybackLog } from './services'
 
+/** How far, in seconds, the position may be from where the OS reckons it before the OS is told again. */
+const POSITION_SLACK = 1
+
 /**
  * Shows the player on the OS media controls (lock screen, notification
  * centre) and lets those controls, and headphone and Bluetooth buttons, drive
  * it. Works from the player's own state rather than React, so it keeps up
  * while the app is in the background. Returns a function that disconnects it
  * and clears the controls.
+ *
+ * The OS moves its progress bar on by itself from the position, rate and time
+ * it was last told, so it is told again only when that would be wrong: on
+ * play, pause, a seek, a change of speed or length, or when playback has
+ * drifted from it. Telling it at every tick of the position, several times a
+ * second, is work done behind a locked screen for nothing.
  */
 export function connectMediaSession(session: MediaSessionControls, player: Player): () => void {
   const actions: [MediaSessionAction, (details: MediaSessionActionDetails) => void][] = [
@@ -24,6 +33,8 @@ export function connectMediaSession(session: MediaSessionControls, player: Playe
 
   let shown: PlayableEpisode | null = null
   let wasPlaying = false
+  /** What the OS was last told of the position, and when; null when that was nothing. */
+  let told: { playing: boolean; duration: number | null; position: number; speed: number; at: number } | null = null
 
   function show() {
     const state = player.getState()
@@ -36,23 +47,31 @@ export function connectMediaSession(session: MediaSessionControls, player: Playe
     wasPlaying = state.playing
     if (state.episode !== shown || starting) {
       shown = state.episode
+      // Safari can drop the position along with the metadata, so that is told again too.
+      told = null
       session.setMetadata({
         title: shown.title,
         artist: shown.podcastTitle ?? '',
         artwork: shown.artworkUrl ? [{ src: shown.artworkUrl }] : [],
       })
     }
-    session.setPlaybackState(state.playing ? 'playing' : 'paused')
-    const { duration, position, speed } = state
-    session.setPositionState(
-      // The OS rejects a position past the end, which a feed's understated length would allow.
-      duration === null ? null : { duration, position: Math.min(position, duration), playbackRate: speed },
-    )
+    const { playing, duration, speed } = state
+    // The OS rejects a position past the end, which a feed's understated length would allow.
+    const position = duration === null ? state.position : Math.min(state.position, duration)
+    const now = Date.now()
+    if (told && told.playing === playing && told.duration === duration && told.speed === speed) {
+      const reckoned = told.position + (playing ? ((now - told.at) / 1000) * speed : 0)
+      if (Math.abs(position - reckoned) <= POSITION_SLACK) return
+    }
+    told = { playing, duration, position, speed, at: now }
+    session.setPlaybackState(playing ? 'playing' : 'paused')
+    session.setPositionState(duration === null ? null : { duration, position, playbackRate: speed })
   }
 
   function clear() {
     shown = null
     wasPlaying = false
+    told = null
     session.setMetadata(null)
     session.setPlaybackState('none')
     session.setPositionState(null)

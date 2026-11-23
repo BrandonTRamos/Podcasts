@@ -3,6 +3,7 @@ import { useDownloads } from './downloads'
 import { DownloadsScreen } from './DownloadsScreen'
 import type { EpisodeActions } from './EpisodeRow'
 import { EpisodeScreen } from './EpisodeScreen'
+import { forgetKeptPlace, keepPlace, takeKeptPlace } from './keptPlace'
 import { LatestScreen } from './LatestScreen'
 import { FAVORITES_SECTION, LibraryScreen, type LibraryView, type OpenSections } from './LibraryScreen'
 import { createListeningStore, resumePosition, useEpisodeStates } from './listening'
@@ -44,6 +45,48 @@ function storedLastEpisode(storage: DeviceStorage): PlayableEpisode | undefined 
     typeof episode.title === 'string' &&
     typeof episode.enclosureUrl === 'string'
   return whole ? episode : undefined
+}
+
+/** Where the screens the listener was on are kept while the app is hidden, for a launch that follows. */
+const VIEW_KEY = 'view'
+
+/** Which screens the listener is on. */
+interface View {
+  screen: Screen
+  nowPlayingOpen: boolean
+  libraryView: LibraryView
+  podcastView: PodcastView
+}
+
+const hasStrings = (value: unknown, ...fields: string[]): boolean =>
+  typeof value === 'object' && value !== null && fields.every((field) => typeof (value as Record<string, unknown>)[field] === 'string')
+
+function isMainScreen(value: unknown): value is MainScreen {
+  if (!hasStrings(value, 'name')) return false
+  const { name } = value as { name: string }
+  return name === 'podcast' ? hasStrings(value, 'podcastId') : Object.hasOwn(BACK_LABELS, name)
+}
+
+function isScreen(value: unknown): value is Screen {
+  if (!hasStrings(value, 'name') || (value as { name: string }).name !== 'episode') return isMainScreen(value)
+  const { episode, from, fromNowPlaying } = value as Record<string, unknown>
+  return hasStrings(episode, 'id', 'podcastId', 'title', 'enclosureUrl') && isMainScreen(from) && typeof fromNowPlaying === 'boolean'
+}
+
+/**
+ * The screens the listener was on when the app was last hidden, if it never
+ * showed again: iOS closed it in the background, and this launch is the
+ * listener coming back to it.
+ */
+function storedView(storage: DeviceStorage): View | undefined {
+  const view = readJson<Partial<View>>(storage, VIEW_KEY)
+  if (typeof view !== 'object' || view === null || !isScreen(view.screen)) return undefined
+  return {
+    screen: view.screen,
+    nowPlayingOpen: view.nowPlayingOpen === true,
+    libraryView: view.libraryView === 'inProgress' ? 'inProgress' : 'podcasts',
+    podcastView: view.podcastView === 'recentlyAdded' ? 'recentlyAdded' : 'episodes',
+  }
 }
 
 export type LoadState<T> = { status: 'loading' } | { status: 'failed' } | { status: 'loaded'; items: T[] }
@@ -121,24 +164,30 @@ export function SignedInApp({
   // they missed (as while iOS had the app suspended).
   const [refreshed, setRefreshed] = useState<{ of: DataApi; data: DataApi } | null>(null)
   const data = refreshed?.of === backend ? refreshed.data : backend
-  const [screen, setScreen] = useState<Screen>({ name: 'library' })
+  // iOS closes an app left in the background whenever it likes, and loads it
+  // afresh when the listener comes back: it then opens where they were.
+  const [restored] = useState(() => storedView(device.storage))
+  const [screen, setScreen] = useState<Screen>(restored?.screen ?? { name: 'library' })
   /** Now playing takes the place of the current screen; closing it goes back there. */
-  const [nowPlayingOpen, setNowPlayingOpen] = useState(false)
+  const [nowPlayingOpen, setNowPlayingOpen] = useState(restored?.nowPlayingOpen ?? false)
   const [podcasts, setPodcasts] = useState<LoadState<Podcast>>({ status: 'loading' })
   const [categories, setCategories] = useState<LoadState<Category>>({ status: 'loading' })
   // Here rather than on the library, so a category opened stays open while the listener visits a podcast.
   // Favorites start open; the rest closed.
   const [openSections, setOpenSections] = useState<OpenSections>(() => new Set([FAVORITES_SECTION]))
   // Here too, so the library opens on the same view on coming back to it.
-  const [libraryView, setLibraryView] = useState<LibraryView>('podcasts')
+  const [libraryView, setLibraryView] = useState<LibraryView>(restored?.libraryView ?? 'podcasts')
   const [listening] = useState(() => createListeningStore(backend, device.storage))
   const online = useOnline(device)
   // Here rather than on the library, so an import carries on while the listener goes elsewhere.
   const opmlImport = useOpmlImport(backend)
   const saveProgress = useCallback<SaveProgress>(
-    (episode, { positionSeconds, played }) =>
-      listening.update(episode.id, episode.podcastId, played ? { positionSeconds, played } : { positionSeconds }),
-    [listening],
+    (episode, { positionSeconds, played }) => {
+      listening.update(episode.id, episode.podcastId, played ? { positionSeconds, played } : { positionSeconds })
+      // Saved properly now, so the place kept meanwhile is behind it.
+      forgetKeptPlace(device.storage)
+    },
+    [listening, device.storage],
   )
   // Read when the player moves on by itself, which is outside any render.
   const podcastsRef = useRef(podcasts)
@@ -179,11 +228,16 @@ export function SignedInApp({
   // where the listener left it. Its file loads only when played.
   const [lastEpisode] = useState(() => storedLastEpisode(device.storage))
   useEffect(() => {
+    // If the app was closed while playing, where it had got to was never
+    // saved: it is now, as the change made then that it was.
+    const place = takeKeptPlace(device.storage)
+    if (place) listening.update(place.episodeId, place.podcastId, { positionSeconds: place.positionSeconds }, place.at)
     if (lastEpisode) player.cue(lastEpisode, resumePosition(listening.get(lastEpisode.id)) ?? 0)
-  }, [player, listening, lastEpisode])
+  }, [player, listening, lastEpisode, device.storage])
   useEffect(() => {
     if (loaded) writeJson(device.storage, LAST_EPISODE_KEY, loaded)
   }, [device.storage, loaded])
+  useEffect(() => keepPlace(player, device.storage), [player, device.storage])
 
   // The queue is kept current for as long as the app is open, so the player
   // can move on to an episode queued on another device without fetching it then.
@@ -272,12 +326,30 @@ export function SignedInApp({
   function stopPlayer() {
     player.stop()
     device.storage.remove(LAST_EPISODE_KEY)
+    forgetKeptPlace(device.storage)
   }
 
   /** What the open podcast's episodes are searched for. Here, so it is still there on coming back from one of its episodes. */
   const [episodeSearch, setEpisodeSearch] = useState('')
   /** Which of the open podcast's tabs shows. Here for the same reason. */
-  const [podcastView, setPodcastView] = useState<PodcastView>('episodes')
+  const [podcastView, setPodcastView] = useState<PodcastView>(restored?.podcastView ?? 'episodes')
+
+  // Kept only while the app is hidden: one closed in plain sight was closed by
+  // the listener, and opens on the library as ever.
+  const view = useRef<View>({ screen, nowPlayingOpen, libraryView, podcastView })
+  useEffect(() => {
+    view.current = { screen, nowPlayingOpen, libraryView, podcastView }
+  }, [screen, nowPlayingOpen, libraryView, podcastView])
+  useEffect(() => {
+    const keepWhileHidden = () => {
+      if (document.visibilityState === 'hidden') writeJson(device.storage, VIEW_KEY, view.current)
+      else device.storage.remove(VIEW_KEY)
+    }
+    // Showing now, so what an earlier launch kept has served.
+    keepWhileHidden()
+    document.addEventListener('visibilitychange', keepWhileHidden)
+    return () => document.removeEventListener('visibilitychange', keepWhileHidden)
+  }, [device.storage])
   const openPodcast = useCallback((podcastId: string) => {
     setEpisodeSearch('')
     setPodcastView('episodes')
@@ -309,11 +381,13 @@ export function SignedInApp({
     listening.dequeue(episode.id)
   }
 
-  /** Seeks the notes' episode, preserving pause if loaded, or starts it at that point. */
+  /** Seeks the notes' episode, preserving pause if loaded, or starts it at that point. One that failed is tried again from there. */
   function seekEpisode(episode: Episode, seconds: number) {
     const current = player.getState()
-    if (current.episode && current.episode.id === episode.id && !current.failed) player.seekTo(seconds)
-    else player.play(toPlayable(episode), seconds)
+    if (current.episode && current.episode.id === episode.id) {
+      player.seekTo(seconds)
+      if (current.failed) player.resume()
+    } else player.play(toPlayable(episode), seconds)
     listening.dequeue(episode.id)
   }
 

@@ -18,6 +18,16 @@ export type SkipDirection = keyof SkipSeconds
 export const SAVE_INTERVAL_MS = 60_000
 /** A file played again that has not moved after this long is stuck. One that plays starts within a second or so. */
 export const STUCK_MS = 4_000
+/**
+ * A file paused, with the app in the background, for at least this long is
+ * loaded afresh when played again. iOS lets go of a paused file's connection
+ * there, and playing it on can then go nowhere.
+ */
+export const STALE_PAUSE_MS = 60_000
+/** How long the player waits before each further try at a file that failed while playing. */
+export const RETRY_DELAYS_MS = [1_000, 4_000, 10_000]
+/** A file tried again has settled once it has played on for this many seconds: a later failure gets every try anew. */
+export const SETTLED_SECONDS = 10
 /** The range of playback speeds the listener can slide between; 1 is normal speed. */
 export const MIN_SPEED = 0.5
 export const MAX_SPEED = 3
@@ -99,6 +109,14 @@ export type LocalCopyOf = (episodeId: string) => string | null
  * iPhone, pressing play on the lock screen after a long pause can leave the
  * element saying it plays while nothing comes out. A file loading for the
  * first time is left alone: a slow network is no reason to start over.
+ * One paused in the background for `STALE_PAUSE_MS` is loaded afresh at once
+ * when played again, without waiting to see it stuck.
+ *
+ * A file that fails after it had got going (the network dropped under a
+ * stream) keeps the listener's place. If it was playing, it is tried again
+ * after each of `RETRY_DELAYS_MS`, and only then shown as failed; if it was
+ * paused, it is quietly loaded again when next played. Pressing play on a
+ * failed episode, as from the lock screen, tries it again too.
  */
 export interface Player {
   getState(): PlayerState
@@ -128,8 +146,14 @@ export interface Player {
   setSpeed(speed: number): void
   /** Makes this skip move by this many seconds from now on. Ignores anything that is not a whole, positive number. */
   setSkip(direction: SkipDirection, seconds: number): void
-  /** Saves the position now, if it has moved since it was last saved: the app is going to the background. */
-  savePosition(): void
+  /**
+   * The app has gone to the background (true) or come back (false). Going
+   * there saves the position, if it has moved since it was last saved, as iOS
+   * may close the app at any time after. Coming back does as `retryNow`.
+   */
+  inBackground(hidden: boolean): void
+  /** A file waiting to be tried again is tried at once: the network is back, or the listener is. */
+  retryNow(): void
   /**
    * A position for this episode was saved elsewhere (another device). If it is
    * the episode loaded, it is paused, and the position differs from what this
@@ -159,10 +183,29 @@ export function createPlayer(
   let lastSaveAt = 0
   /** Where the loaded file should start, until its metadata has loaded or the listener seeks. */
   let pendingStart: number | null = null
-  /** The loaded episode was cued, and its file has not loaded: the element holds nothing yet. */
+  /**
+   * The element holds nothing of the loaded episode: it was cued and its file
+   * has not loaded, or the file failed. The position is then the state's own.
+   */
   let cued = false
   /** Runs out when the file played again has stayed put for `STUCK_MS`. */
   let stuckTimer: ReturnType<typeof setTimeout> | null = null
+  /** The file's metadata has arrived since it was loaded: it is, or was, playable. */
+  let gotGoing = false
+  /** This load is the player's own, to rescue an episode that had got going. */
+  let recovering = false
+  /** Tries made at a failed file since one last settled. */
+  let retries = 0
+  /** The element's position at its last tick since the file loaded, and how many seconds it has played on since then. */
+  let lastTick: number | null = null
+  let playedOn = 0
+  /** Runs out when it is time to try a failed file again. */
+  let retryTimer: ReturnType<typeof setTimeout> | null = null
+  let hidden = false
+  /** When the file came to be both paused and in the background, while it is. */
+  let idleSince: number | null = null
+  /** The longest it has been so, in one stretch, since it last played. */
+  let idleFor = 0
 
   function set(next: PlayerState) {
     state = next
@@ -201,9 +244,15 @@ export function createPlayer(
   const handlers: Record<string, () => void> = {
     play: () => {
       applySpeed()
+      noLongerIdle()
       update({ playing: true })
+      // Whoever pressed play: the listener, or iOS itself once a phone call is over.
+      if (gotGoing && !cued) watchForStuck()
     },
     pause: () => {
+      // A failed file is not playing, whatever its element says of pausing.
+      if (cued) return
+      if (hidden) idleSince = Date.now()
       update({ playing: false })
       // Reaching the end pauses first; `ended` saves that.
       if (!audio.ended) save()
@@ -215,6 +264,15 @@ export function createPlayer(
       if (next) load(next.episode, next.startAt)
     },
     timeupdate: () => {
+      // The element's position means nothing once its file has failed.
+      if (cued) return
+      // A second or two on from the last tick is playback; anything else is a seek.
+      const moved = lastTick === null ? 0 : audio.currentTime - lastTick
+      lastTick = audio.currentTime
+      if (!audio.paused && moved > 0 && moved < 2) {
+        playedOn += moved
+        if (playedOn >= SETTLED_SECONDS) retries = 0
+      }
       update({ position: audio.currentTime })
       if (state.episode && !audio.paused && Date.now() - lastSaveAt >= SAVE_INTERVAL_MS) save()
     },
@@ -223,6 +281,7 @@ export function createPlayer(
     },
     // Some browsers ignore a seek made before the file's metadata has loaded.
     loadedmetadata: () => {
+      gotGoing = true
       applySpeed()
       if (pendingStart === null) return
       const start = pendingStart
@@ -230,7 +289,57 @@ export function createPlayer(
       if (audio.currentTime !== start) audio.currentTime = start
     },
     // A failed load leaves `paused` false, so the element's word on playing can't be trusted after it.
-    error: () => update({ playing: false, failed: true }),
+    error: () => {
+      if (!state.episode || cued) return
+      stopWatchingForStuck()
+      // Where it had got to, or was about to start: the place to pick up from.
+      const position = pendingStart ?? state.position
+      const started = gotGoing || recovering
+      cued = true
+      pendingStart = null
+      if (started && state.playing && retries < RETRY_DELAYS_MS.length) {
+        report(`failed at ${position.toFixed(1)}: trying again`)
+        update({ position })
+        retryTimer = setTimeout(retry, RETRY_DELAYS_MS[retries++])
+        return
+      }
+      // A file that had got going and was paused is just loaded again when next played.
+      const failed = !started || state.playing
+      if (started) {
+        if (failed) report(`failed at ${position.toFixed(1)}: giving up`)
+        // Nothing is saved for a failed episode, so its place is saved first.
+        update({ position })
+        save()
+      }
+      update({ position, playing: false, failed })
+    },
+  }
+
+  /** Tries the failed file again now, rather than when its wait runs out. */
+  function retryNow() {
+    if (retryTimer === null) return
+    stopRetrying()
+    retry()
+  }
+
+  function retry() {
+    retryTimer = null
+    if (state.episode) load(state.episode, state.position, true)
+  }
+
+  function stopRetrying() {
+    if (retryTimer !== null) clearTimeout(retryTimer)
+    retryTimer = null
+  }
+
+  function noLongerIdle() {
+    idleSince = null
+    idleFor = 0
+  }
+
+  /** How long the file has sat paused in the background, at its longest, since it last played. */
+  function longestIdle() {
+    return Math.max(idleFor, idleSince === null ? 0 : Date.now() - idleSince)
   }
 
   function attemptPlay() {
@@ -239,21 +348,36 @@ export function createPlayer(
     update({ playing: !audio.paused })
     started.catch(() => {
       // Refused (no user gesture) or aborted: show what the element is actually doing.
-      if (load === loadCount && state.episode && !state.failed) update({ playing: !audio.paused })
+      if (load === loadCount && state.episode && !state.failed && !cued) update({ playing: !audio.paused })
     })
   }
 
-  /** Plays the loaded file on from where it is, and loads it afresh if it then stays put. */
+  /**
+   * Plays the loaded file on from where it is, or loads it afresh at once if
+   * it has sat paused in the background too long. The element's `play` event
+   * then has it watched, in case it stays put.
+   */
   function playOn() {
+    if (!state.episode) return
+    const idle = longestIdle()
+    // An ended file plays again from the start, which loading it at its end would not.
+    if (idle >= STALE_PAUSE_MS && !audio.ended) {
+      report(`paused ${Math.round(idle / 1000)}s in the background: loading afresh`)
+      load(state.episode, currentPosition(), true)
+      return
+    }
     attemptPlay()
+  }
+
+  /** Loads the file afresh, where it is, if it has not moved from there in `STUCK_MS`. */
+  function watchForStuck() {
     stopWatchingForStuck()
-    if (audio.paused) return
     const from = audio.currentTime
     stuckTimer = setTimeout(() => {
       stuckTimer = null
-      if (!state.episode || state.failed || audio.paused || audio.currentTime !== from) return
+      if (!state.episode || state.failed || cued || audio.paused || audio.currentTime !== from) return
       report(`stuck at ${from.toFixed(1)}: loading afresh`)
-      load(state.episode, from)
+      load(state.episode, from, true)
     }, STUCK_MS)
   }
 
@@ -269,16 +393,29 @@ export function createPlayer(
     return next
   }
 
-  /** Loads the episode in place of whatever is loaded, and starts it. */
-  function load(episode: PlayableEpisode, startAt: number) {
+  /**
+   * Loads the episode in place of whatever is loaded, and starts it. A
+   * `recovery` is the player loading again an episode that had got going.
+   */
+  function load(episode: PlayableEpisode, startAt: number, recovery = false) {
     loadCount++
     stopWatchingForStuck()
+    stopRetrying()
+    noLongerIdle()
     cued = false
+    gotGoing = false
+    recovering = recovery
+    if (!recovery) retries = 0
+    lastTick = null
+    playedOn = 0
     const start = Math.max(startAt, 0)
     const duration = episode.durationSeconds
     set({ episode, playing: false, position: start, duration, failed: false, speed: state.speed, skip: state.skip })
-    savedPosition = start
-    lastSaveAt = Date.now()
+    // A recovery starts where the episode had got to, which may be past what was last saved.
+    if (!recovery) {
+      savedPosition = start
+      lastSaveAt = Date.now()
+    }
     audio.src = localCopyOf(episode.id) ?? episode.enclosureUrl
     applySpeed()
     if (start > 0) {
@@ -352,6 +489,14 @@ export function createPlayer(
     },
 
     pause() {
+      if (cued) {
+        // Nothing is playing; at most a failed file is waiting to be tried again.
+        if (retryTimer === null) return
+        stopRetrying()
+        update({ playing: false })
+        save()
+        return
+      }
       audio.pause()
       update({ playing: !audio.paused })
     },
@@ -382,7 +527,19 @@ export function createPlayer(
       set({ ...state, skip: { ...state.skip, [direction]: seconds } })
     },
 
-    savePosition: () => save(),
+    inBackground(nowHidden) {
+      hidden = nowHidden
+      if (hidden) {
+        if (idleSince === null && state.episode && !cued && audio.paused) idleSince = Date.now()
+        save()
+        return
+      }
+      idleFor = longestIdle()
+      idleSince = null
+      retryNow()
+    },
+
+    retryNow,
 
     adoptSavedPosition(episodeId, seconds) {
       if (!state.episode || state.episode.id !== episodeId || state.playing || state.failed) return
@@ -394,6 +551,8 @@ export function createPlayer(
     stop() {
       loadCount++
       stopWatchingForStuck()
+      stopRetrying()
+      noLongerIdle()
       cued = false
       pendingStart = null
       audio.pause()
@@ -454,11 +613,16 @@ function storeSkip(skip: SkipSeconds) {
 
 /**
  * A player for this audio element, for the life of the calling component,
- * shown on and controlled from the OS media controls. It saves the position
- * whenever the app goes to the background, and keeps the chosen speed and skips on
- * this device for the next launch. `saveProgress`, `takeNext`, `localCopyOf`
- * and `log` are taken once, when the player is made, so later values are ignored. `hasNext` says
- * whether anything is queued, for the OS controls' next button.
+ * shown on and controlled from the OS media controls. It is told whenever the
+ * app goes to the background or comes back, and when the network does, and
+ * keeps the chosen speed and skips on this device for the next launch.
+ * `saveProgress`, `takeNext`, `localCopyOf` and `log` are taken once, when the
+ * player is made, so later values are ignored. `hasNext` says whether anything
+ * is queued, for the OS controls' next button.
+ *
+ * The state returned stands still while the app is hidden, but for changes
+ * other than the position moving on: nothing is drawn then, and rendering the
+ * app several times a second behind a locked screen only costs battery.
  */
 export function usePlayer(
   audio: AudioElement,
@@ -474,22 +638,64 @@ export function usePlayer(
   const [player] = useState(() =>
     createPlayer(audio, saveProgress, storedSpeed(), takeNext, localCopyOf, storedSkip(), (line) => log.record(`player ${line}`)),
   )
-  const state = useSyncExternalStore(player.subscribe, player.getState)
+  const [shown] = useState(() => stateWhileVisible(player))
+  const state = useSyncExternalStore(shown.subscribe, shown.getState)
   useEffect(() => () => player.stop(), [player])
   useEffect(() => connectMediaSession(mediaSession, player), [mediaSession, player])
   useEffect(() => offerNextTrack(mediaSession, player, hasNext), [mediaSession, player, hasNext])
   useEffect(() => storeSpeed(state.speed), [state.speed])
   useEffect(() => storeSkip(state.skip), [state.skip])
   useEffect(() => {
-    const saveIfHidden = () => {
-      if (document.visibilityState === 'hidden') player.savePosition()
-    }
-    document.addEventListener('visibilitychange', saveIfHidden)
-    window.addEventListener('pagehide', player.savePosition)
+    const visibilityChanged = () => player.inBackground(document.visibilityState === 'hidden')
+    const leaving = () => player.inBackground(true)
+    visibilityChanged()
+    document.addEventListener('visibilitychange', visibilityChanged)
+    window.addEventListener('pagehide', leaving)
+    window.addEventListener('online', player.retryNow)
     return () => {
-      document.removeEventListener('visibilitychange', saveIfHidden)
-      window.removeEventListener('pagehide', player.savePosition)
+      document.removeEventListener('visibilitychange', visibilityChanged)
+      window.removeEventListener('pagehide', leaving)
+      window.removeEventListener('online', player.retryNow)
     }
   }, [player])
   return { player, state }
+}
+
+/** Whether nothing differs between the two states but how far the same episode has played. */
+function onlyPositionMoved(from: PlayerState, to: PlayerState): boolean {
+  if (!from.episode || !to.episode) return false
+  return (
+    from.episode === to.episode &&
+    from.playing === to.playing &&
+    from.duration === to.duration &&
+    from.failed === to.failed &&
+    from.speed === to.speed &&
+    from.skip === to.skip
+  )
+}
+
+/**
+ * The player's state as there is any use in drawing it: while the app is
+ * hidden, it stays as it was until something other than the position changes,
+ * and catches up when the app shows again.
+ */
+function stateWhileVisible(player: Player): Pick<Player, 'getState' | 'subscribe'> {
+  let shown = player.getState()
+  return {
+    getState() {
+      const current = player.getState()
+      if (current === shown) return shown
+      if (document.visibilityState === 'hidden' && onlyPositionMoved(shown, current)) return shown
+      shown = current
+      return shown
+    },
+    subscribe(listener) {
+      const unsubscribe = player.subscribe(listener)
+      document.addEventListener('visibilitychange', listener)
+      return () => {
+        unsubscribe()
+        document.removeEventListener('visibilitychange', listener)
+      }
+    },
+  }
 }
