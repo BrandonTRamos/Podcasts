@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   type AppShell,
+  PAGE_TIMEOUT_MS,
   serveAppShell,
   type ShellEvent,
   type ShellFetchEvent,
@@ -58,7 +59,10 @@ class FakeCaches {
 function browser() {
   let deployed = site('v1')
   let online = true
+  /** Ends the wait of every request the network is sitting on; null while it answers at once. */
+  let stalled: Promise<void> | null = null
   const fetchPath = async (path: string) => {
+    if (stalled) await stalled
     if (!online) throw new TypeError('Failed to fetch')
     // The host serves the page at the site root.
     const body = deployed.get(path === '/' ? '/index.html' : path)
@@ -84,6 +88,18 @@ function browser() {
     },
     goOffline() {
       online = false
+    },
+    /**
+     * The network stops answering, without failing: requests just wait, as on
+     * a phone not long awake. Returns a function that lets them through.
+     */
+    stall() {
+      let release = () => {}
+      stalled = new Promise((resolve) => (release = resolve))
+      return () => {
+        stalled = null
+        release()
+      }
     },
     async install(shell: AppShell) {
       const listeners: Listeners = { install: [], activate: [], fetch: [] }
@@ -165,5 +181,54 @@ describe('opening TinCan with no network', () => {
     expect((await tab.request('https://api.example.com/graphql')).handled).toBe(false)
     expect((await tab.request('https://media.example.com/show/ep1.mp3')).handled).toBe(false)
     expect((await tab.request(`${origin}/index.html`, { method: 'POST' })).handled).toBe(false)
+  })
+})
+
+// iOS loads the app afresh when the listener comes back to it, often before
+// the phone has its network back: requests then hang rather than fail.
+describe('opening TinCan on a network that keeps it waiting', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('opens from the stored shell once the page has been awaited long enough', async () => {
+    const tab = browser()
+    await tab.install(shellOf('v1'))
+    tab.deploy('v2')
+    vi.useFakeTimers()
+    tab.stall()
+
+    const page = tab.request(`${origin}/`, { mode: 'navigate' })
+    await vi.advanceTimersByTimeAsync(PAGE_TIMEOUT_MS)
+
+    expect(await (await page).response!.text()).toBe('<html>TinCan v1</html>')
+  })
+
+  it('takes the page from the network if it answers before then', async () => {
+    const tab = browser()
+    await tab.install(shellOf('v1'))
+    tab.deploy('v2')
+    vi.useFakeTimers()
+    const release = tab.stall()
+
+    const page = tab.request(`${origin}/`, { mode: 'navigate' })
+    await vi.advanceTimersByTimeAsync(PAGE_TIMEOUT_MS - 1)
+    release()
+
+    expect(await (await page).response!.text()).toBe('<html>TinCan v2</html>')
+  })
+
+  it('opens from the stored shell when the network, having kept it waiting, then fails', async () => {
+    const tab = browser()
+    await tab.install(shellOf('v1'))
+    vi.useFakeTimers()
+    const release = tab.stall()
+
+    const page = tab.request(`${origin}/`, { mode: 'navigate' })
+    await vi.advanceTimersByTimeAsync(PAGE_TIMEOUT_MS - 1)
+    tab.goOffline()
+    release()
+
+    expect(await (await page).response!.text()).toBe('<html>TinCan v1</html>')
   })
 })

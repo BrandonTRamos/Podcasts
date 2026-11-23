@@ -843,6 +843,8 @@ export class FakeMediaSession implements MediaSessionControls {
   metadata: MediaMetadataInit | null = null
   playbackState: MediaSessionPlaybackState = 'none'
   positionState: MediaPositionState | null = null
+  /** How many times the OS has been told the position. */
+  positionUpdates = 0
   #handlers = new Map<MediaSessionAction, ActionHandler>()
 
   setMetadata(metadata: MediaMetadataInit | null) {
@@ -854,6 +856,7 @@ export class FakeMediaSession implements MediaSessionControls {
   }
 
   setPositionState(state: MediaPositionState | null) {
+    this.positionUpdates++
     if (state) {
       // The real API throws on a position past the end, or a rate of zero.
       const { duration = NaN, position = 0, playbackRate = 1 } = state

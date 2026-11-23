@@ -215,15 +215,20 @@ describe('controlling playback from the OS media controls', () => {
     expect(mediaSession.positionState).toMatchObject({ position: 1800 })
   })
 
-  it('does nothing harmful when play is pressed for an episode that failed to load', async () => {
+  // The lock screen has no list to tap the episode in again, so its play button is the way to try.
+  it('tries the file again when play is pressed for an episode that failed to load', async () => {
     const { audio, mediaSession, user } = await renderShow()
     await user.click(screen.getByRole('button', { name: first.title }))
     act(() => audio.failToLoad())
+    expect(mediaSession.playbackState).toBe('paused')
+    expect(within(miniPlayer()).getByRole('alert')).toBeInTheDocument()
 
     act(() => mediaSession.press('play'))
 
-    expect(mediaSession.playbackState).toBe('paused')
-    expect(within(miniPlayer()).getByRole('alert')).toBeInTheDocument()
+    expect(audio.loads).toBe(2)
+    expect(audio.src).toBe(first.enclosureUrl)
+    expect(mediaSession.playbackState).toBe('playing')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
 
@@ -326,6 +331,19 @@ describe('a file that stays stuck after play is pressed', () => {
     wait(STUCK_MS)
 
     expect(audio.loads).toBe(2)
+  })
+
+  it('is loaded afresh when iOS itself played it on, as it does once a phone call is over', async () => {
+    const { audio, mediaSession } = await pressPlayAfterAPause()
+    act(() => audio.progressTo(601))
+    act(() => mediaSession.press('pause'))
+
+    act(() => void audio.play())
+    wait(STUCK_MS)
+
+    expect(audio.loads).toBe(2)
+    expect(audio.currentTime).toBe(601)
+    expect(audio.paused).toBe(false)
   })
 
   it('goes in the playback log', async () => {
