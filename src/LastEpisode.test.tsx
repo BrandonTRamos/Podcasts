@@ -41,6 +41,13 @@ async function openShow(user: User) {
 
 const miniPlayer = () => screen.getByRole('region', { name: 'Mini player' })
 
+/** Whether this part of the screen tells the listener, and assistive technology, that the episode is loading. */
+function showsLoading(region: HTMLElement) {
+  return within(region)
+    .queryAllByRole('status')
+    .some((status) => status.textContent === 'Loading')
+}
+
 /** Plays the episode, then pauses it 12:30 in, and closes the app. */
 async function playThenClose(data: FakeDataApi, device: FakeDevice) {
   const { audio, user, unmount } = await launch(data, device)
@@ -96,6 +103,19 @@ describe('the episode last played', () => {
     expect(audio.currentTime).toBe(750)
     // Played, the browser may fetch as much of it as it likes.
     expect(audio.preload).toBe('auto')
+  })
+
+  it('shows as loading from play until its position first moves, though its metadata had loaded', async () => {
+    const { data, device } = await setUp()
+    await playThenClose(data, device)
+    const { audio, user } = await launch(data, device)
+    act(() => audio.loadMetadata(2712))
+
+    await user.click(within(miniPlayer()).getByRole('button', { name: 'Play' }))
+
+    expect(showsLoading(miniPlayer())).toBe(true)
+    act(() => audio.progressTo(750.25))
+    expect(showsLoading(miniPlayer())).toBe(false)
   })
 
   it('shows no failure, and saves nothing, if its file fails to load before it is played; it loads again when played', async () => {

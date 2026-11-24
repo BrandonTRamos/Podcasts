@@ -371,9 +371,8 @@ export interface AudioElement extends EventTarget {
   /** True once playback has reached the end, until it is played or sought again. */
   readonly ended: boolean
   /**
-   * How much of the file the element holds where it is: 0 nothing, 1 its
-   * metadata, 2 the current moment, 3 enough to play on a little, 4 enough to
-   * play on through. It can fall back after loading, as when iOS lets go of a
+   * How much of the file the element holds where it is: one of the `HAVE_`
+   * values below. It can fall back after loading, as when iOS lets go of a
    * paused file.
    */
   readonly readyState: number
@@ -388,6 +387,17 @@ export interface AudioElement extends EventTarget {
   load(): void
   removeAttribute(name: 'src'): void
 }
+
+/** The audio element's `readyState`: it holds nothing of the file. */
+export const HAVE_NOTHING = 0
+/** It holds the file's metadata: its length and the like. */
+export const HAVE_METADATA = 1
+/** It holds the current moment, but not enough to play on from it. */
+export const HAVE_CURRENT_DATA = 2
+/** It holds enough to play on from where it is, a little. */
+export const HAVE_FUTURE_DATA = 3
+/** It holds enough to play on through, at the rate it is fetching. */
+export const HAVE_ENOUGH_DATA = 4
 
 /**
  * The OS media controls: lock screen, notification centre, and headphone and
