@@ -84,14 +84,16 @@ export function PodcastScreen({
         <div className="tray">
           <header>
             <Artwork url={podcast.artworkUrl} size="large" />
-            <div>
+            <div className="podcast-heading">
               <h1>{podcast.title}</h1>
               {podcast.author && <p className="podcast-author">{podcast.author}</p>}
-              {categories && <CategoryPicker podcast={podcast} categories={categories} data={data} />}
-              <Unsubscribe podcastTitle={podcast.title} onUnsubscribe={onUnsubscribe} />
             </div>
             <FavoriteToggle podcast={podcast} data={data} />
           </header>
+          <div className="podcast-actions">
+            {categories && <CategoryPicker podcast={podcast} categories={categories} data={data} />}
+            <Unsubscribe podcastTitle={podcast.title} onUnsubscribe={onUnsubscribe} />
+          </div>
           <FeedHealth podcast={podcast} refresh={(id) => data.refreshPodcast(id)} />
         </div>
       ) : (
@@ -209,15 +211,31 @@ function EpisodeList({
             </button>
           ))}
         </div>
-        <label className="episode-filter">
-          Unplayed only
-          <input
-            type="checkbox"
-            className="switch"
-            checked={unplayedOnly}
-            onChange={(e) => onUnplayedOnlyChange(e.target.checked)}
-          />
-        </label>
+        <div className="episode-tools">
+          {view === 'episodes' && (
+            <form id={formId} className="episode-search" role="search" onSubmit={handleSubmit}>
+              <input
+                type="search"
+                aria-label="Search episodes"
+                placeholder="Search"
+                autoComplete="off"
+                enterKeyHint="search"
+                value={searchTerm}
+                onChange={(e) => onSearchTermChange(e.target.value)}
+              />
+            </form>
+          )}
+          <label className="episode-filter">
+            Unplayed
+            <input
+              type="checkbox"
+              aria-label="Unplayed only"
+              className="switch"
+              checked={unplayedOnly}
+              onChange={(e) => onUnplayedOnlyChange(e.target.checked)}
+            />
+          </label>
+        </div>
       </div>
       {view === 'recentlyAdded' ? (
         recent.length === 0 ? (
@@ -242,18 +260,6 @@ function EpisodeList({
         )
       ) : (
         <>
-          <form id={formId} className="episode-search" role="search" onSubmit={handleSubmit}>
-            <label>
-              Search episodes
-              <input
-                type="search"
-                autoComplete="off"
-                enterKeyHint="search"
-                value={searchTerm}
-                onChange={(e) => onSearchTermChange(e.target.value)}
-              />
-            </label>
-          </form>
           {shown.length === 0 ? (
             <p>
               {!matches
