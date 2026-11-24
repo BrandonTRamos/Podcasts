@@ -463,6 +463,11 @@ export interface DeviceStorage {
 export interface PlaybackLog {
   /** Adds a line, stamped with the time. Once the log is full, the oldest line goes. */
   record(line: string): void
+  /**
+   * Told by the player engine which episode it has loaded, by its ID, or null
+   * when none: each line from then on names it.
+   */
+  loaded(episodeId: string | null): void
   /** Every line kept, oldest first. */
   lines(): string[]
 }
