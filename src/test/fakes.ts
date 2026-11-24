@@ -733,6 +733,10 @@ export class FakeAudio extends EventTarget implements AudioElement {
   readyState = 0
   #refuseNextPlay = false
   #ignoresEarlySeeks = false
+  /** The file loaded has produced sound: playback has moved on through it. */
+  #played = false
+  /** The element paused the file by itself as the page was hidden, and has not been played or paused since. */
+  #pausedItself = false
   /** How many times a file has been loaded: each starts from nothing. */
   loads = 0
 
@@ -750,6 +754,8 @@ export class FakeAudio extends EventTarget implements AudioElement {
     this.#currentTime = 0
     this.duration = NaN
     this.readyState = 0
+    this.#played = false
+    this.#pausedItself = false
     this.dispatchEvent(new Event('emptied'))
     this.dispatchEvent(new Event('durationchange'))
     this.dispatchEvent(new Event('timeupdate'))
@@ -776,6 +782,7 @@ export class FakeAudio extends EventTarget implements AudioElement {
       // Playing an ended file starts it again from the beginning.
       this.currentTime = 0
     }
+    this.#pausedItself = false
     if (this.paused) {
       this.paused = false
       this.dispatchEvent(new Event('play'))
@@ -784,6 +791,7 @@ export class FakeAudio extends EventTarget implements AudioElement {
   }
 
   pause() {
+    this.#pausedItself = false
     if (this.paused) return
     this.paused = true
     this.dispatchEvent(new Event('pause'))
@@ -808,6 +816,30 @@ export class FakeAudio extends EventTarget implements AudioElement {
     this.#refuseNextPlay = true
   }
 
+  /**
+   * From now on, as iOS does: pauses a file playing that has not yet produced
+   * sound as the page is hidden, and plays it again as the page shows, unless
+   * it has been played or paused since.
+   */
+  pauseUnplayedWhenHidden() {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        if (!this.#src || this.paused || this.#played) return
+        this.paused = true
+        this.#pausedItself = true
+        this.dispatchEvent(new Event('pause'))
+      } else if (this.#pausedItself) {
+        void this.play()
+      }
+    })
+  }
+
+  /** Enough of the file has loaded to play on from where it is. */
+  canPlay() {
+    this.readyState = Math.max(this.readyState, 3)
+    this.dispatchEvent(new Event('canplay'))
+  }
+
   /** The file's metadata arrives: its real length is now known. */
   loadMetadata(durationSeconds: number) {
     this.duration = durationSeconds
@@ -819,6 +851,7 @@ export class FakeAudio extends EventTarget implements AudioElement {
   /** Playback has reached this point, so the element holds enough of the file to play on. */
   progressTo(seconds: number) {
     this.#currentTime = seconds
+    this.#played = true
     this.readyState = 4
     this.dispatchEvent(new Event('timeupdate'))
   }

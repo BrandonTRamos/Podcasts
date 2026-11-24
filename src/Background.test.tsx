@@ -470,6 +470,208 @@ describe('a pause nobody asked for', () => {
   })
 })
 
+describe('an episode iOS paused while it loaded, as the app was hidden', () => {
+  /** Launches the app, presses play on the episode, and locks the phone before the file has loaded. */
+  async function playThenLock(data: FakeDataApi, device: FakeDevice) {
+    const app = await launch(data, device)
+    app.audio.pauseUnplayedWhenHidden()
+    await app.openShow()
+    await app.user.click(within(app.ui.getByRole('list', { name: 'Episodes' })).getByRole('button', { name: first.title }))
+    setVisibility('hidden')
+    return app
+  }
+
+  /** Whether this part of the screen tells the listener, and assistive technology, that the episode is loading. */
+  function showsLoading(region: HTMLElement) {
+    return within(region)
+      .queryAllByRole('status')
+      .some((status) => status.textContent === 'Loading')
+  }
+
+  it('is waiting to play: shown as loading, not as paused by the listener', async () => {
+    const { data, device } = await setUp()
+    const app = await playThenLock(data, device)
+
+    expect(app.audio.paused).toBe(true)
+    expect(showsLoading(app.miniPlayer())).toBe(true)
+    expect(within(app.miniPlayer()).getByRole('button', { name: 'Pause' })).toBeInTheDocument()
+    expect(app.mediaSession.playbackState).toBe('playing')
+    expect(device.playbackLog.lines().at(-1)).toMatch(/player paused at 0\.0: nobody asked, waiting to play/)
+  })
+
+  it('is played once more by the player engine, still hidden, once the file can play', async () => {
+    const { data, device } = await setUp()
+    const app = await playThenLock(data, device)
+
+    act(() => app.audio.canPlay())
+
+    expect(app.audio.paused).toBe(false)
+    expect(app.audio.loads).toBe(1)
+    expect(app.mediaSession.playbackState).toBe('playing')
+  })
+
+  it('waits on if that further try is refused, and is not tried again until the app shows', async () => {
+    const { data, device } = await setUp()
+    const app = await playThenLock(data, device)
+    let tries = 0
+    const play = app.audio.play.bind(app.audio)
+    app.audio.play = () => (tries++, play())
+    app.audio.refuseNextPlay()
+
+    act(() => app.audio.canPlay())
+    await act(async () => {})
+    act(() => app.audio.canPlay())
+
+    expect(tries).toBe(1)
+    expect(app.audio.paused).toBe(true)
+    expect(showsLoading(app.miniPlayer())).toBe(true)
+    expect(app.mediaSession.playbackState).toBe('playing')
+    setVisibility('visible')
+    expect(app.audio.paused).toBe(false)
+  })
+
+  it('is played once more at once if the file could already play when iOS paused it', async () => {
+    const { data, device } = await setUp()
+    const app = await launch(data, device)
+    app.audio.pauseUnplayedWhenHidden()
+    await app.openShow()
+    await app.user.click(within(app.ui.getByRole('list', { name: 'Episodes' })).getByRole('button', { name: first.title }))
+    act(() => app.audio.canPlay())
+
+    setVisibility('hidden')
+
+    expect(app.audio.paused).toBe(false)
+  })
+
+  it('plays when play is pressed on the lock screen', async () => {
+    const { data, device } = await setUp()
+    const app = await playThenLock(data, device)
+
+    act(() => app.mediaSession.press('play'))
+
+    expect(app.audio.paused).toBe(false)
+    expect(app.audio.loads).toBe(1)
+    expect(app.mediaSession.playbackState).toBe('playing')
+  })
+
+  it('is paused like any other when pause is pressed on the lock screen, and stays so when the app shows', async () => {
+    const { data, device } = await setUp()
+    const app = await playThenLock(data, device)
+
+    act(() => app.mediaSession.press('pause'))
+
+    expect(app.mediaSession.playbackState).toBe('paused')
+    act(() => app.audio.canPlay())
+    setVisibility('visible')
+    expect(app.audio.paused).toBe(true)
+    expect(showsLoading(app.miniPlayer())).toBe(false)
+    expect(within(app.miniPlayer()).getByRole('button', { name: 'Play' })).toBeInTheDocument()
+  })
+
+  it('is paused like any other when pause is pressed in the app', async () => {
+    const { data, device } = await setUp()
+    const app = await playThenLock(data, device)
+
+    await app.user.click(within(app.miniPlayer()).getByRole('button', { name: 'Pause' }))
+
+    expect(app.mediaSession.playbackState).toBe('paused')
+    expect(within(app.miniPlayer()).getByRole('button', { name: 'Play' })).toBeInTheDocument()
+    setVisibility('visible')
+    expect(app.audio.paused).toBe(true)
+  })
+
+  it('is not loaded afresh for the time it spent waiting, however long', async () => {
+    const { data, device } = await setUp()
+    holdTime()
+    const app = await playThenLock(data, device)
+    // The page may be told it is going more than once.
+    act(() => void window.dispatchEvent(new Event('pagehide')))
+
+    wait(STALE_PAUSE_MS * 10)
+    act(() => app.mediaSession.press('play'))
+
+    expect(app.audio.loads).toBe(1)
+    expect(app.audio.paused).toBe(false)
+    expect(device.playbackLog.lines().join('\n')).not.toMatch(/loading afresh/)
+  })
+
+  it('has nothing saved as the listener\'s place, waiting or paused from there', async () => {
+    const { data, device } = await setUp()
+    const app = await launch(data, device)
+    const writes = data.stateWrites().length
+    app.audio.pauseUnplayedWhenHidden()
+    await app.openShow()
+    await app.user.click(within(app.ui.getByRole('list', { name: 'Episodes' })).getByRole('button', { name: first.title }))
+    setVisibility('hidden')
+
+    act(() => app.mediaSession.press('pause'))
+    await act(async () => {})
+
+    expect(data.stateWrites()).toHaveLength(writes)
+  })
+
+  it('plays when the app shows again, started once, and is shown playing once it moves', async () => {
+    const { data, device } = await setUp()
+    const app = await playThenLock(data, device)
+    let starts = 0
+    app.audio.addEventListener('play', () => starts++)
+
+    setVisibility('visible')
+
+    expect(app.audio.paused).toBe(false)
+    expect(starts).toBe(1)
+    expect(app.audio.loads).toBe(1)
+    act(() => app.audio.progressTo(0.25))
+    expect(showsLoading(app.miniPlayer())).toBe(false)
+    expect(within(app.miniPlayer()).getByRole('button', { name: 'Pause' })).toBeInTheDocument()
+  })
+
+  it('plays when the app shows again and iOS starts it, though the player engine was refused', async () => {
+    const { data, device } = await setUp()
+    const app = await playThenLock(data, device)
+    let starts = 0
+    app.audio.addEventListener('play', () => starts++)
+    app.audio.refuseNextPlay()
+
+    setVisibility('visible')
+
+    expect(app.audio.paused).toBe(false)
+    expect(starts).toBe(1)
+    expect(showsLoading(app.miniPlayer())).toBe(true)
+    expect(app.mediaSession.playbackState).toBe('playing')
+  })
+})
+
+describe('a pause with the app hidden, other than iOS\'s while it loaded', () => {
+  it('pauses a file that had played, if nobody asked', async () => {
+    const { data, device } = await setUp()
+    const app = await launchAndPlay(data, device)
+    setVisibility('hidden')
+
+    act(() => app.audio.pause())
+
+    expect(app.mediaSession.playbackState).toBe('paused')
+    expect(within(app.miniPlayer()).getByRole('button', { name: 'Play' })).toBeInTheDocument()
+    setVisibility('visible')
+    expect(app.audio.paused).toBe(true)
+  })
+
+  it('pauses a file still loading, if the listener asked', async () => {
+    const { data, device } = await setUp()
+    const app = await launch(data, device)
+    await app.openShow()
+    await app.user.click(within(app.ui.getByRole('list', { name: 'Episodes' })).getByRole('button', { name: first.title }))
+    setVisibility('hidden')
+
+    act(() => app.mediaSession.press('pause'))
+    act(() => app.audio.canPlay())
+
+    expect(app.audio.paused).toBe(true)
+    expect(app.mediaSession.playbackState).toBe('paused')
+    expect(device.playbackLog.lines().join('\n')).not.toMatch(/nobody asked/)
+  })
+})
+
 describe('an app iOS closed while it played in the background', () => {
   /** Plays to ten minutes in, then on in the background to 10:05, where iOS closes the app. */
   async function playThenGetClosed(data: FakeDataApi, device: FakeDevice) {
