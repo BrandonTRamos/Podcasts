@@ -731,6 +731,7 @@ export class FakeAudio extends EventTarget implements AudioElement {
   ended = false
   /** 0 nothing, 1 metadata, 2 the current moment, 3 enough to play on, 4 enough to play through. */
   readyState = 0
+  preload: AudioElement['preload'] = 'auto'
   #refuseNextPlay = false
   #ignoresEarlySeeks = false
   /** How many times a file has been loaded: each starts from nothing. */

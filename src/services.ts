@@ -377,6 +377,11 @@ export interface AudioElement extends EventTarget {
    * paused file.
    */
   readonly readyState: number
+  /**
+   * How much of the file the browser may fetch before it is played: 'metadata'
+   * asks for no more than its length and the like, 'auto' for as much as it sees fit.
+   */
+  preload: '' | 'none' | 'metadata' | 'auto'
   play(): Promise<void>
   pause(): void
   /** With `removeAttribute('src')`, unloads the file and stops fetching it. */

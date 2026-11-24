@@ -232,7 +232,7 @@ export function SignedInApp({
   const loaded = playerState.episode
 
   // The episode loaded when the app last closed is ready to play again, paused
-  // where the listener left it. Its file loads only when played.
+  // where the listener left it, its file already loaded so it starts at once.
   const [lastEpisode] = useState(() => storedLastEpisode(device.storage))
   useEffect(() => {
     // If the app was closed while playing, where it had got to was never

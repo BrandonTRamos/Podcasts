@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
@@ -19,18 +19,19 @@ type User = ReturnType<typeof userEvent.setup>
 /** A backend holding one show with one episode, and a device signed in to it. */
 async function setUp() {
   const data = fakeDataApi()
-  data.ingest(data.seedPodcast('https://feeds.example.com/show.xml', show), [first])
+  const podcastId = data.seedPodcast('https://feeds.example.com/show.xml', show)
+  const [firstId] = data.ingest(podcastId, [first])
   await fakeAuth(owner).signIn(owner.email, owner.password)
-  return { data, device: new FakeDevice() }
+  return { data, podcastId, firstId, device: new FakeDevice() }
 }
 
 /** Opens the app on the device, at the library, as a launch of it would. */
-async function launch(data: FakeDataApi, device: FakeDevice) {
-  const audio = new FakeAudio()
-  const { unmount } = render(<App services={{ auth: fakeAuth(owner), data, audio, mediaSession: new FakeMediaSession(), device }} />)
+async function launch(data: FakeDataApi, device: FakeDevice, audio = new FakeAudio()) {
+  const mediaSession = new FakeMediaSession()
+  const { unmount } = render(<App services={{ auth: fakeAuth(owner), data, audio, mediaSession, device }} />)
   await screen.findByRole('heading', { level: 1, name: 'Library' })
   await act(async () => {})
-  return { audio, user: userEvent.setup(), unmount }
+  return { audio, mediaSession, user: userEvent.setup(), unmount }
 }
 
 async function openShow(user: User) {
@@ -56,12 +57,16 @@ describe('the episode last played', () => {
     const { data, device } = await setUp()
     await playThenClose(data, device)
 
-    const { audio } = await launch(data, device)
+    const { audio, mediaSession } = await launch(data, device)
 
     expect(await screen.findByRole('region', { name: 'Mini player' })).toHaveTextContent(first.title)
     expect(within(miniPlayer()).getByRole('button', { name: 'Play' })).toBeInTheDocument()
-    // Nothing loads or plays until the listener asks.
-    expect(audio.src).toBe('')
+    expect(within(miniPlayer()).queryByText('Loading')).not.toBeInTheDocument()
+    expect(mediaSession.playbackState).toBe('paused')
+    // Its file is loaded, paused where it will start, but nothing plays until the listener asks.
+    expect(audio.src).toBe(first.enclosureUrl)
+    expect(audio.preload).toBe('metadata')
+    expect(audio.currentTime).toBe(750)
     expect(audio.paused).toBe(true)
   })
 
@@ -78,6 +83,39 @@ describe('the episode last played', () => {
     expect(within(miniPlayer()).getByRole('button', { name: 'Pause' })).toBeInTheDocument()
   })
 
+  it('plays on the file loaded at launch, without loading it afresh', async () => {
+    const { data, device } = await setUp()
+    await playThenClose(data, device)
+    const { audio, user } = await launch(data, device)
+    act(() => audio.loadMetadata(2712))
+
+    await user.click(within(miniPlayer()).getByRole('button', { name: 'Play' }))
+
+    expect(audio.loads).toBe(1)
+    expect(audio.paused).toBe(false)
+    expect(audio.currentTime).toBe(750)
+    // Played, the browser may fetch as much of it as it likes.
+    expect(audio.preload).toBe('auto')
+  })
+
+  it('shows no failure, and saves nothing, if its file fails to load before it is played; it loads again when played', async () => {
+    const { data, device } = await setUp()
+    await playThenClose(data, device)
+    const { audio, user } = await launch(data, device)
+    const writes = data.stateWrites().length
+
+    act(() => audio.failToLoad())
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(within(miniPlayer()).getByRole('button', { name: 'Play' })).toBeEnabled()
+    await user.click(within(miniPlayer()).getByRole('button', { name: 'Play' }))
+    expect(audio.loads).toBe(2)
+    expect(audio.src).toBe(first.enclosureUrl)
+    expect(audio.currentTime).toBe(750)
+    expect(audio.paused).toBe(false)
+    expect(data.stateWrites()).toHaveLength(writes)
+  })
+
   it('shows where it will start in now playing, before it plays', async () => {
     const { data, device } = await setUp()
     await playThenClose(data, device)
@@ -86,6 +124,53 @@ describe('the episode last played', () => {
     await user.click(within(await screen.findByRole('region', { name: 'Mini player' })).getByRole('button', { name: new RegExp(first.title) }))
 
     expect(await screen.findByText('12:30')).toBeInTheDocument()
+  })
+
+  it('shows where it will start before its metadata has loaded, though the browser holds seeks until then', async () => {
+    const { data, device } = await setUp()
+    await playThenClose(data, device)
+    const audio = new FakeAudio()
+    audio.ignoreEarlySeeks()
+
+    const { user } = await launch(data, device, audio)
+    await user.click(within(miniPlayer()).getByRole('button', { name: new RegExp(first.title) }))
+
+    expect(await screen.findByText('12:30')).toBeInTheDocument()
+    act(() => audio.loadMetadata(2712))
+    expect(audio.currentTime).toBe(750)
+  })
+
+  it('starts where the listener sought to before playing it', async () => {
+    const { data, device } = await setUp()
+    await playThenClose(data, device)
+    const { audio, user } = await launch(data, device)
+    // Seeks made before the file's metadata has loaded are ignored, as by some browsers.
+    audio.ignoreEarlySeeks()
+    await user.click(within(miniPlayer()).getByRole('button', { name: new RegExp(first.title) }))
+
+    await user.click(screen.getByRole('button', { name: 'Skip forward 30 seconds' }))
+    expect(await screen.findByText('13:00')).toBeInTheDocument()
+    act(() => audio.loadMetadata(2712))
+    await user.click(screen.getByRole('button', { name: 'Play' }))
+
+    expect(audio.loads).toBe(1)
+    expect(audio.currentTime).toBe(780)
+    expect(audio.paused).toBe(false)
+  })
+
+  it('moves to a place saved on another device before it is played', async () => {
+    const { data, device, podcastId, firstId } = await setUp()
+    await playThenClose(data, device)
+    const { audio, user } = await launch(data, device)
+    act(() => audio.loadMetadata(2712))
+
+    await act(() => data.anotherDevice().saveEpisodeState(firstId, podcastId, { positionSeconds: 1500 }, new Date().toISOString()))
+    await waitFor(() => expect(audio.currentTime).toBe(1500))
+    await user.click(within(miniPlayer()).getByRole('button', { name: 'Play' }))
+
+    expect(audio.loads).toBe(1)
+    expect(audio.currentTime).toBe(1500)
+    expect(audio.paused).toBe(false)
   })
 
   it('is not ready after unsubscribing from its podcast', async () => {

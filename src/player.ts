@@ -128,6 +128,9 @@ export type LocalCopyOf = (episodeId: string) => string | null
  * without waiting to see it stuck; one that still does is played on, with
  * the stuck check as its safety net.
  *
+ * A file cued at launch, loaded but never played, is not held to the
+ * background pause: it holds no more than its metadata by design.
+ *
  * From play until the position first moves, the episode is shown as
  * loading. A file that had got going, played on, is shown so only after
  * `PLAY_ON_GRACE_MS`, as it usually moves at once.
@@ -154,10 +157,13 @@ export interface Player {
    */
   play(episode: PlayableEpisode, startAt?: number): void
   /**
-   * Shows this episode as loaded, paused at `startAt` seconds, without
-   * loading its file: that waits until it is played, so it then comes from
-   * the stored copy if one has turned up since. Seeking moves where it will
-   * start. Does nothing if an episode is already loaded.
+   * Loads this episode's file, paused at `startAt` seconds, asking the browser
+   * for no more than its metadata, so that it starts within a moment when
+   * played. Played, it plays on as loaded, unless a stored copy has turned up
+   * since: that is loaded instead, at the same place. Seeking moves where it
+   * will start. A file that fails before it is played shows no failure and
+   * saves nothing: it is loaded again when played. Does nothing if an episode
+   * is already loaded.
    */
   cue(episode: PlayableEpisode, startAt: number): void
   resume(): void
@@ -211,8 +217,8 @@ export function createPlayer(
   /** Where the loaded file should start, until its metadata has loaded or the listener seeks. */
   let pendingStart: number | null = null
   /**
-   * The element holds nothing of the loaded episode: it was cued and its file
-   * has not loaded, or the file failed. The position is then the state's own.
+   * The element holds nothing of the loaded episode: its file failed, or
+   * failed before it was ever played. The position is then the state's own.
    */
   let cued = false
   /** Runs out when the file played again has stayed put for `STUCK_MS`. */
@@ -243,6 +249,13 @@ export function createPlayer(
    * nobody here: iOS, as a rule.
    */
   let pauseAsked = false
+  /**
+   * The file was loaded at launch, paused, and has not been played since: on
+   * playing, a stored copy that has turned up since takes its place.
+   */
+  let primed = false
+  /** Where the element's file was loaded from. */
+  let source = ''
 
   function set(next: PlayerState) {
     if (next.episode?.id !== state.episode?.id) loaded(next.episode?.id ?? null)
@@ -334,6 +347,15 @@ export function createPlayer(
     error: () => {
       if (!state.episode || cued) return
       stopWatchingForStuck()
+      if (primed) {
+        // Not played yet, so nothing is lost: it is loaded again when it is.
+        const position = currentPosition()
+        primed = false
+        cued = true
+        pendingStart = null
+        update({ position })
+        return
+      }
       // Where it had got to, or was about to start: the place to pick up from.
       const position = pendingStart ?? state.position
       const started = gotGoing || recovering
@@ -431,6 +453,16 @@ export function createPlayer(
    */
   function playOn() {
     if (!state.episode) return
+    if (primed) {
+      primed = false
+      // A stored copy that has turned up since launch is played instead, from the same place.
+      const copy = localCopyOf(state.episode.id)
+      if (copy !== null && copy !== source) {
+        load(state.episode, currentPosition())
+        return
+      }
+      audio.preload = 'auto'
+    }
     const idle = longestIdle()
     // An ended file plays again from the start, which loading it at its end would not.
     if (idle >= STALE_PAUSE_MS && audio.readyState < HAVE_FUTURE_DATA && !audio.ended) {
@@ -475,6 +507,7 @@ export function createPlayer(
     stopRetrying()
     noLongerIdle()
     cued = false
+    primed = false
     gotGoing = false
     recovering = recovery
     // A browser may pause the element as its source changes.
@@ -491,15 +524,27 @@ export function createPlayer(
       savedPosition = start
       lastSaveAt = Date.now()
     }
-    audio.src = localCopyOf(episode.id) ?? episode.enclosureUrl
+    audio.preload = 'auto'
+    setSource(episode)
     applySpeed()
+    startFrom(start)
+    attemptPlay()
+  }
+
+  /** Points the element at the episode's stored copy if there is one, and its stream otherwise. */
+  function setSource(episode: PlayableEpisode) {
+    source = localCopyOf(episode.id) ?? episode.enclosureUrl
+    audio.src = source
+  }
+
+  /** Has the file just loaded start this far in, once the browser lets it. */
+  function startFrom(start: number) {
     if (start > 0) {
       pendingStart = start
       audio.currentTime = start
     } else {
       pendingStart = null
     }
-    attemptPlay()
   }
 
   function play(episode: PlayableEpisode, startAt = 0) {
@@ -554,10 +599,22 @@ export function createPlayer(
 
     cue(episode, startAt) {
       if (state.episode) return
-      cued = true
+      loadCount++
+      primed = true
+      gotGoing = false
+      recovering = false
+      retries = 0
+      lastTick = null
+      playedOn = 0
+      pauseAsked = true
       const position = Math.max(startAt, 0)
       set({ episode, playing: false, loading: false, position, duration: episode.durationSeconds, failed: false, speed: state.speed, skip: state.skip })
       savedPosition = position
+      // Only so much as to know the file: the rest waits until it is played.
+      audio.preload = 'metadata'
+      setSource(episode)
+      applySpeed()
+      startFrom(position)
     },
 
     resume() {
@@ -608,7 +665,8 @@ export function createPlayer(
     inBackground(nowHidden) {
       hidden = nowHidden
       if (hidden) {
-        if (idleSince === null && state.episode && !cued && audio.paused) idleSince = Date.now()
+        // A file loaded at launch and not yet played holds no more than its metadata anyway.
+        if (idleSince === null && state.episode && !cued && !primed && audio.paused) idleSince = Date.now()
         save()
         return
       }
@@ -632,6 +690,7 @@ export function createPlayer(
       stopRetrying()
       noLongerIdle()
       cued = false
+      primed = false
       pendingStart = null
       notStarting()
       pauseAsked = true

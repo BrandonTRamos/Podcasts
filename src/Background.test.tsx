@@ -102,6 +102,25 @@ describe('an episode paused while the app is in the background', () => {
     expect(device.playbackLog.lines().join('\n')).not.toMatch(/loading afresh/)
   })
 
+  it('plays on the file loaded at launch, though the app sat in the background a long while before it was played', async () => {
+    const { data, device } = await setUp()
+    const before = await launchAndPlay(data, device)
+    await before.user.click(within(before.miniPlayer()).getByRole('button', { name: 'Pause' }))
+    before.unmount()
+    const { audio, mediaSession } = await launch(data, device)
+    act(() => audio.loadMetadata(2712))
+    holdTime()
+    setVisibility('hidden')
+
+    wait(STALE_PAUSE_MS * 10)
+    act(() => mediaSession.press('play'))
+
+    expect(audio.loads).toBe(1)
+    expect(audio.paused).toBe(false)
+    expect(audio.currentTime).toBe(600)
+    expect(device.playbackLog.lines().join('\n')).not.toMatch(/loading afresh/)
+  })
+
   it('is loaded afresh at the same place if, played on after a long pause, it has not moved four seconds later', async () => {
     const { data, device } = await setUp()
     const { audio, mediaSession } = await launchAndPlay(data, device)
