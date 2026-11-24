@@ -481,6 +481,26 @@ describe('playing a downloaded episode', () => {
     expect(relaunched.audio.currentTime).toBe(300)
   })
 
+  it('plays from a stored copy that appeared since the launch loaded the episode left ready', async () => {
+    const { data, device, audio, user, unmount } = await setUp()
+    await tap(user, first.title)
+    act(() => audio.loadMetadata(2712))
+    act(() => audio.progressTo(300))
+    await user.click(within(screen.getByRole('region', { name: 'Mini player' })).getByRole('button', { name: 'Pause' }))
+    unmount()
+    const relaunched = await launch(data, device)
+    expect(relaunched.audio.src).toBe(first.enclosureUrl)
+    act(() => relaunched.audio.loadMetadata(2712))
+
+    await startDownload(relaunched.user, first.title)
+    await downloaded(first.title)
+    await relaunched.user.click(within(screen.getByRole('region', { name: 'Mini player' })).getByRole('button', { name: 'Play' }))
+
+    expect(device.files.contentsAt(relaunched.audio.src)).toEqual(firstFile)
+    expect(relaunched.audio.currentTime).toBe(300)
+    expect(relaunched.audio.paused).toBe(false)
+  })
+
   it('moves on to the stored copy of the next queued episode', async () => {
     const { audio, device, user } = await setUp()
     await startDownload(user, first.title)

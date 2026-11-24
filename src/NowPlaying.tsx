@@ -315,14 +315,32 @@ function FailedMessage() {
   )
 }
 
+/**
+ * Pause while playing, Play otherwise. While the episode loads, it is still
+ * Pause, ringed by a spinner, and a status says so to assistive technology.
+ */
 function PlayPauseButton({ state, player, iconSize }: { state: LoadedState; player: Player; iconSize: number }) {
-  return state.playing ? (
-    <button type="button" className="play-pause" onClick={player.pause} aria-label="Pause">
-      <PauseIcon size={iconSize} />
-    </button>
-  ) : (
-    <button type="button" className="play-pause" onClick={player.resume} disabled={state.failed} aria-label="Play">
-      <PlayIcon size={iconSize} />
-    </button>
+  const loading = state.playing && state.loading
+  return (
+    <>
+      {state.playing ? (
+        <button
+          type="button"
+          className={loading ? 'play-pause loading' : 'play-pause'}
+          onClick={player.pause}
+          aria-label="Pause"
+          aria-busy={loading}
+        >
+          <PauseIcon size={iconSize} />
+        </button>
+      ) : (
+        <button type="button" className="play-pause" onClick={player.resume} disabled={state.failed} aria-label="Play">
+          <PlayIcon size={iconSize} />
+        </button>
+      )}
+      <span role="status" className="visually-hidden">
+        {loading ? 'Loading' : ''}
+      </span>
+    </>
   )
 }

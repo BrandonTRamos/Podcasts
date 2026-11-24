@@ -4,18 +4,18 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] At launch, the last episode's file is loaded, paused at its saved place, from the stored copy if there is one and otherwise the stream
-- [ ] The browser is asked for no more than the file's metadata
-- [ ] Pressing play then plays it on without a fresh load
-- [ ] If a stored copy has appeared since launch, pressing play plays from the copy, at the same place
-- [ ] Seeking before it is played moves where it will start
-- [ ] A file that fails to load before it is played shows no failure and saves nothing; it is loaded again when played
-- [ ] Nothing is shown as playing or loading at launch, and the OS media controls show the episode paused
-- [ ] A place saved on another device before it is played is still adopted
-- [ ] Offline, with a stored copy, the launch and the play both work with no network
-- [ ] Client-seam tests cover the load at launch, playing on without a fresh load, a stored copy that appeared since, and a load that fails before play; the existing last-episode tests are updated to match
+- [x] At launch, the last episode's file is loaded, paused at its saved place, from the stored copy if there is one and otherwise the stream
+- [x] The browser is asked for no more than the file's metadata
+- [x] Pressing play then plays it on without a fresh load
+- [x] If a stored copy has appeared since launch, pressing play plays from the copy, at the same place
+- [x] Seeking before it is played moves where it will start
+- [x] A file that fails to load before it is played shows no failure and saves nothing; it is loaded again when played
+- [x] Nothing is shown as playing or loading at launch, and the OS media controls show the episode paused
+- [x] A place saved on another device before it is played is still adopted
+- [x] Offline, with a stored copy, the launch and the play both work with no network
+- [x] Client-seam tests cover the load at launch, playing on without a fresh load, a stored copy that appeared since, and a load that fails before play; the existing last-episode tests are updated to match
 
 ## Comments
 

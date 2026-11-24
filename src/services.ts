@@ -370,12 +370,34 @@ export interface AudioElement extends EventTarget {
   readonly paused: boolean
   /** True once playback has reached the end, until it is played or sought again. */
   readonly ended: boolean
+  /**
+   * How much of the file the element holds where it is: one of the `HAVE_`
+   * values below. It can fall back after loading, as when iOS lets go of a
+   * paused file.
+   */
+  readonly readyState: number
+  /**
+   * How much of the file the browser may fetch before it is played: 'metadata'
+   * asks for no more than its length and the like, 'auto' for as much as it sees fit.
+   */
+  preload: '' | 'none' | 'metadata' | 'auto'
   play(): Promise<void>
   pause(): void
   /** With `removeAttribute('src')`, unloads the file and stops fetching it. */
   load(): void
   removeAttribute(name: 'src'): void
 }
+
+/** The audio element's `readyState`: it holds nothing of the file. */
+export const HAVE_NOTHING = 0
+/** It holds the file's metadata: its length and the like. */
+export const HAVE_METADATA = 1
+/** It holds the current moment, but not enough to play on from it. */
+export const HAVE_CURRENT_DATA = 2
+/** It holds enough to play on from where it is, a little. */
+export const HAVE_FUTURE_DATA = 3
+/** It holds enough to play on through, at the rate it is fetching. */
+export const HAVE_ENOUGH_DATA = 4
 
 /**
  * The OS media controls: lock screen, notification centre, and headphone and
@@ -463,6 +485,11 @@ export interface DeviceStorage {
 export interface PlaybackLog {
   /** Adds a line, stamped with the time. Once the log is full, the oldest line goes. */
   record(line: string): void
+  /**
+   * Told by the player engine which episode it has loaded, by its ID, or null
+   * when none: each line from then on names it.
+   */
+  loaded(episodeId: string | null): void
   /** Every line kept, oldest first. */
   lines(): string[]
 }

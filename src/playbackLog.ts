@@ -1,4 +1,5 @@
-import type { PlaybackLog } from './services'
+import { keptPlace } from './keptPlace'
+import type { DeviceStorage, PlaybackLog } from './services'
 
 /** How many lines the log keeps: a few hours of listening. */
 export const LOG_LINES = 300
@@ -33,13 +34,51 @@ export function localStorageText(key: string): TextStore {
   }
 }
 
+/** A line's stamp: month, day and time (UTC) to the millisecond. */
+const stamp = (date: Date) => date.toISOString().slice(5, 23)
+
+/**
+ * Events that mean nothing by themselves when they repeat: a line for one that
+ * directly follows another for the same episode is folded into it.
+ */
+const FOLDED_EVENTS = ['audio stalled']
+
+/** TypeScript's DOM types lack the Audio Session API. */
+export type AudioSession = EventTarget & { state?: string }
+
+/** Safari's audio session, where the browser has one. */
+export const browserAudioSession = (): AudioSession | undefined =>
+  typeof navigator === 'undefined' ? undefined : (navigator as { audioSession?: AudioSession }).audioSession
+
 /**
  * A playback log of at most `LOG_LINES` lines, each stamped with the month,
  * day and time (UTC) to the millisecond. Every line is written to the store as
  * it is recorded, as iOS can suspend or kill the app at any moment.
+ *
+ * Each line ends with the episode loaded, as the player engine last told it
+ * (`ep=<id>`, or `ep=none`), and, where the browser has an audio session, its
+ * state as the line is written (`session=<state>`, or `session=unknown`).
+ *
+ * A line for one of `FOLDED_EVENTS` that directly follows another for the
+ * same event and episode is not added: the line before gains a count and the
+ * time of the latest (`x3 latest=<time>`).
  */
-export function createPlaybackLog(store: TextStore, now: () => Date = () => new Date()): PlaybackLog {
+export function createPlaybackLog(
+  store: TextStore,
+  now: () => Date = () => new Date(),
+  audioSession: () => Pick<AudioSession, 'state'> | undefined = browserAudioSession,
+): PlaybackLog {
   let lines: string[] | null = null
+  let episodeId: string | null = null
+  /** The last line recorded, while it is for one of `FOLDED_EVENTS`: what it said, and how many it stands for. */
+  let repeating: { event: string; episodeId: string | null; line: string; count: number } | null = null
+
+  /** What each line ends with: the episode, and the audio session's state where there is one. */
+  function context() {
+    const session = audioSession()
+    const ep = `ep=${episodeId ?? 'none'}`
+    return session ? `${ep} session=${session.state || 'unknown'}` : ep
+  }
 
   function kept() {
     if (lines) return lines
@@ -56,13 +95,24 @@ export function createPlaybackLog(store: TextStore, now: () => Date = () => new 
   return {
     record(line) {
       const all = kept()
-      all.push(`${now().toISOString().slice(5, 23)} ${line}`)
-      if (all.length > LOG_LINES) all.splice(0, all.length - LOG_LINES)
+      const at = stamp(now())
+      const event = FOLDED_EVENTS.find((folded) => line === folded || line.startsWith(`${folded} `))
+      if (event && repeating && repeating.event === event && repeating.episodeId === episodeId) {
+        repeating.count++
+        all[all.length - 1] = `${repeating.line} x${repeating.count} latest=${at}`
+      } else {
+        all.push(`${at} ${line} ${context()}`)
+        repeating = event ? { event, episodeId, line: all[all.length - 1], count: 1 } : null
+        if (all.length > LOG_LINES) all.splice(0, all.length - LOG_LINES)
+      }
       try {
         store.write(JSON.stringify(all))
       } catch {
         // No room or no storage: the log then lasts until the app closes.
       }
+    },
+    loaded(id) {
+      episodeId = id
     },
     lines: () => [...kept()],
   }
@@ -86,9 +136,6 @@ const AUDIO_EVENTS = [
   'error',
 ] as const
 
-/** TypeScript's DOM types lack the Audio Session API. */
-type AudioSession = EventTarget & { state?: string }
-
 /**
  * Records what the audio element, the page and Safari's audio session do, for
  * the life of the app. Each line carries the element's state then:
@@ -98,14 +145,16 @@ type AudioSession = EventTarget & { state?: string }
  * - `ready`: `readyState`, from 0 (nothing loaded) to 4 (enough to play on)
  * - `net`: `networkState`: 1 idle, 2 loading, 3 no source
  * - `visible` or `hidden`: the page; hidden covers a locked phone
- * - `session`: Safari's audio session: active, interrupted or inactive
  * - `offline`: when the browser says so
+ *
+ * The log itself adds the episode and Safari's audio session (active,
+ * interrupted or inactive), and a line when the session changes.
  *
  * `moving` is the first time the position advances after a `play`: without it,
  * the element said it was playing and went nowhere.
  */
 export function recordPlayback(log: PlaybackLog, audio: HTMLMediaElement): void {
-  const session = (navigator as { audioSession?: AudioSession }).audioSession
+  const session = browserAudioSession()
 
   const state = () =>
     [
@@ -114,7 +163,6 @@ export function recordPlayback(log: PlaybackLog, audio: HTMLMediaElement): void 
       `ready=${audio.readyState}`,
       `net=${audio.networkState}`,
       document.visibilityState,
-      session?.state ? `session=${session.state}` : '',
       navigator.onLine ? '' : 'offline',
     ]
       .filter(Boolean)
@@ -150,4 +198,36 @@ export function recordPlayback(log: PlaybackLog, audio: HTMLMediaElement): void 
 
   const installed = window.matchMedia?.('(display-mode: standalone)').matches ? 'installed' : 'in browser'
   record(`launch ${installed} ${navigator.userAgent}`)
+}
+
+/**
+ * Records, at launch, how the run before it ended, worked out from what that
+ * run left on the device: the last line it logged, and the place it kept
+ * while playing (read, not taken: the launch still picks up from it). Either
+ * the page was told it was going; or it was playing and ended without a word,
+ * last known playing when and where it last kept its place, or else when and
+ * where its last line had it unpaused (at the latest it stands for, if it
+ * stands for several); or it ended paused, or with nothing
+ * loaded. Records nothing at a first launch. Call it before this launch
+ * records anything.
+ */
+export function recordLastRun(log: PlaybackLog, storage: DeviceStorage): void {
+  const last = log.lines().at(-1)
+  if (last === undefined) return
+  const at = last.indexOf(' ')
+  const words = last.slice(at + 1).split(' ')
+  const field = (name: string) => words.find((word) => word.startsWith(`${name}=`))?.slice(name.length + 1)
+  const episodeId = field('ep')
+  const episode = episodeId && episodeId !== 'none' ? `episode ${episodeId}` : null
+  const place = keptPlace(storage)
+  if (words[0] === 'page' && words[1] === 'going') log.record('last run closed with the page told')
+  else if (place)
+    log.record(
+      `last run ended without a word: last known playing at ${stamp(new Date(place.at))}, episode ${place.episodeId} t=${place.positionSeconds.toFixed(1)}`,
+    )
+  else if (words.includes('unpaused'))
+    log.record(
+      `last run ended without a word: last known playing at ${field('latest') ?? last.slice(0, at)}, ${[episode, `t=${field('t') ?? '?'}`].filter(Boolean).join(' ')}`,
+    )
+  else log.record(episode ? `last run ended paused, ${episode}` : 'last run ended with nothing loaded')
 }

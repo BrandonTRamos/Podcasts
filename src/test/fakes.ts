@@ -31,6 +31,10 @@ import {
   type SubscribeRequestState,
   type SubscribeStart,
   type User,
+  HAVE_ENOUGH_DATA,
+  HAVE_FUTURE_DATA,
+  HAVE_METADATA,
+  HAVE_NOTHING,
   LATEST_EPISODES_LIMIT,
 } from '../services'
 import { isInProgress, newestFirst } from '../episodes'
@@ -717,7 +721,9 @@ export type FakeDataApi = ReturnType<typeof fakeDataApi>
  * `pause()` fire `play` and `pause`, a failed load fires `error` without
  * pausing, and reaching the end fires `pause` then `ended`. Tests drive what the network, decoder and browser
  * would: `loadMetadata`, `progressTo`, `playToEnd`, `failToLoad`,
- * `refuseNextPlay`.
+ * `refuseNextPlay`, `letGoOfData`. `readyState` follows them: nothing on a
+ * fresh load, the metadata once it arrives, and enough to play on once
+ * playback has moved.
  */
 export class FakeAudio extends EventTarget implements AudioElement {
   #src = ''
@@ -727,8 +733,14 @@ export class FakeAudio extends EventTarget implements AudioElement {
   defaultPlaybackRate = 1
   paused = true
   ended = false
+  readyState = HAVE_NOTHING
+  preload: AudioElement['preload'] = 'auto'
   #refuseNextPlay = false
   #ignoresEarlySeeks = false
+  /** The file loaded has produced sound: playback has moved on through it. */
+  #played = false
+  /** The element paused the file by itself as the page was hidden, and has not been played or paused since. */
+  #pausedItself = false
   /** How many times a file has been loaded: each starts from nothing. */
   loads = 0
 
@@ -745,6 +757,9 @@ export class FakeAudio extends EventTarget implements AudioElement {
     this.ended = false
     this.#currentTime = 0
     this.duration = NaN
+    this.readyState = HAVE_NOTHING
+    this.#played = false
+    this.#pausedItself = false
     this.dispatchEvent(new Event('emptied'))
     this.dispatchEvent(new Event('durationchange'))
     this.dispatchEvent(new Event('timeupdate'))
@@ -771,6 +786,7 @@ export class FakeAudio extends EventTarget implements AudioElement {
       // Playing an ended file starts it again from the beginning.
       this.currentTime = 0
     }
+    this.#pausedItself = false
     if (this.paused) {
       this.paused = false
       this.dispatchEvent(new Event('play'))
@@ -779,6 +795,7 @@ export class FakeAudio extends EventTarget implements AudioElement {
   }
 
   pause() {
+    this.#pausedItself = false
     if (this.paused) return
     this.paused = true
     this.dispatchEvent(new Event('pause'))
@@ -803,17 +820,55 @@ export class FakeAudio extends EventTarget implements AudioElement {
     this.#refuseNextPlay = true
   }
 
+  /**
+   * From now on, as iOS does: pauses a file playing that has not yet produced
+   * sound as the page is hidden, and plays it again as the page shows, unless
+   * it has been played or paused since. It does so after the app hears of the
+   * change, if the app was there first, or, `beforeTheAppHears`, before.
+   */
+  pauseUnplayedWhenHidden({ beforeTheAppHears = false } = {}) {
+    // A capturing listener on the window hears an event on the document before any listener there.
+    const target = beforeTheAppHears ? window : document
+    target.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        if (!this.#src || this.paused || this.#played) return
+        this.paused = true
+        this.#pausedItself = true
+        this.dispatchEvent(new Event('pause'))
+      } else if (this.#pausedItself) {
+        void this.play()
+      }
+    }, { capture: beforeTheAppHears })
+  }
+
+  /** Enough of the file has loaded to play on from where it is. */
+  canPlay() {
+    this.readyState = Math.max(this.readyState, HAVE_FUTURE_DATA)
+    this.dispatchEvent(new Event('canplay'))
+  }
+
   /** The file's metadata arrives: its real length is now known. */
   loadMetadata(durationSeconds: number) {
     this.duration = durationSeconds
+    this.readyState = Math.max(this.readyState, HAVE_METADATA)
     this.dispatchEvent(new Event('durationchange'))
     this.dispatchEvent(new Event('loadedmetadata'))
   }
 
-  /** Playback has reached this point. */
+  /** Playback has reached this point, so the element holds enough of the file to play on. */
   progressTo(seconds: number) {
     this.#currentTime = seconds
+    this.#played = true
+    this.readyState = HAVE_ENOUGH_DATA
     this.dispatchEvent(new Event('timeupdate'))
+  }
+
+  /**
+   * The element lets go of the file's data, keeping only its metadata, as
+   * iOS does with a file left paused in the background.
+   */
+  letGoOfData() {
+    this.readyState = Math.min(this.readyState, HAVE_METADATA)
   }
 
   /** Playback reaches the end of the file, whose metadata must have loaded. */

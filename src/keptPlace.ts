@@ -59,11 +59,10 @@ export function forgetKeptPlace(storage: DeviceStorage) {
 
 /**
  * The place kept and never saved, if there is one and it looks whole: the app
- * was closed while playing. It is taken, so the next launch finds none.
+ * was closed while playing. Left where it is.
  */
-export function takeKeptPlace(storage: DeviceStorage): KeptPlace | undefined {
+export function keptPlace(storage: DeviceStorage): KeptPlace | undefined {
   const place = readJson<KeptPlace>(storage, PLACE_KEY)
-  storage.remove(PLACE_KEY)
   const whole =
     typeof place === 'object' &&
     place !== null &&
@@ -75,4 +74,11 @@ export function takeKeptPlace(storage: DeviceStorage): KeptPlace | undefined {
     typeof place.at === 'string' &&
     !Number.isNaN(Date.parse(place.at))
   return whole ? place : undefined
+}
+
+/** The place kept and never saved, as `keptPlace`, taken, so the next launch finds none. */
+export function takeKeptPlace(storage: DeviceStorage): KeptPlace | undefined {
+  const place = keptPlace(storage)
+  storage.remove(PLACE_KEY)
+  return place
 }

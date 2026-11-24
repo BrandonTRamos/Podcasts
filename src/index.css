@@ -2089,6 +2089,35 @@ button.mini-player-open {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 
+/* Pressed play, not playing yet: a ring turns round the Pause button. */
+.play-pause.loading {
+  position: relative;
+}
+
+.play-pause.loading::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: play-pause-loading 0.9s linear infinite;
+}
+
+@keyframes play-pause-loading {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .play-pause.loading::after {
+    animation: none;
+    border-style: dashed;
+    border-color: currentColor;
+  }
+}
+
 .now-playing-extras {
   display: flex;
   align-items: center;
