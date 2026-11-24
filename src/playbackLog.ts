@@ -34,12 +34,47 @@ export function localStorageText(key: string): TextStore {
 }
 
 /**
+ * Events that mean nothing by themselves when they repeat: a line for one that
+ * directly follows another for the same episode is folded into it.
+ */
+const FOLDED_EVENTS = ['audio stalled']
+
+/** TypeScript's DOM types lack the Audio Session API. */
+export type AudioSession = EventTarget & { state?: string }
+
+/** Safari's audio session, where the browser has one. */
+export const browserAudioSession = (): AudioSession | undefined =>
+  typeof navigator === 'undefined' ? undefined : (navigator as { audioSession?: AudioSession }).audioSession
+
+/**
  * A playback log of at most `LOG_LINES` lines, each stamped with the month,
  * day and time (UTC) to the millisecond. Every line is written to the store as
  * it is recorded, as iOS can suspend or kill the app at any moment.
+ *
+ * Each line ends with the episode loaded, as the player engine last told it
+ * (`ep=<id>`, or `ep=none`), and, where the browser has an audio session, its
+ * state as the line is written (`session=<state>`, or `session=unknown`).
+ *
+ * A line for one of `FOLDED_EVENTS` that directly follows another for the
+ * same event and episode is not added: the line before gains a count and the
+ * time of the latest (`x3 latest=<time>`).
  */
-export function createPlaybackLog(store: TextStore, now: () => Date = () => new Date()): PlaybackLog {
+export function createPlaybackLog(
+  store: TextStore,
+  now: () => Date = () => new Date(),
+  audioSession: () => Pick<AudioSession, 'state'> | undefined = browserAudioSession,
+): PlaybackLog {
   let lines: string[] | null = null
+  let episodeId: string | null = null
+  /** The last line recorded, while it is for one of `FOLDED_EVENTS`: what it said, and how many it stands for. */
+  let repeating: { event: string; episodeId: string | null; line: string; count: number } | null = null
+
+  /** What each line ends with: the episode, and the audio session's state where there is one. */
+  function context() {
+    const session = audioSession()
+    const ep = `ep=${episodeId ?? 'none'}`
+    return session ? `${ep} session=${session.state || 'unknown'}` : ep
+  }
 
   function kept() {
     if (lines) return lines
@@ -56,13 +91,24 @@ export function createPlaybackLog(store: TextStore, now: () => Date = () => new 
   return {
     record(line) {
       const all = kept()
-      all.push(`${now().toISOString().slice(5, 23)} ${line}`)
-      if (all.length > LOG_LINES) all.splice(0, all.length - LOG_LINES)
+      const stamp = now().toISOString().slice(5, 23)
+      const event = FOLDED_EVENTS.find((folded) => line === folded || line.startsWith(`${folded} `))
+      if (event && repeating && repeating.event === event && repeating.episodeId === episodeId) {
+        repeating.count++
+        all[all.length - 1] = `${repeating.line} x${repeating.count} latest=${stamp}`
+      } else {
+        all.push(`${stamp} ${line} ${context()}`)
+        repeating = event ? { event, episodeId, line: all[all.length - 1], count: 1 } : null
+        if (all.length > LOG_LINES) all.splice(0, all.length - LOG_LINES)
+      }
       try {
         store.write(JSON.stringify(all))
       } catch {
         // No room or no storage: the log then lasts until the app closes.
       }
+    },
+    loaded(id) {
+      episodeId = id
     },
     lines: () => [...kept()],
   }
@@ -86,9 +132,6 @@ const AUDIO_EVENTS = [
   'error',
 ] as const
 
-/** TypeScript's DOM types lack the Audio Session API. */
-type AudioSession = EventTarget & { state?: string }
-
 /**
  * Records what the audio element, the page and Safari's audio session do, for
  * the life of the app. Each line carries the element's state then:
@@ -98,14 +141,16 @@ type AudioSession = EventTarget & { state?: string }
  * - `ready`: `readyState`, from 0 (nothing loaded) to 4 (enough to play on)
  * - `net`: `networkState`: 1 idle, 2 loading, 3 no source
  * - `visible` or `hidden`: the page; hidden covers a locked phone
- * - `session`: Safari's audio session: active, interrupted or inactive
  * - `offline`: when the browser says so
+ *
+ * The log itself adds the episode and Safari's audio session (active,
+ * interrupted or inactive), and a line when the session changes.
  *
  * `moving` is the first time the position advances after a `play`: without it,
  * the element said it was playing and went nowhere.
  */
 export function recordPlayback(log: PlaybackLog, audio: HTMLMediaElement): void {
-  const session = (navigator as { audioSession?: AudioSession }).audioSession
+  const session = browserAudioSession()
 
   const state = () =>
     [
@@ -114,7 +159,6 @@ export function recordPlayback(log: PlaybackLog, audio: HTMLMediaElement): void 
       `ready=${audio.readyState}`,
       `net=${audio.networkState}`,
       document.visibilityState,
-      session?.state ? `session=${session.state}` : '',
       navigator.onLine ? '' : 'offline',
     ]
       .filter(Boolean)

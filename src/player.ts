@@ -132,6 +132,11 @@ export type LocalCopyOf = (episodeId: string) => string | null
  * after each of `RETRY_DELAYS_MS`, and only then shown as failed; if it was
  * paused, it is quietly loaded again when next played. Pressing play on a
  * failed episode, as from the lock screen, tries it again too.
+ *
+ * It reports each rescue in a line, and a pause that neither it nor an OS
+ * control (which pauses through it) asked for: iOS's own, as a rule. It tells
+ * the playback log which episode is loaded, by its ID, so that every line
+ * names it without the log reading the element.
  */
 export interface Player {
   getState(): PlayerState
@@ -186,8 +191,10 @@ export function createPlayer(
   takeNext: TakeNext,
   localCopyOf: LocalCopyOf,
   initialSkip: SkipSeconds = DEFAULT_SKIP,
-  /** Told, in a line, when the player steps in to rescue playback. */
+  /** Told, in a line, when the player steps in to rescue playback, or when nobody asked for a pause. */
   report: (line: string) => void = () => {},
+  /** Told the episode loaded, by its ID, whenever that changes; null when none is. */
+  loaded: (episodeId: string | null) => void = () => {},
 ): Player {
   let state: PlayerState = { episode: null, speed: initialSpeed, skip: initialSkip }
   const listeners = new Set<() => void>()
@@ -225,8 +232,15 @@ export function createPlayer(
   let idleSince: number | null = null
   /** The longest it has been so, in one stretch, since it last played. */
   let idleFor = 0
+  /**
+   * The player, or an OS control through it, has asked the element to pause
+   * (or unloaded its file) since it last played. A pause without it came from
+   * nobody here: iOS, as a rule.
+   */
+  let pauseAsked = false
 
   function set(next: PlayerState) {
+    if (next.episode?.id !== state.episode?.id) loaded(next.episode?.id ?? null)
     state = next
     listeners.forEach((listener) => listener())
   }
@@ -262,6 +276,7 @@ export function createPlayer(
 
   const handlers: Record<string, () => void> = {
     play: () => {
+      pauseAsked = false
       applySpeed()
       noLongerIdle()
       showPlaying(true)
@@ -271,6 +286,8 @@ export function createPlayer(
     pause: () => {
       // A failed file is not playing, whatever its element says of pausing.
       if (cued) return
+      if (!pauseAsked && !audio.ended) report(`paused at ${audio.currentTime.toFixed(1)}: nobody asked`)
+      pauseAsked = false
       if (hidden) idleSince = Date.now()
       showPlaying(false)
       // Reaching the end pauses first; `ended` saves that.
@@ -454,6 +471,8 @@ export function createPlayer(
     cued = false
     gotGoing = false
     recovering = recovery
+    // A browser may pause the element as its source changes.
+    pauseAsked = true
     if (!recovery) retries = 0
     lastTick = null
     playedOn = 0
@@ -549,6 +568,7 @@ export function createPlayer(
         save()
         return
       }
+      pauseAsked = true
       audio.pause()
       showPlaying(!audio.paused)
     },
@@ -608,6 +628,7 @@ export function createPlayer(
       cued = false
       pendingStart = null
       notStarting()
+      pauseAsked = true
       audio.pause()
       audio.removeAttribute('src')
       audio.load()
@@ -689,7 +710,16 @@ export function usePlayer(
   // The engine attaches to the element only while subscribed, so a discarded
   // instance (React may call the initialiser twice) leaves nothing behind.
   const [player] = useState(() =>
-    createPlayer(audio, saveProgress, storedSpeed(), takeNext, localCopyOf, storedSkip(), (line) => log.record(`player ${line}`)),
+    createPlayer(
+      audio,
+      saveProgress,
+      storedSpeed(),
+      takeNext,
+      localCopyOf,
+      storedSkip(),
+      (line) => log.record(`player ${line}`),
+      (episodeId) => log.loaded(episodeId),
+    ),
   )
   const [shown] = useState(() => stateWhileVisible(player))
   const state = useSyncExternalStore(shown.subscribe, shown.getState)
