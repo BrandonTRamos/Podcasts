@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { KEEP_PLACE_MS } from './keptPlace'
-import { RETRY_DELAYS_MS, SETTLED_SECONDS, STALE_PAUSE_MS } from './player'
+import { RETRY_DELAYS_MS, SETTLED_SECONDS, STALE_PAUSE_MS, STUCK_MS } from './player'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 
 // What the app does while it is in the background (another app in front, or
@@ -85,7 +85,57 @@ afterEach(() => {
 })
 
 describe('an episode paused while the app is in the background', () => {
-  it('is loaded afresh at the same place when played after a long pause, without waiting to see it stuck', async () => {
+  it('plays straight on after a long pause while its file is still loaded', async () => {
+    const { data, device } = await setUp()
+    const { audio, mediaSession } = await launchAndPlay(data, device)
+    holdTime()
+    setVisibility('hidden')
+    act(() => mediaSession.press('pause'))
+
+    wait(STALE_PAUSE_MS * 10)
+    act(() => mediaSession.press('play'))
+
+    expect(audio.loads).toBe(1)
+    expect(audio.paused).toBe(false)
+    expect(audio.currentTime).toBe(600)
+    expect(mediaSession.playbackState).toBe('playing')
+    expect(device.playbackLog.lines().join('\n')).not.toMatch(/loading afresh/)
+  })
+
+  it('is loaded afresh at the same place if, played on after a long pause, it has not moved four seconds later', async () => {
+    const { data, device } = await setUp()
+    const { audio, mediaSession } = await launchAndPlay(data, device)
+    holdTime()
+    setVisibility('hidden')
+    act(() => mediaSession.press('pause'))
+    wait(STALE_PAUSE_MS)
+    act(() => mediaSession.press('play'))
+
+    wait(STUCK_MS)
+
+    expect(audio.loads).toBe(2)
+    expect(audio.currentTime).toBe(600)
+    expect(audio.paused).toBe(false)
+    expect(device.playbackLog.lines().at(-1)).toMatch(/stuck at 600\.0: loading afresh/)
+  })
+
+  it('is loaded afresh if, played on by iOS itself after a long pause, it has not moved four seconds later', async () => {
+    const { data, device } = await setUp()
+    const { audio, mediaSession } = await launchAndPlay(data, device)
+    holdTime()
+    setVisibility('hidden')
+    act(() => mediaSession.press('pause'))
+    wait(STALE_PAUSE_MS)
+    act(() => void audio.play())
+
+    wait(STUCK_MS)
+
+    expect(audio.loads).toBe(2)
+    expect(audio.currentTime).toBe(600)
+    expect(audio.paused).toBe(false)
+  })
+
+  it('is loaded afresh at the same place when played after a long pause once its file is gone, without waiting to see it stuck', async () => {
     const { data, device } = await setUp()
     const { audio, mediaSession } = await launchAndPlay(data, device)
     holdTime()
@@ -93,6 +143,7 @@ describe('an episode paused while the app is in the background', () => {
     act(() => mediaSession.press('pause'))
 
     wait(STALE_PAUSE_MS)
+    act(() => audio.letGoOfData())
     act(() => mediaSession.press('play'))
 
     expect(audio.loads).toBe(2)
@@ -103,7 +154,7 @@ describe('an episode paused while the app is in the background', () => {
     expect(device.playbackLog.lines().at(-1)).toMatch(/paused 60s in the background: loading afresh/)
   })
 
-  it('plays straight on after a short pause', async () => {
+  it('plays straight on after a short pause, even once its file is gone', async () => {
     const { data, device } = await setUp()
     const { audio, mediaSession } = await launchAndPlay(data, device)
     holdTime()
@@ -111,6 +162,7 @@ describe('an episode paused while the app is in the background', () => {
     act(() => mediaSession.press('pause'))
 
     wait(STALE_PAUSE_MS - 1000)
+    act(() => audio.letGoOfData())
     act(() => mediaSession.press('play'))
 
     expect(audio.loads).toBe(1)
@@ -127,12 +179,14 @@ describe('an episode paused while the app is in the background', () => {
     setVisibility('hidden')
 
     wait(STALE_PAUSE_MS - 1000)
+    act(() => audio.letGoOfData())
     act(() => mediaSession.press('play'))
     expect(audio.loads).toBe(1)
 
     act(() => mediaSession.press('pause'))
     wait(STALE_PAUSE_MS)
     setVisibility('visible')
+    act(() => audio.letGoOfData())
     act(() => mediaSession.press('play'))
     expect(audio.loads).toBe(2)
     expect(audio.currentTime).toBe(600)
@@ -147,6 +201,7 @@ describe('an episode paused with the app in front', () => {
     act(() => mediaSession.press('pause'))
 
     wait(STALE_PAUSE_MS * 10)
+    act(() => audio.letGoOfData())
     act(() => mediaSession.press('play'))
 
     expect(audio.loads).toBe(1)

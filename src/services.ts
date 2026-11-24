@@ -370,6 +370,13 @@ export interface AudioElement extends EventTarget {
   readonly paused: boolean
   /** True once playback has reached the end, until it is played or sought again. */
   readonly ended: boolean
+  /**
+   * How much of the file the element holds where it is: 0 nothing, 1 its
+   * metadata, 2 the current moment, 3 enough to play on a little, 4 enough to
+   * play on through. It can fall back after loading, as when iOS lets go of a
+   * paused file.
+   */
+  readonly readyState: number
   play(): Promise<void>
   pause(): void
   /** With `removeAttribute('src')`, unloads the file and stops fetching it. */

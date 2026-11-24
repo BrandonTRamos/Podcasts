@@ -717,7 +717,9 @@ export type FakeDataApi = ReturnType<typeof fakeDataApi>
  * `pause()` fire `play` and `pause`, a failed load fires `error` without
  * pausing, and reaching the end fires `pause` then `ended`. Tests drive what the network, decoder and browser
  * would: `loadMetadata`, `progressTo`, `playToEnd`, `failToLoad`,
- * `refuseNextPlay`.
+ * `refuseNextPlay`, `letGoOfData`. `readyState` follows them: nothing on a
+ * fresh load, the metadata once it arrives, and enough to play on once
+ * playback has moved.
  */
 export class FakeAudio extends EventTarget implements AudioElement {
   #src = ''
@@ -727,6 +729,8 @@ export class FakeAudio extends EventTarget implements AudioElement {
   defaultPlaybackRate = 1
   paused = true
   ended = false
+  /** 0 nothing, 1 metadata, 2 the current moment, 3 enough to play on, 4 enough to play through. */
+  readyState = 0
   #refuseNextPlay = false
   #ignoresEarlySeeks = false
   /** How many times a file has been loaded: each starts from nothing. */
@@ -745,6 +749,7 @@ export class FakeAudio extends EventTarget implements AudioElement {
     this.ended = false
     this.#currentTime = 0
     this.duration = NaN
+    this.readyState = 0
     this.dispatchEvent(new Event('emptied'))
     this.dispatchEvent(new Event('durationchange'))
     this.dispatchEvent(new Event('timeupdate'))
@@ -806,14 +811,24 @@ export class FakeAudio extends EventTarget implements AudioElement {
   /** The file's metadata arrives: its real length is now known. */
   loadMetadata(durationSeconds: number) {
     this.duration = durationSeconds
+    this.readyState = Math.max(this.readyState, 1)
     this.dispatchEvent(new Event('durationchange'))
     this.dispatchEvent(new Event('loadedmetadata'))
   }
 
-  /** Playback has reached this point. */
+  /** Playback has reached this point, so the element holds enough of the file to play on. */
   progressTo(seconds: number) {
     this.#currentTime = seconds
+    this.readyState = 4
     this.dispatchEvent(new Event('timeupdate'))
+  }
+
+  /**
+   * The element lets go of the file's data, keeping only its metadata, as
+   * iOS does with a file left paused in the background.
+   */
+  letGoOfData() {
+    this.readyState = Math.min(this.readyState, 1)
   }
 
   /** Playback reaches the end of the file, whose metadata must have loaded. */
