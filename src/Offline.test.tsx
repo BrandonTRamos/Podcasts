@@ -242,6 +242,29 @@ describe('playing with no network', () => {
     expect(app.audio.currentTime).toBe(1800)
   })
 
+  it('loads the downloaded episode left ready from the last launch, and plays it, all from the device', async () => {
+    const { data } = await backendWithShow()
+    const device = new FakeDevice()
+    const before = await prepareForFlight(data, device)
+    await before.tap(first.title)
+    act(() => before.audio.loadMetadata(2712))
+    act(() => before.audio.progressTo(600))
+    await before.user.click(within(before.miniPlayer()).getByRole('button', { name: 'Pause' }))
+    before.unmount()
+    goOffline(data, device)
+
+    const app = launch(data, device)
+
+    await waitFor(() => expect(within(app.miniPlayer()).getByRole('button', { name: 'Play' })).toBeInTheDocument())
+    expect(device.files.contentsAt(app.audio.src)).toEqual(firstFile)
+    act(() => app.audio.loadMetadata(2712))
+    await app.user.click(within(app.miniPlayer()).getByRole('button', { name: 'Play' }))
+    expect(app.audio.loads).toBe(1)
+    expect(app.audio.currentTime).toBe(600)
+    expect(app.audio.paused).toBe(false)
+    expect(app.ui.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('shows episodes that are not downloaded as unavailable', async () => {
     const { data } = await backendWithShow()
     const device = new FakeDevice()
