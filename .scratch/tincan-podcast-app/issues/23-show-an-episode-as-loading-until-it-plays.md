@@ -4,13 +4,13 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] After play is pressed, the mini player and the now-playing screen show the episode as loading until its position first moves
-- [ ] Once the position moves, they show it as playing
-- [ ] The same shows when the player engine loads a file afresh by itself, and when a failed file is being tried again
-- [ ] Pausing while it loads shows it as paused
-- [ ] An episode playing on from a pause, whose position moves at once, shows no loading state worth seeing (no flicker)
-- [ ] The loading state is told to assistive technology, not shown by look alone
-- [ ] It comes from what the audio element already reports; nothing new is stored
-- [ ] Client-seam tests cover loading then playing, pausing while loading, and a fresh load by the player engine
+- [x] After play is pressed, the mini player and the now-playing screen show the episode as loading until its position first moves
+- [x] Once the position moves, they show it as playing
+- [x] The same shows when the player engine loads a file afresh by itself, and when a failed file is being tried again
+- [x] Pausing while it loads shows it as paused
+- [x] An episode playing on from a pause, whose position moves at once, shows no loading state worth seeing (no flicker)
+- [x] The loading state is told to assistive technology, not shown by look alone
+- [x] It comes from what the audio element already reports; nothing new is stored
+- [x] Client-seam tests cover loading then playing, pausing while loading, and a fresh load by the player engine

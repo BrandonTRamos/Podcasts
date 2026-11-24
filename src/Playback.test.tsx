@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { LONG_PRESS_MS } from './longPress'
+import { PLAY_ON_GRACE_MS, STUCK_MS } from './player'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 import { chooseLibraryAction } from './test/ui'
 
@@ -479,6 +480,103 @@ describe('tapping the episode that is already loaded', () => {
 
     expect(audio.currentTime).toBe(600)
     expect(audio.paused).toBe(false)
+  })
+})
+
+describe('an episode not playing yet', () => {
+  /** Whether this part of the screen tells the listener, and assistive technology, that the episode is loading. */
+  function showsLoading(region: HTMLElement) {
+    return within(region)
+      .queryAllByRole('status')
+      .some((status) => status.textContent === 'Loading')
+  }
+
+  it('shows as loading from the tap until its position first moves, then as playing', async () => {
+    const { audio, user } = await renderShow()
+
+    await user.click(screen.getByRole('button', { name: first.title }))
+
+    expect(showsLoading(miniPlayer())).toBe(true)
+    await openNowPlaying(user, first.title)
+    const nowPlaying = screen.getByRole('main')
+    expect(showsLoading(nowPlaying)).toBe(true)
+    act(() => audio.loadMetadata(2712))
+    expect(showsLoading(nowPlaying)).toBe(true)
+
+    act(() => audio.progressTo(0.25))
+
+    expect(showsLoading(nowPlaying)).toBe(false)
+    expect(within(nowPlaying).getByRole('button', { name: 'Pause' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Close now playing' }))
+    expect(showsLoading(miniPlayer())).toBe(false)
+  })
+
+  it('shows as paused, not loading, when paused while it loads', async () => {
+    const { user } = await renderShow()
+    await user.click(screen.getByRole('button', { name: first.title }))
+
+    await user.click(within(miniPlayer()).getByRole('button', { name: 'Pause' }))
+
+    expect(showsLoading(miniPlayer())).toBe(false)
+    expect(within(miniPlayer()).getByRole('button', { name: 'Play' })).toBeInTheDocument()
+  })
+
+  it('shows as loading again when the player loads the file afresh by itself, until it moves', async () => {
+    const { audio, user } = await renderShow()
+    await user.click(screen.getByRole('button', { name: first.title }))
+    act(() => audio.loadMetadata(2712))
+    act(() => audio.progressTo(600))
+    await user.click(within(miniPlayer()).getByRole('button', { name: 'Pause' }))
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      await user.click(within(miniPlayer()).getByRole('button', { name: 'Play' }))
+
+      // Played on, it has not moved in all this time, so it is loaded afresh.
+      act(() => void vi.advanceTimersByTime(STUCK_MS))
+
+      expect(audio.loads).toBe(2)
+      expect(showsLoading(miniPlayer())).toBe(true)
+      act(() => audio.loadMetadata(2712))
+      act(() => audio.progressTo(600.25))
+      expect(showsLoading(miniPlayer())).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows nothing of loading when played on from a pause and moving at once, but does if it is slow to move', async () => {
+    const { audio, user } = await renderShow()
+    await user.click(screen.getByRole('button', { name: first.title }))
+    act(() => audio.loadMetadata(2712))
+    act(() => audio.progressTo(600))
+    await user.click(within(miniPlayer()).getByRole('button', { name: 'Pause' }))
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      await user.click(within(miniPlayer()).getByRole('button', { name: 'Play' }))
+      expect(showsLoading(miniPlayer())).toBe(false)
+      act(() => audio.progressTo(600.25))
+      act(() => void vi.advanceTimersByTime(PLAY_ON_GRACE_MS))
+      expect(showsLoading(miniPlayer())).toBe(false)
+
+      await user.click(within(miniPlayer()).getByRole('button', { name: 'Pause' }))
+      await user.click(within(miniPlayer()).getByRole('button', { name: 'Play' }))
+      act(() => void vi.advanceTimersByTime(PLAY_ON_GRACE_MS))
+      expect(showsLoading(miniPlayer())).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows as loading while a file that failed as it played is tried again', async () => {
+    const { audio, user } = await renderShow()
+    await user.click(screen.getByRole('button', { name: first.title }))
+    act(() => audio.loadMetadata(2712))
+    act(() => audio.progressTo(600))
+
+    act(() => audio.failToLoad())
+
+    expect(showsLoading(miniPlayer())).toBe(true)
+    expect(within(miniPlayer()).getByRole('button', { name: 'Pause' })).toBeInTheDocument()
   })
 })
 

@@ -27,6 +27,12 @@ export const STUCK_MS = 4_000
 export const STALE_PAUSE_MS = 60_000
 /** The element's `readyState` once it holds enough of the file to play on from where it is. */
 const HAVE_FUTURE_DATA = 3
+/**
+ * A file that had got going, played on, shows as loading only once it has not
+ * moved for this long. It usually moves at once, and a flash of loading then
+ * would only be noise.
+ */
+export const PLAY_ON_GRACE_MS = 1_000
 /** How long the player waits before each further try at a file that failed while playing. */
 export const RETRY_DELAYS_MS = [1_000, 4_000, 10_000]
 /** A file tried again has settled once it has played on for this many seconds: a later failure gets every try anew. */
@@ -64,6 +70,11 @@ export interface LoadedState {
   position: number
   /** Seconds: the file's own length once known, the feed's until then, null if neither says. */
   duration: number | null
+  /**
+   * Play was pressed (or the player is trying the file again) and the
+   * position has not moved yet: it is playing in name only, and shown as loading.
+   */
+  loading: boolean
   /** The publisher's file failed to load, or stopped loading part way. */
   failed: boolean
   /** The playback rate: 1 is normal speed. */
@@ -116,6 +127,10 @@ export type LocalCopyOf = (episodeId: string) => string | null
  * holds enough of it to play is loaded afresh at once when played again,
  * without waiting to see it stuck; one that still does is played on, with
  * the stuck check as its safety net.
+ *
+ * From play until the position first moves, the episode is shown as
+ * loading. A file that had got going, played on, is shown so only after
+ * `PLAY_ON_GRACE_MS`, as it usually moves at once.
  *
  * A file that fails after it had got going (the network dropped under a
  * stream) keeps the listener's place. If it was playing, it is tried again
@@ -214,6 +229,10 @@ export function createPlayer(
   /** Runs out when it is time to try a failed file again. */
   let retryTimer: ReturnType<typeof setTimeout> | null = null
   let hidden = false
+  /** Where the file was when it was played, until its position first moves from there. */
+  let startingFrom: number | null = null
+  /** Runs out when a file played on has been slow enough to move to show as loading. */
+  let graceTimer: ReturnType<typeof setTimeout> | null = null
   /** When the file came to be both paused and in the background, while it is. */
   let idleSince: number | null = null
   /** The longest it has been so, in one stretch, since it last played. */
@@ -265,7 +284,7 @@ export function createPlayer(
       pauseAsked = false
       applySpeed()
       noLongerIdle()
-      update({ playing: true })
+      showPlaying(true)
       // Whoever pressed play: the listener, or iOS itself once a phone call is over.
       if (gotGoing && !cued) watchForStuck()
     },
@@ -275,7 +294,7 @@ export function createPlayer(
       if (!pauseAsked && !audio.ended) report(`paused at ${audio.currentTime.toFixed(1)}: nobody asked`)
       pauseAsked = false
       if (hidden) idleSince = Date.now()
-      update({ playing: false })
+      showPlaying(false)
       // Reaching the end pauses first; `ended` saves that.
       if (!audio.ended) save()
     },
@@ -296,6 +315,7 @@ export function createPlayer(
         if (playedOn >= SETTLED_SECONDS) retries = 0
       }
       update({ position: audio.currentTime })
+      if (startingFrom !== null && !audio.paused && currentPosition() !== startingFrom) showPlaying(true, true)
       if (state.episode && !audio.paused && Date.now() - lastSaveAt >= SAVE_INTERVAL_MS) save()
     },
     durationchange: () => {
@@ -321,7 +341,10 @@ export function createPlayer(
       pendingStart = null
       if (started && state.playing && retries < RETRY_DELAYS_MS.length) {
         report(`failed at ${position.toFixed(1)}: trying again`)
-        update({ position })
+        // Still playing in name, as it is about to be tried again: shown as loading meanwhile.
+        notStarting()
+        startingFrom = position
+        update({ position, loading: true })
         retryTimer = setTimeout(retry, RETRY_DELAYS_MS[retries++])
         return
       }
@@ -333,7 +356,8 @@ export function createPlayer(
         update({ position })
         save()
       }
-      update({ position, playing: false, failed })
+      notStarting()
+      update({ position, playing: false, loading: false, failed })
     },
   }
 
@@ -364,13 +388,38 @@ export function createPlayer(
     return Math.max(idleFor, idleSince === null ? 0 : Date.now() - idleSince)
   }
 
+  /**
+   * Shows the episode playing or not. Playing from not playing, it shows as
+   * loading until its position first moves, or `moved` says it has.
+   */
+  function showPlaying(playing: boolean, moved = false) {
+    if (!playing || moved) notStarting()
+    else if (!state.episode || !state.playing) {
+      startingFrom = currentPosition()
+      if (gotGoing && !cued) {
+        graceTimer = setTimeout(() => {
+          graceTimer = null
+          update({ loading: true })
+        }, PLAY_ON_GRACE_MS)
+      }
+    }
+    update({ playing, loading: startingFrom !== null && graceTimer === null })
+  }
+
+  /** The file is not, or no longer, starting to play. */
+  function notStarting() {
+    startingFrom = null
+    if (graceTimer !== null) clearTimeout(graceTimer)
+    graceTimer = null
+  }
+
   function attemptPlay() {
     const load = loadCount
     const started = audio.play()
-    update({ playing: !audio.paused })
+    showPlaying(!audio.paused)
     started.catch(() => {
       // Refused (no user gesture) or aborted: show what the element is actually doing.
-      if (load === loadCount && state.episode && !state.failed && !cued) update({ playing: !audio.paused })
+      if (load === loadCount && state.episode && !state.failed && !cued) showPlaying(!audio.paused)
     })
   }
 
@@ -435,7 +484,8 @@ export function createPlayer(
     playedOn = 0
     const start = Math.max(startAt, 0)
     const duration = episode.durationSeconds
-    set({ episode, playing: false, position: start, duration, failed: false, speed: state.speed, skip: state.skip })
+    notStarting()
+    set({ episode, playing: false, loading: false, position: start, duration, failed: false, speed: state.speed, skip: state.skip })
     // A recovery starts where the episode had got to, which may be past what was last saved.
     if (!recovery) {
       savedPosition = start
@@ -478,6 +528,8 @@ export function createPlayer(
     // A timestamp (or another seek) can be tapped while the file is still
     // loading. Retry that latest choice when early seeks are ignored by iOS.
     pendingStart = fileDuration() === null ? position : null
+    // A seek while loading is no sign of it playing: it is still to start, from there.
+    if (startingFrom !== null) startingFrom = position
     audio.currentTime = position
     update({ position })
   }
@@ -504,7 +556,7 @@ export function createPlayer(
       if (state.episode) return
       cued = true
       const position = Math.max(startAt, 0)
-      set({ episode, playing: false, position, duration: episode.durationSeconds, failed: false, speed: state.speed, skip: state.skip })
+      set({ episode, playing: false, loading: false, position, duration: episode.durationSeconds, failed: false, speed: state.speed, skip: state.skip })
       savedPosition = position
     },
 
@@ -518,13 +570,13 @@ export function createPlayer(
         // Nothing is playing; at most a failed file is waiting to be tried again.
         if (retryTimer === null) return
         stopRetrying()
-        update({ playing: false })
+        showPlaying(false)
         save()
         return
       }
       pauseAsked = true
       audio.pause()
-      update({ playing: !audio.paused })
+      showPlaying(!audio.paused)
     },
 
     seekTo,
@@ -581,6 +633,7 @@ export function createPlayer(
       noLongerIdle()
       cued = false
       pendingStart = null
+      notStarting()
       pauseAsked = true
       audio.pause()
       audio.removeAttribute('src')
@@ -703,6 +756,7 @@ function onlyPositionMoved(from: PlayerState, to: PlayerState): boolean {
   return (
     from.episode === to.episode &&
     from.playing === to.playing &&
+    from.loading === to.loading &&
     from.duration === to.duration &&
     from.failed === to.failed &&
     from.speed === to.speed &&
