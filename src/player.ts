@@ -20,10 +20,13 @@ export const SAVE_INTERVAL_MS = 60_000
 export const STUCK_MS = 4_000
 /**
  * A file paused, with the app in the background, for at least this long is
- * loaded afresh when played again. iOS lets go of a paused file's connection
- * there, and playing it on can then go nowhere.
+ * loaded afresh when played again if its element no longer holds enough of
+ * it to play (`HAVE_FUTURE_DATA`). iOS may let go of a paused file there, and
+ * playing it on can then go nowhere.
  */
 export const STALE_PAUSE_MS = 60_000
+/** The element's `readyState` once it holds enough of the file to play on from where it is. */
+const HAVE_FUTURE_DATA = 3
 /** How long the player waits before each further try at a file that failed while playing. */
 export const RETRY_DELAYS_MS = [1_000, 4_000, 10_000]
 /** A file tried again has settled once it has played on for this many seconds: a later failure gets every try anew. */
@@ -109,8 +112,10 @@ export type LocalCopyOf = (episodeId: string) => string | null
  * iPhone, pressing play on the lock screen after a long pause can leave the
  * element saying it plays while nothing comes out. A file loading for the
  * first time is left alone: a slow network is no reason to start over.
- * One paused in the background for `STALE_PAUSE_MS` is loaded afresh at once
- * when played again, without waiting to see it stuck.
+ * One paused in the background for `STALE_PAUSE_MS` whose element no longer
+ * holds enough of it to play is loaded afresh at once when played again,
+ * without waiting to see it stuck; one that still does is played on, with
+ * the stuck check as its safety net.
  *
  * A file that fails after it had got going (the network dropped under a
  * stream) keeps the listener's place. If it was playing, it is tried again
@@ -354,14 +359,15 @@ export function createPlayer(
 
   /**
    * Plays the loaded file on from where it is, or loads it afresh at once if
-   * it has sat paused in the background too long. The element's `play` event
-   * then has it watched, in case it stays put.
+   * it has sat paused in the background too long and its element no longer
+   * holds enough of it to play. The element's `play` event then has it
+   * watched, in case it stays put.
    */
   function playOn() {
     if (!state.episode) return
     const idle = longestIdle()
     // An ended file plays again from the start, which loading it at its end would not.
-    if (idle >= STALE_PAUSE_MS && !audio.ended) {
+    if (idle >= STALE_PAUSE_MS && audio.readyState < HAVE_FUTURE_DATA && !audio.ended) {
       report(`paused ${Math.round(idle / 1000)}s in the background: loading afresh`)
       load(state.episode, currentPosition(), true)
       return
