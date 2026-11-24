@@ -541,6 +541,29 @@ describe('an app iOS closed while it was in the background', () => {
     expect(app.ui.queryByRole('heading', { level: 1, name: 'Library' })).not.toBeInTheDocument()
   })
 
+  it('says in the playback log, once, that the screens were restored', async () => {
+    const { data, device } = await setUp()
+    const before = await launch(data, device)
+    await before.openShow()
+    setVisibility('hidden')
+    before.unmount()
+    Reflect.deleteProperty(document, 'visibilityState')
+    const earlier = device.playbackLog.lines().length
+
+    await launch(data, device)
+
+    const lines = device.playbackLog.lines().slice(earlier).filter((line) => line.includes(' screens '))
+    expect(lines.map((line) => line.slice(19))).toEqual([expect.stringMatching(/^screens restored from a run iOS closed ep=/)])
+  })
+
+  it('says in the playback log that the screens were not restored, at a fresh start', async () => {
+    const { data, device } = await setUp()
+
+    await launch(data, device)
+
+    expect(device.playbackLog.lines().map((line) => line.slice(19))).toContainEqual(expect.stringMatching(/^screens not restored ep=/))
+  })
+
   it('opens on now playing, if that was open, with the episode ready to play', async () => {
     const { data, device } = await setUp()
     const before = await launchAndPlay(data, device)

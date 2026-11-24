@@ -5,7 +5,7 @@ import { amplifyServices } from './amplifyServices'
 import { App } from './App'
 import { browserDevice } from './device'
 import { browserMediaSession, claimPlaybackAudioSession } from './mediaSession'
-import { recordPlayback } from './playbackLog'
+import { recordLastRun, recordPlayback } from './playbackLog'
 import { dismissSplash } from './splash'
 import './index.css'
 
@@ -33,6 +33,8 @@ if (outputs) {
   claimPlaybackAudioSession()
   const audio = new Audio()
   const device = browserDevice()
+  // Before this launch logs anything, as it reads the last line the run before left.
+  recordLastRun(device.playbackLog, device.storage)
   recordPlayback(device.playbackLog, audio)
   root.render(
     <StrictMode>
