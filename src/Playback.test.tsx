@@ -567,6 +567,19 @@ describe('an episode not playing yet', () => {
     }
   })
 
+  it('shows as loading at once when played again after a pause before it had moved, though its metadata had loaded', async () => {
+    const { audio, user } = await renderShow()
+    await user.click(screen.getByRole('button', { name: first.title }))
+    act(() => audio.loadMetadata(2712))
+    await user.click(within(miniPlayer()).getByRole('button', { name: 'Pause' }))
+
+    await user.click(within(miniPlayer()).getByRole('button', { name: 'Play' }))
+
+    expect(showsLoading(miniPlayer())).toBe(true)
+    act(() => audio.progressTo(0.25))
+    expect(showsLoading(miniPlayer())).toBe(false)
+  })
+
   it('shows as loading while a file that failed as it played is tried again', async () => {
     const { audio, user } = await renderShow()
     await user.click(screen.getByRole('button', { name: first.title }))

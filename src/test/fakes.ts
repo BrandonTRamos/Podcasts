@@ -31,6 +31,10 @@ import {
   type SubscribeRequestState,
   type SubscribeStart,
   type User,
+  HAVE_ENOUGH_DATA,
+  HAVE_FUTURE_DATA,
+  HAVE_METADATA,
+  HAVE_NOTHING,
   LATEST_EPISODES_LIMIT,
 } from '../services'
 import { isInProgress, newestFirst } from '../episodes'
@@ -729,8 +733,7 @@ export class FakeAudio extends EventTarget implements AudioElement {
   defaultPlaybackRate = 1
   paused = true
   ended = false
-  /** 0 nothing, 1 metadata, 2 the current moment, 3 enough to play on, 4 enough to play through. */
-  readyState = 0
+  readyState = HAVE_NOTHING
   preload: AudioElement['preload'] = 'auto'
   #refuseNextPlay = false
   #ignoresEarlySeeks = false
@@ -754,7 +757,7 @@ export class FakeAudio extends EventTarget implements AudioElement {
     this.ended = false
     this.#currentTime = 0
     this.duration = NaN
-    this.readyState = 0
+    this.readyState = HAVE_NOTHING
     this.#played = false
     this.#pausedItself = false
     this.dispatchEvent(new Event('emptied'))
@@ -820,10 +823,13 @@ export class FakeAudio extends EventTarget implements AudioElement {
   /**
    * From now on, as iOS does: pauses a file playing that has not yet produced
    * sound as the page is hidden, and plays it again as the page shows, unless
-   * it has been played or paused since.
+   * it has been played or paused since. It does so after the app hears of the
+   * change, if the app was there first, or, `beforeTheAppHears`, before.
    */
-  pauseUnplayedWhenHidden() {
-    document.addEventListener('visibilitychange', () => {
+  pauseUnplayedWhenHidden({ beforeTheAppHears = false } = {}) {
+    // A capturing listener on the window hears an event on the document before any listener there.
+    const target = beforeTheAppHears ? window : document
+    target.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
         if (!this.#src || this.paused || this.#played) return
         this.paused = true
@@ -832,19 +838,19 @@ export class FakeAudio extends EventTarget implements AudioElement {
       } else if (this.#pausedItself) {
         void this.play()
       }
-    })
+    }, { capture: beforeTheAppHears })
   }
 
   /** Enough of the file has loaded to play on from where it is. */
   canPlay() {
-    this.readyState = Math.max(this.readyState, 3)
+    this.readyState = Math.max(this.readyState, HAVE_FUTURE_DATA)
     this.dispatchEvent(new Event('canplay'))
   }
 
   /** The file's metadata arrives: its real length is now known. */
   loadMetadata(durationSeconds: number) {
     this.duration = durationSeconds
-    this.readyState = Math.max(this.readyState, 1)
+    this.readyState = Math.max(this.readyState, HAVE_METADATA)
     this.dispatchEvent(new Event('durationchange'))
     this.dispatchEvent(new Event('loadedmetadata'))
   }
@@ -853,7 +859,7 @@ export class FakeAudio extends EventTarget implements AudioElement {
   progressTo(seconds: number) {
     this.#currentTime = seconds
     this.#played = true
-    this.readyState = 4
+    this.readyState = HAVE_ENOUGH_DATA
     this.dispatchEvent(new Event('timeupdate'))
   }
 
@@ -862,7 +868,7 @@ export class FakeAudio extends EventTarget implements AudioElement {
    * iOS does with a file left paused in the background.
    */
   letGoOfData() {
-    this.readyState = Math.min(this.readyState, 1)
+    this.readyState = Math.min(this.readyState, HAVE_METADATA)
   }
 
   /** Playback reaches the end of the file, whose metadata must have loaded. */

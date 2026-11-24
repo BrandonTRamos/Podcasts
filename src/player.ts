@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { connectMediaSession, offerNextTrack } from './mediaSession'
-import type { AudioElement, MediaSessionControls, PlaybackLog } from './services'
+import { type AudioElement, HAVE_FUTURE_DATA, type MediaSessionControls, type PlaybackLog } from './services'
 
 /** How far each skip moves until the listener picks otherwise. */
 export const DEFAULT_SKIP: SkipSeconds = { back: 15, forward: 30 }
@@ -25,12 +25,10 @@ export const STUCK_MS = 4_000
  * playing it on can then go nowhere.
  */
 export const STALE_PAUSE_MS = 60_000
-/** The element's `readyState` once it holds enough of the file to play on from where it is. */
-const HAVE_FUTURE_DATA = 3
 /**
- * A file that had got going, played on, shows as loading only once it has not
- * moved for this long. It usually moves at once, and a flash of loading then
- * would only be noise.
+ * A file that had played since it was loaded, played on, shows as loading
+ * only once it has not moved for this long. It usually moves at once, and a
+ * flash of loading then would only be noise.
  */
 export const PLAY_ON_GRACE_MS = 1_000
 /** How long the player waits before each further try at a file that failed while playing. */
@@ -128,20 +126,23 @@ export type LocalCopyOf = (episodeId: string) => string | null
  * without waiting to see it stuck; one that still does is played on, with
  * the stuck check as its safety net.
  *
- * A file cued at launch, loaded but never played, is not held to the
+ * A file loaded at launch and never played is not held to the
  * background pause: it holds no more than its metadata by design.
  *
  * From play until the position first moves, the episode is shown as
- * loading. A file that had got going, played on, is shown so only after
- * `PLAY_ON_GRACE_MS`, as it usually moves at once.
+ * loading. A file that had played since it was loaded, played on, is shown so
+ * only after `PLAY_ON_GRACE_MS`, as it usually moves at once; one that had
+ * not (loaded at launch, or paused before it moved) is shown so at once.
  *
  * A file iOS pauses as the app is hidden, before it has played since it was
  * loaded, nobody here having asked, is waiting to play rather than paused:
- * still playing in name and shown as loading. Once it can play, it is tried
- * once more; it is tried again when the app shows (iOS may start it by
- * itself then too), and play on an OS control plays it. Pausing it makes it
- * an ordinary pause. Time spent waiting does not count towards
- * `STALE_PAUSE_MS`, and nothing is saved for it.
+ * still playing in name and shown as loading, whether iOS pauses it before
+ * or after the player is told the app is hidden. Once it can play, it is
+ * tried once more, once while the app stays hidden, even if iOS takes that
+ * try and pauses it again; it is tried again when the app shows (iOS may
+ * start it by itself then too), and play on an OS control plays it. Pausing it makes
+ * it an ordinary pause; its file failing makes it failed. Time spent waiting
+ * does not count towards `STALE_PAUSE_MS`, and nothing is saved for it.
  *
  * A file that fails after it had got going (the network dropped under a
  * stream) keeps the listener's place. If it was playing, it is tried again
@@ -203,6 +204,9 @@ export interface Player {
   stop(): void
 }
 
+/** Whether the page is hidden now, as the browser says, whether or not the player has been told yet. */
+const pageHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden'
+
 export function createPlayer(
   audio: AudioElement,
   saveProgress: SaveProgress,
@@ -228,7 +232,7 @@ export function createPlayer(
    * The element holds nothing of the loaded episode: its file failed, or
    * failed before it was ever played. The position is then the state's own.
    */
-  let cued = false
+  let fileFailed = false
   /** Runs out when the file played again has stayed put for `STUCK_MS`. */
   let stuckTimer: ReturnType<typeof setTimeout> | null = null
   /** The file's metadata has arrived since it was loaded: it is, or was, playable. */
@@ -271,7 +275,11 @@ export function createPlayer(
    * episode is waiting to play, still playing in name and shown as loading.
    */
   let waiting = false
-  /** The player engine has made its one further try at the waiting file, once it could play. */
+  /**
+   * The player engine has made its one further try at a waiting file, once it
+   * could play, since the file was loaded or the app last showed: iOS may take
+   * that try and pause the file again, and it is not tried again for that.
+   */
   let triedWhileWaiting = false
 
   function set(next: PlayerState) {
@@ -297,7 +305,7 @@ export function createPlayer(
 
   /** Where the file is, or where it is about to start if the browser has not applied that seek yet. */
   function currentPosition() {
-    if (cued && state.episode) return state.position
+    if (fileFailed && state.episode) return state.position
     return pendingStart !== null && audio.currentTime === 0 ? pendingStart : audio.currentTime
   }
 
@@ -311,30 +319,33 @@ export function createPlayer(
 
   const handlers: Record<string, () => void> = {
     play: () => {
+      // A failed file is not playing, whatever its element says (iOS may start it as the app shows): played, it loads again.
+      if (fileFailed) return
       pauseAsked = false
       waiting = false
       applySpeed()
       noLongerIdle()
       showPlaying(true)
       // Whoever pressed play: the listener, or iOS itself once a phone call is over.
-      if (gotGoing && !cued) watchForStuck()
+      if (gotGoing && !fileFailed) watchForStuck()
     },
     pause: () => {
       // A failed file is not playing, whatever its element says of pausing.
-      if (cued) return
+      if (fileFailed) return
       const unasked = !pauseAsked && !audio.ended
       pauseAsked = false
+      // iOS may pause the element before the player is told the app is hidden, so the page is asked too.
+      const hiddenNow = hidden || pageHidden()
       // iOS pauses a file that has not yet produced sound as the app is hidden.
-      if (unasked && hidden && !played && state.episode && state.playing) {
+      if (unasked && hiddenNow && !played && state.episode && state.playing) {
         report(`paused at ${audio.currentTime.toFixed(1)}: nobody asked, waiting to play`)
         waiting = true
-        triedWhileWaiting = false
         update({ loading: true })
         tryWhileWaiting()
         return
       }
       if (unasked) report(`paused at ${audio.currentTime.toFixed(1)}: nobody asked`)
-      if (hidden) idleSince = Date.now()
+      if (hiddenNow) idleSince = Date.now()
       showPlaying(false)
       // Reaching the end pauses first; `ended` saves that.
       if (!audio.ended) save()
@@ -348,7 +359,7 @@ export function createPlayer(
     canplay: () => tryWhileWaiting(),
     timeupdate: () => {
       // The element's position means nothing once its file has failed.
-      if (cued) return
+      if (fileFailed) return
       // A second or two on from the last tick is playback; anything else is a seek.
       const moved = lastTick === null ? 0 : audio.currentTime - lastTick
       lastTick = audio.currentTime
@@ -377,13 +388,15 @@ export function createPlayer(
     },
     // A failed load leaves `paused` false, so the element's word on playing can't be trusted after it.
     error: () => {
-      if (!state.episode || cued) return
+      if (!state.episode || fileFailed) return
       stopWatchingForStuck()
+      // Failed, it is no longer waiting to play: nothing is to start it when the app shows.
+      waiting = false
       if (primed) {
         // Not played yet, so nothing is lost: it is loaded again when it is.
         const position = currentPosition()
         primed = false
-        cued = true
+        fileFailed = true
         pendingStart = null
         update({ position })
         return
@@ -391,7 +404,7 @@ export function createPlayer(
       // Where it had got to, or was about to start: the place to pick up from.
       const position = pendingStart ?? state.position
       const started = gotGoing || recovering
-      cued = true
+      fileFailed = true
       pendingStart = null
       if (started && state.playing && retries < RETRY_DELAYS_MS.length) {
         report(`failed at ${position.toFixed(1)}: trying again`)
@@ -457,7 +470,7 @@ export function createPlayer(
     if (!playing || moved) notStarting()
     else if (!state.episode || !state.playing) {
       startingFrom = currentPosition()
-      if (gotGoing && !cued) {
+      if (played && !fileFailed) {
         graceTimer = setTimeout(() => {
           graceTimer = null
           update({ loading: true })
@@ -485,7 +498,7 @@ export function createPlayer(
     showPlaying(!audio.paused)
     started.catch(() => {
       // Refused (no user gesture) or aborted: show what the element is actually doing.
-      if (load === loadCount && state.episode && !state.failed && !cued) showPlaying(!audio.paused)
+      if (load === loadCount && state.episode && !state.failed && !fileFailed) showPlaying(!audio.paused)
     })
   }
 
@@ -523,7 +536,7 @@ export function createPlayer(
     const from = audio.currentTime
     stuckTimer = setTimeout(() => {
       stuckTimer = null
-      if (!state.episode || state.failed || cued || audio.paused || audio.currentTime !== from) return
+      if (!state.episode || state.failed || fileFailed || audio.paused || audio.currentTime !== from) return
       report(`stuck at ${from.toFixed(1)}: loading afresh`)
       load(state.episode, from, true)
     }, STUCK_MS)
@@ -546,15 +559,28 @@ export function createPlayer(
    * `recovery` is the player loading again an episode that had got going.
    */
   function load(episode: PlayableEpisode, startAt: number, recovery = false) {
+    loadFile(episode, startAt, 'auto', recovery)
+    if (!recovery) lastSaveAt = Date.now()
+    attemptPlay()
+  }
+
+  /**
+   * Points the element at the episode's file, paused at `startAt` seconds, in
+   * place of whatever is loaded, forgetting all the player knew of the file
+   * before. A `recovery` keeps the tries made and the position last saved.
+   */
+  function loadFile(episode: PlayableEpisode, startAt: number, preload: AudioElement['preload'], recovery: boolean) {
     loadCount++
     stopWatchingForStuck()
     stopRetrying()
     noLongerIdle()
-    cued = false
+    notStarting()
+    fileFailed = false
     primed = false
     gotGoing = false
     played = false
     waiting = false
+    triedWhileWaiting = false
     recovering = recovery
     // A browser may pause the element as its source changes.
     pauseAsked = true
@@ -562,19 +588,13 @@ export function createPlayer(
     lastTick = null
     playedOn = 0
     const start = Math.max(startAt, 0)
-    const duration = episode.durationSeconds
-    notStarting()
-    set({ episode, playing: false, loading: false, position: start, duration, failed: false, speed: state.speed, skip: state.skip })
+    set({ episode, playing: false, loading: false, position: start, duration: episode.durationSeconds, failed: false, speed: state.speed, skip: state.skip })
     // A recovery starts where the episode had got to, which may be past what was last saved.
-    if (!recovery) {
-      savedPosition = start
-      lastSaveAt = Date.now()
-    }
-    audio.preload = 'auto'
+    if (!recovery) savedPosition = start
+    audio.preload = preload
     setSource(episode)
     applySpeed()
     startFrom(start)
-    attemptPlay()
   }
 
   /** Points the element at the episode's stored copy if there is one, and its stream otherwise. */
@@ -594,7 +614,7 @@ export function createPlayer(
   }
 
   function play(episode: PlayableEpisode, startAt = 0) {
-    if (cued && state.episode && state.episode.id === episode.id) {
+    if (fileFailed && state.episode && state.episode.id === episode.id) {
       load(episode, state.position)
       return
     }
@@ -610,7 +630,7 @@ export function createPlayer(
 
   function seekTo(seconds: number) {
     if (!state.episode) return
-    if (cued) {
+    if (fileFailed) {
       update({ position: Math.max(seconds, 0) })
       return
     }
@@ -645,33 +665,18 @@ export function createPlayer(
 
     cue(episode, startAt) {
       if (state.episode) return
-      loadCount++
-      primed = true
-      played = false
-      waiting = false
-      gotGoing = false
-      recovering = false
-      retries = 0
-      lastTick = null
-      playedOn = 0
-      pauseAsked = true
-      const position = Math.max(startAt, 0)
-      set({ episode, playing: false, loading: false, position, duration: episode.durationSeconds, failed: false, speed: state.speed, skip: state.skip })
-      savedPosition = position
       // Only so much as to know the file: the rest waits until it is played.
-      audio.preload = 'metadata'
-      setSource(episode)
-      applySpeed()
-      startFrom(position)
+      loadFile(episode, startAt, 'metadata', false)
+      primed = true
     },
 
     resume() {
-      if (cued && state.episode) load(state.episode, state.position)
+      if (fileFailed && state.episode) load(state.episode, state.position)
       else if (state.episode && !state.failed) playOn()
     },
 
     pause() {
-      if (cued) {
+      if (fileFailed) {
         // Nothing is playing; at most a failed file is waiting to be tried again.
         if (retryTimer === null) return
         stopRetrying()
@@ -720,12 +725,13 @@ export function createPlayer(
       if (hidden) {
         // A file waiting to play is not paused, whatever its element says; one
         // loaded at launch and not yet played holds no more than its metadata anyway.
-        if (idleSince === null && state.episode && !cued && !waiting && !primed && audio.paused) idleSince = Date.now()
+        if (idleSince === null && state.episode && !fileFailed && !waiting && !primed && audio.paused) idleSince = Date.now()
         save()
         return
       }
       idleFor = longestIdle()
       idleSince = null
+      triedWhileWaiting = false
       if (waiting) attemptPlay()
       retryNow()
     },
@@ -744,7 +750,7 @@ export function createPlayer(
       stopWatchingForStuck()
       stopRetrying()
       noLongerIdle()
-      cued = false
+      fileFailed = false
       primed = false
       waiting = false
       pendingStart = null

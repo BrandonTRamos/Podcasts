@@ -192,6 +192,21 @@ describe('the line at launch on how the last run ended', () => {
     )
   })
 
+  it('gives the time of the latest, when its last line had it playing and stood for several', () => {
+    const store = memoryText()
+    let time = Date.parse('2026-11-16T14:03:22.512Z')
+    const before = createPlaybackLog(store, () => new Date((time += 1000) - 1000), () => undefined)
+    before.loaded('ep-1')
+    for (let i = 0; i < 3; i++) before.record('audio stalled t=3.2 unpaused ready=2 net=2 hidden')
+    const log = createPlaybackLog(store, at('2026-11-16T14:20:00.000Z'))
+
+    recordLastRun(log, new FakeDeviceStorage())
+
+    expect(log.lines().at(-1)).toBe(
+      '11-16T14:20:00.000 last run ended without a word: last known playing at 11-16T14:03:24.512, episode ep-1 t=3.2 ep=none',
+    )
+  })
+
   it('leaves the place kept for the launch to pick up from', () => {
     const place = { episodeId: 'ep-1', podcastId: 'pod-1', positionSeconds: 605, at: '2026-11-16T14:03:27.600Z' }
     const { log, storage } = lastRun(['page t=600.0 unpaused ready=4 net=1 hidden'], place)
