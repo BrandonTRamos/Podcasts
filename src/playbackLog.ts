@@ -1,4 +1,5 @@
-import type { PlaybackLog } from './services'
+import { keptPlace } from './keptPlace'
+import type { DeviceStorage, PlaybackLog } from './services'
 
 /** How many lines the log keeps: a few hours of listening. */
 export const LOG_LINES = 300
@@ -33,6 +34,9 @@ export function localStorageText(key: string): TextStore {
   }
 }
 
+/** A line's stamp: month, day and time (UTC) to the millisecond. */
+const stamp = (date: Date) => date.toISOString().slice(5, 23)
+
 /**
  * A playback log of at most `LOG_LINES` lines, each stamped with the month,
  * day and time (UTC) to the millisecond. Every line is written to the store as
@@ -56,7 +60,7 @@ export function createPlaybackLog(store: TextStore, now: () => Date = () => new 
   return {
     record(line) {
       const all = kept()
-      all.push(`${now().toISOString().slice(5, 23)} ${line}`)
+      all.push(`${stamp(now())} ${line}`)
       if (all.length > LOG_LINES) all.splice(0, all.length - LOG_LINES)
       try {
         store.write(JSON.stringify(all))
@@ -150,4 +154,32 @@ export function recordPlayback(log: PlaybackLog, audio: HTMLMediaElement): void 
 
   const installed = window.matchMedia?.('(display-mode: standalone)').matches ? 'installed' : 'in browser'
   record(`launch ${installed} ${navigator.userAgent}`)
+}
+
+/**
+ * Records, at launch, how the run before it ended, worked out from what that
+ * run left on the device: the last line it logged, and the place it kept
+ * while playing (read, not taken: the launch still picks up from it). Either
+ * the page was told it was going; or it was playing and ended without a word,
+ * last known playing when and where it last kept its place, or else when and
+ * where its last line had it unpaused; or it ended paused or with nothing
+ * loaded. Records nothing at a first launch. Call it before this launch
+ * records anything.
+ */
+export function recordLastRun(log: PlaybackLog, storage: DeviceStorage): void {
+  const last = log.lines().at(-1)
+  if (last === undefined) return
+  const at = last.indexOf(' ')
+  const words = last.slice(at + 1).split(' ')
+  const place = keptPlace(storage)
+  if (words[0] === 'page' && words[1] === 'going') log.record('last run closed with the page told')
+  else if (place)
+    log.record(
+      `last run ended without a word: last known playing at ${stamp(new Date(place.at))}, episode ${place.episodeId} t=${place.positionSeconds.toFixed(1)}`,
+    )
+  else if (words.includes('unpaused'))
+    log.record(
+      `last run ended without a word: last known playing at ${last.slice(0, at)}, ${words.find((word) => word.startsWith('t=')) ?? 't=?'}`,
+    )
+  else log.record('last run ended paused or with nothing loaded')
 }

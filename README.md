@@ -118,7 +118,7 @@ iOS suspends an installed web app soon after it goes to the background unless it
 - **The place** (`src/keptPlace.ts`): while an episode plays, where it has got to is kept on the device every five seconds, between the saves to the backend (one a minute). If the app is closed while playing, the next launch saves that place, as the change made when it was kept.
 - **The screen** (`src/SignedInApp.tsx`): the screens the listener is on are kept while the app is hidden. A launch that follows, with the app never having shown again, opens on them; any other opens on the library.
 - **Behind a locked screen**: the OS media controls are told the position only when the OS would otherwise have it wrong (play, pause, a seek, a change of speed, drift), and the app draws nothing of the position moving on until it shows again.
-- **The playback log** (Settings): what the audio element, the page and the player did lately, for working out what went wrong on a lock screen.
+- **The playback log** (Settings): what the audio element, the page and the player did lately, for working out what went wrong on a lock screen. At each launch it says how the run before ended (the page told it was going; ended without a word, with when and where it was last known to be playing; or paused or with nothing loaded), from that run's last line and the place it kept, and whether the screens were restored from a run iOS closed.
 
 ## Pipeline
 

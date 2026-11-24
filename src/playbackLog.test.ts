@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { createPlaybackLog, LOG_LINES, memoryText, recordPlayback } from './playbackLog'
+import { createPlaybackLog, LOG_LINES, memoryText, recordLastRun, recordPlayback } from './playbackLog'
+import { FakeDeviceStorage } from './test/fakes'
+import { takeKeptPlace } from './keptPlace'
 
 const at = (iso: string) => () => new Date(iso)
 
@@ -54,6 +56,76 @@ describe('the playback log', () => {
     log.record('control play')
 
     expect(log.lines()).toHaveLength(1)
+  })
+})
+
+describe('the line at launch on how the last run ended', () => {
+  /** A device whose last run logged these lines and kept this place, launched again at 14:20. */
+  function lastRun(lines: string[], place?: object) {
+    const store = memoryText()
+    const before = createPlaybackLog(store, at('2026-11-16T14:03:22.512Z'))
+    for (const line of lines) before.record(line)
+    const storage = new FakeDeviceStorage()
+    if (place) storage.set('place', JSON.stringify(place))
+    return { log: createPlaybackLog(store, at('2026-11-16T14:20:00.000Z')), storage }
+  }
+
+  it('says the page was told, when that was the last word', () => {
+    const { log, storage } = lastRun(['audio pause t=600.0 paused ready=4 net=1 hidden', 'page going t=600.0 paused ready=4 net=1 hidden'])
+
+    recordLastRun(log, storage)
+
+    expect(log.lines().at(-1)).toBe('11-16T14:20:00.000 last run closed with the page told')
+  })
+
+  it('says it ended without a word, and when and where it was last known to be playing, when it left a place playing', () => {
+    const { log, storage } = lastRun(['page t=600.0 unpaused ready=4 net=1 hidden'], {
+      episodeId: 'ep-1',
+      podcastId: 'pod-1',
+      positionSeconds: 605,
+      at: '2026-11-16T14:03:27.600Z',
+    })
+
+    recordLastRun(log, storage)
+
+    expect(log.lines().at(-1)).toBe(
+      '11-16T14:20:00.000 last run ended without a word: last known playing at 11-16T14:03:27.600, episode ep-1 t=605.0',
+    )
+  })
+
+  it('says it ended without a word when its last line had it playing, though it kept no place', () => {
+    const { log, storage } = lastRun(['audio moving t=3.2 unpaused ready=4 net=2 hidden'])
+
+    recordLastRun(log, storage)
+
+    expect(log.lines().at(-1)).toBe(
+      '11-16T14:20:00.000 last run ended without a word: last known playing at 11-16T14:03:22.512, t=3.2',
+    )
+  })
+
+  it('leaves the place kept for the launch to pick up from', () => {
+    const place = { episodeId: 'ep-1', podcastId: 'pod-1', positionSeconds: 605, at: '2026-11-16T14:03:27.600Z' }
+    const { log, storage } = lastRun(['page t=600.0 unpaused ready=4 net=1 hidden'], place)
+
+    recordLastRun(log, storage)
+
+    expect(takeKeptPlace(storage)).toEqual(place)
+  })
+
+  it('says it ended paused or with nothing loaded, not that it stopped without a word, when it was not playing', () => {
+    const { log, storage } = lastRun(['audio pause t=600.0 paused ready=4 net=1 hidden'])
+
+    recordLastRun(log, storage)
+
+    expect(log.lines().at(-1)).toBe('11-16T14:20:00.000 last run ended paused or with nothing loaded')
+  })
+
+  it('says nothing of a last run at a first launch', () => {
+    const log = createPlaybackLog(memoryText())
+
+    recordLastRun(log, new FakeDeviceStorage())
+
+    expect(log.lines()).toEqual([])
   })
 })
 

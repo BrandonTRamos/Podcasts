@@ -167,6 +167,13 @@ export function SignedInApp({
   // iOS closes an app left in the background whenever it likes, and loads it
   // afresh when the listener comes back: it then opens where they were.
   const [restored] = useState(() => storedView(device.storage))
+  // Once, though React may run effects twice while developing.
+  const toldLog = useRef(false)
+  useEffect(() => {
+    if (toldLog.current) return
+    toldLog.current = true
+    device.playbackLog.record(restored ? 'screens restored from a run iOS closed' : 'screens not restored')
+  }, [device.playbackLog, restored])
   const [screen, setScreen] = useState<Screen>(restored?.screen ?? { name: 'library' })
   /** Now playing takes the place of the current screen; closing it goes back there. */
   const [nowPlayingOpen, setNowPlayingOpen] = useState(restored?.nowPlayingOpen ?? false)

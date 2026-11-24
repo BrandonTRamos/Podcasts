@@ -113,7 +113,8 @@ describe('the playback log', () => {
 
     await user.click(screen.getByRole('button', { name: 'Copy playback log' }))
 
-    expect(await screen.findByText('Copied 2 lines.')).toBeInTheDocument()
+    // The launch's own line, on the screens, and these two.
+    expect(await screen.findByText('Copied 3 lines.')).toBeInTheDocument()
     expect((await navigator.clipboard.readText()).split('\n')).toEqual(device.playbackLog.lines())
   })
 
