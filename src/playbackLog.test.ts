@@ -9,7 +9,95 @@ describe('the playback log', () => {
 
     log.record('control play')
 
-    expect(log.lines()).toEqual(['11-16T14:03:22.512 control play'])
+    expect(log.lines()).toEqual(['11-16T14:03:22.512 control play ep=none'])
+  })
+
+  it('names the episode loaded on each line, and says when none is', () => {
+    const log = createPlaybackLog(memoryText(), at('2026-11-16T14:03:22.512Z'))
+
+    log.record('launch in browser')
+    log.loaded('episode-17')
+    log.record('control play')
+    log.loaded(null)
+    log.record('control pause')
+
+    expect(log.lines()).toEqual([
+      '11-16T14:03:22.512 launch in browser ep=none',
+      '11-16T14:03:22.512 control play ep=episode-17',
+      '11-16T14:03:22.512 control pause ep=none',
+    ])
+  })
+
+  it('carries the audio session’s state as each line is written', () => {
+    const session: { state?: string } = { state: 'active' }
+    const log = createPlaybackLog(memoryText(), at('2026-11-16T14:03:22.512Z'), () => session)
+
+    log.record('control play')
+    session.state = 'interrupted'
+    log.record('audio pause')
+
+    expect(log.lines()).toEqual([
+      '11-16T14:03:22.512 control play ep=none session=active',
+      '11-16T14:03:22.512 audio pause ep=none session=interrupted',
+    ])
+  })
+
+  it('says the audio session’s state is unknown when the browser gives none', () => {
+    const log = createPlaybackLog(memoryText(), at('2026-11-16T14:03:22.512Z'), () => ({}))
+
+    log.record('control play')
+
+    expect(log.lines()).toEqual(['11-16T14:03:22.512 control play ep=none session=unknown'])
+  })
+
+  describe('a stalled line', () => {
+    /** A clock that moves on a second at each look. */
+    const ticking = () => {
+      let time = Date.parse('2026-11-16T14:03:22.512Z')
+      return () => new Date((time += 1000) - 1000)
+    }
+
+    it('that repeats the one before, for the same episode, gives that one a count and the time of the latest', () => {
+      const store = memoryText()
+      const log = createPlaybackLog(store, ticking())
+      log.loaded('episode-17')
+
+      log.record('audio stalled t=600.0 unpaused')
+      log.record('audio stalled t=600.0 unpaused')
+      log.record('audio stalled t=601.2 unpaused')
+
+      const expected = ['11-16T14:03:22.512 audio stalled t=600.0 unpaused ep=episode-17 x3 latest=11-16T14:03:24.512']
+      expect(log.lines()).toEqual(expected)
+      expect(createPlaybackLog(store).lines()).toEqual(expected)
+    })
+
+    it('is always logged after any other line', () => {
+      const log = createPlaybackLog(memoryText(), ticking())
+
+      log.record('audio stalled t=600.0 unpaused')
+      log.record('audio waiting t=600.0 unpaused')
+      log.record('audio stalled t=600.0 unpaused')
+
+      expect(log.lines().map((line) => line.slice(19))).toEqual([
+        'audio stalled t=600.0 unpaused ep=none',
+        'audio waiting t=600.0 unpaused ep=none',
+        'audio stalled t=600.0 unpaused ep=none',
+      ])
+    })
+
+    it('is logged when the episode has changed', () => {
+      const log = createPlaybackLog(memoryText(), ticking())
+      log.loaded('episode-17')
+      log.record('audio stalled t=600.0 unpaused')
+
+      log.loaded('episode-18')
+      log.record('audio stalled t=0.0 unpaused')
+
+      expect(log.lines().map((line) => line.slice(19))).toEqual([
+        'audio stalled t=600.0 unpaused ep=episode-17',
+        'audio stalled t=0.0 unpaused ep=episode-18',
+      ])
+    })
   })
 
   it('is still there after a relaunch', () => {
@@ -19,7 +107,7 @@ describe('the playback log', () => {
     const relaunched = createPlaybackLog(store)
     relaunched.record('control play')
 
-    expect(relaunched.lines().map((line) => line.slice(19))).toEqual(['control pause', 'control play'])
+    expect(relaunched.lines().map((line) => line.slice(19))).toEqual(['control pause ep=none', 'control play ep=none'])
   })
 
   it('drops the oldest lines once full', () => {
@@ -29,8 +117,8 @@ describe('the playback log', () => {
 
     const lines = log.lines()
     expect(lines).toHaveLength(LOG_LINES)
-    expect(lines[0]).toMatch(/line 2$/)
-    expect(lines.at(-1)).toMatch(new RegExp(`line ${LOG_LINES + 1}$`))
+    expect(lines[0]).toMatch(/line 2 /)
+    expect(lines.at(-1)).toMatch(new RegExp(`line ${LOG_LINES + 1} `))
   })
 
   it('starts again when what was stored can’t be read', () => {
@@ -81,7 +169,7 @@ describe('recording what the audio element does', () => {
   })
 
   it('notes the launch, and whether the app is installed', () => {
-    expect(fresh()).toEqual([expect.stringMatching(/^launch in browser .+ t=0\.0 paused ready=0 net=0 visible$/)])
+    expect(fresh()).toEqual([expect.stringMatching(/^launch in browser .+ t=0\.0 paused ready=0 net=0 visible ep=none$/)])
   })
 
   it('records each event with the element’s state', () => {
@@ -92,8 +180,8 @@ describe('recording what the audio element does', () => {
     fire('waiting')
 
     expect(fresh()).toEqual([
-      'audio play t=600.0 unpaused ready=0 net=0 visible',
-      'audio waiting t=600.0 unpaused ready=0 net=0 visible',
+      'audio play t=600.0 unpaused ready=0 net=0 visible ep=none',
+      'audio waiting t=600.0 unpaused ready=0 net=0 visible ep=none',
     ])
   })
 
@@ -108,7 +196,7 @@ describe('recording what the audio element does', () => {
     position = 600.6
     fire('timeupdate')
 
-    expect(fresh()).toEqual([expect.stringMatching(/^audio play /), 'audio moving t=600.3 unpaused ready=0 net=0 visible'])
+    expect(fresh()).toEqual([expect.stringMatching(/^audio play /), 'audio moving t=600.3 unpaused ready=0 net=0 visible ep=none'])
   })
 
   it('doesn’t take a seek for the position moving', () => {
@@ -125,6 +213,6 @@ describe('recording what the audio element does', () => {
   it('records the page being hidden', () => {
     document.dispatchEvent(new Event('visibilitychange'))
 
-    expect(fresh()).toEqual(['page t=0.0 paused ready=0 net=0 visible'])
+    expect(fresh()).toEqual(['page t=0.0 paused ready=0 net=0 visible ep=none'])
   })
 })

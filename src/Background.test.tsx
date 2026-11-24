@@ -382,6 +382,39 @@ describe('while an episode plays with the app hidden', () => {
   })
 })
 
+describe('a pause nobody asked for', () => {
+  it('is marked in the playback log, naming the episode', async () => {
+    const { data, device, firstId } = await setUp()
+    const { audio } = await launchAndPlay(data, device)
+    setVisibility('hidden')
+
+    act(() => audio.pause())
+
+    expect(device.playbackLog.lines().at(-1)).toMatch(new RegExp(`player paused at 600\\.0: nobody asked ep=${firstId}$`))
+    expect(device.playbackLog.lines().join('\n')).not.toContain('example.com')
+  })
+
+  it('is not taken for one the listener or the lock screen asked for', async () => {
+    const { data, device } = await setUp()
+    const { mediaSession, miniPlayer, user } = await launchAndPlay(data, device)
+
+    await user.click(within(miniPlayer()).getByRole('button', { name: 'Pause' }))
+    await user.click(within(miniPlayer()).getByRole('button', { name: 'Play' }))
+    act(() => mediaSession.press('pause'))
+
+    expect(device.playbackLog.lines().join('\n')).not.toMatch(/nobody asked/)
+  })
+
+  it('is not taken for the end of the episode', async () => {
+    const { data, device } = await setUp()
+    const { audio } = await launchAndPlay(data, device)
+
+    act(() => audio.playToEnd())
+
+    expect(device.playbackLog.lines().join('\n')).not.toMatch(/nobody asked/)
+  })
+})
+
 describe('an app iOS closed while it played in the background', () => {
   /** Plays to ten minutes in, then on in the background to 10:05, where iOS closes the app. */
   async function playThenGetClosed(data: FakeDataApi, device: FakeDevice) {
