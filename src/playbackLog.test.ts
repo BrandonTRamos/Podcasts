@@ -149,9 +149,10 @@ describe('the playback log', () => {
 
 describe('the line at launch on how the last run ended', () => {
   /** A device whose last run logged these lines and kept this place, launched again at 14:20. */
-  function lastRun(lines: string[], place?: object) {
+  function lastRun(lines: string[], place?: object, episodeId: string | null = 'ep-1') {
     const store = memoryText()
-    const before = createPlaybackLog(store, at('2026-11-16T14:03:22.512Z'))
+    const before = createPlaybackLog(store, at('2026-11-16T14:03:22.512Z'), () => undefined)
+    before.loaded(episodeId)
     for (const line of lines) before.record(line)
     const storage = new FakeDeviceStorage()
     if (place) storage.set('place', JSON.stringify(place))
@@ -187,7 +188,7 @@ describe('the line at launch on how the last run ended', () => {
     recordLastRun(log, storage)
 
     expect(log.lines().at(-1)).toBe(
-      '11-16T14:20:00.000 last run ended without a word: last known playing at 11-16T14:03:22.512, t=3.2 ep=none',
+      '11-16T14:20:00.000 last run ended without a word: last known playing at 11-16T14:03:22.512, episode ep-1 t=3.2 ep=none',
     )
   })
 
@@ -200,12 +201,20 @@ describe('the line at launch on how the last run ended', () => {
     expect(takeKeptPlace(storage)).toEqual(place)
   })
 
-  it('says it ended paused or with nothing loaded, not that it stopped without a word, when it was not playing', () => {
+  it('says it ended paused, not that it stopped without a word, when it was paused', () => {
     const { log, storage } = lastRun(['audio pause t=600.0 paused ready=4 net=1 hidden'])
 
     recordLastRun(log, storage)
 
-    expect(log.lines().at(-1)).toBe('11-16T14:20:00.000 last run ended paused or with nothing loaded ep=none')
+    expect(log.lines().at(-1)).toBe('11-16T14:20:00.000 last run ended paused, episode ep-1 ep=none')
+  })
+
+  it('says it ended with nothing loaded, when no episode was', () => {
+    const { log, storage } = lastRun(['launch installed Mozilla/5.0 t=0.0 paused ready=0 net=0 visible'], undefined, null)
+
+    recordLastRun(log, storage)
+
+    expect(log.lines().at(-1)).toBe('11-16T14:20:00.000 last run ended with nothing loaded ep=none')
   })
 
   it('says nothing of a last run at a first launch', () => {

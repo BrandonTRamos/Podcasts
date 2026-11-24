@@ -206,7 +206,7 @@ export function recordPlayback(log: PlaybackLog, audio: HTMLMediaElement): void 
  * while playing (read, not taken: the launch still picks up from it). Either
  * the page was told it was going; or it was playing and ended without a word,
  * last known playing when and where it last kept its place, or else when and
- * where its last line had it unpaused; or it ended paused or with nothing
+ * where its last line had it unpaused; or it ended paused, or with nothing
  * loaded. Records nothing at a first launch. Call it before this launch
  * records anything.
  */
@@ -215,6 +215,9 @@ export function recordLastRun(log: PlaybackLog, storage: DeviceStorage): void {
   if (last === undefined) return
   const at = last.indexOf(' ')
   const words = last.slice(at + 1).split(' ')
+  const field = (name: string) => words.find((word) => word.startsWith(`${name}=`))?.slice(name.length + 1)
+  const episodeId = field('ep')
+  const episode = episodeId && episodeId !== 'none' ? `episode ${episodeId}` : null
   const place = keptPlace(storage)
   if (words[0] === 'page' && words[1] === 'going') log.record('last run closed with the page told')
   else if (place)
@@ -223,7 +226,7 @@ export function recordLastRun(log: PlaybackLog, storage: DeviceStorage): void {
     )
   else if (words.includes('unpaused'))
     log.record(
-      `last run ended without a word: last known playing at ${last.slice(0, at)}, ${words.find((word) => word.startsWith('t=')) ?? 't=?'}`,
+      `last run ended without a word: last known playing at ${last.slice(0, at)}, ${[episode, `t=${field('t') ?? '?'}`].filter(Boolean).join(' ')}`,
     )
-  else log.record('last run ended paused or with nothing loaded')
+  else log.record(episode ? `last run ended paused, ${episode}` : 'last run ended with nothing loaded')
 }
