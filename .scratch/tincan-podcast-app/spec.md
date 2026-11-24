@@ -98,6 +98,26 @@ The backend is serverless on AWS Amplify. It stores no audio: only feeds, episod
 59. As the owner, I want the app to cost roughly nothing per month, so that I can keep it running indefinitely.
 60. As the owner, I want my private feed URLs kept secret, so that paid-feed tokens do not leak.
 
+### In the background on iPhone
+
+Added 2026-11-24, from the playback log of 2026-11-21 to 2026-11-24 (see Further Notes).
+
+61. As an iPhone listener, I want an episode I paused a long time ago to play on at once when its file is still loaded, so that pressing play is not followed by seconds of loading.
+62. As an iPhone listener, I want an episode played on after a long pause to be loaded afresh only when it turns out to be stuck, so that the rescue still happens when iOS has let go of the file.
+63. As an iPhone listener, I want an episode I pressed play on to start even if I lock the phone before it has loaded, so that I do not find silence in my pocket.
+64. As an iPhone listener, I want the app to show that an episode is not playing yet while its file loads, so that I know not to put the phone away.
+65. As an iPhone listener, I want an episode iOS paused while it was loading to show as waiting, not as paused by me, so that I can tell what happened when I come back.
+66. As an iPhone listener, I want that episode to start as soon as iOS allows it, without my pressing play again, so that coming back to the app is enough.
+67. As an iPhone listener, I want play on the lock screen to start that episode, so that I need not unlock the phone.
+68. As an iPhone listener, I want the episode I was last on to start within a moment of pressing play at launch, so that the wait before the first sound is short.
+69. As a listener, I want an episode with a stored copy to play from that copy even if the copy arrived after the app opened, so that a quicker start costs me no data.
+70. As the owner, I want every line of the playback log to name the episode, so that I can tell one episode's events from another's.
+71. As the owner, I want every line to carry the state of Safari's audio session, so that a change of session says what it changed to.
+72. As the owner, I want the log to say at launch how the last run ended (closed by iOS or by me with the page told, or ended without a word, and when it was last known to be playing), so that a silent stop is not just a gap.
+73. As the owner, I want the log to say at launch whether the screens were restored from a run iOS closed, so that I can tell a relaunch from a fresh start.
+74. As the owner, I want repeats of an event that means nothing by itself (a stream's loading stalling while it plays on) folded into one line with a count, so that they do not push the useful lines out of the log.
+75. As the owner, I want the log to say when iOS paused an episode that nobody paused, so that I can find those moments without reading every line.
+
 ## Implementation Decisions
 
 ### Shape
@@ -159,6 +179,29 @@ Subscribe, refresh and staging are asynchronous: the operation returns at once, 
 - An episode is marked played when playback reaches the end.
 - Auto-advance sets the next episode's source synchronously in the audio element's ended handler, because iOS throttles scripts when locked and an awaited call there can stall the queue. Enclosure URLs are stable, so no URL needs fetching at that moment.
 
+### In the background on iPhone
+
+Stories 61 to 75. All of it is in the client: the player engine, the playback log, and the mini player and now-playing screen.
+
+- **Playing on after a long pause.** Today a file paused in the background for a minute or more is always loaded afresh when played again. That changes: the player engine first asks the audio element whether it still holds enough of the file to play. If it does, the file is played on as it is. If it does not, it is loaded afresh at once, as now. The existing check that loads afresh a file that has not moved four seconds after play stays as the safety net, whoever pressed play.
+- **Paused by iOS while loading.** iOS pauses a file that has not yet produced sound when the app is hidden, and starts it again by itself when the app shows. The player engine tells this apart from a pause the listener asked for: the pause arrives with the app hidden, without the player or an OS control having asked for it, on a file that has not got going. The episode is then waiting to play, not paused:
+  - the player's state says so, and the mini player and now-playing screen show it as loading, not as paused;
+  - once the file can play, the player engine tries to play it again, once. If iOS refuses, it stays waiting;
+  - it plays when the app shows again, whether iOS or the player engine starts it;
+  - play on the lock screen plays it; pause there, or in the app, makes it an ordinary pause;
+  - the long-pause rule above does not count time spent waiting.
+- **Not playing yet.** From play being pressed until the position first moves, the mini player and now-playing screen show the episode as loading. This uses what the audio element already reports; nothing new is stored.
+- **The last episode at launch.** Today the episode cued at launch loads nothing until it is played, so that it comes from the stored copy if one has turned up since. That changes: the cued episode's file is loaded at launch, paused at its saved place, from the stored copy if there is one and otherwise the stream, asking the browser for no more than the file's metadata. When it is played, the player engine checks again for a stored copy and switches to it if one has appeared. Nothing is saved, and nothing shows as failed, for a cued file that fails to load before it is played: it is loaded again when played, as now.
+- **The playback log.**
+  - Each line names the episode loaded, by its ID. The log is told the episode by the player engine; it does not read it from the audio element. An ID is not a secret; feed and enclosure URLs still never go in the log.
+  - The audio session's state is read when each line is written and is always in the line where the browser has an audio session, as `unknown` when the browser gives none. It never printed in the log this came from.
+  - At launch, one line says how the last run ended, worked out from what the last run left on the device: the last line it logged, and the place it kept while playing. Either the page was told it was going, or it ended without a word, with when it was last known to be playing and where.
+  - At launch, one line says whether the screens were restored.
+  - A line that repeats the one before it, for an event in a short fixed list (stalled, to begin with), is not added; the line before it gains a count and the time of the latest. Its first occurrence is always logged.
+  - One line marks a pause nobody asked for, written by the player engine as its other rescue lines are.
+  - The log stays at 300 lines, written to the device as each line is recorded.
+- **What does not change:** the saved position, the place kept every few seconds while playing, the tries at a file that fails, and the restoring of screens after iOS closes the app.
+
 ### Offline
 
 - Downloads go to the Origin Private File System, written as chunks arrive, never held as one in-memory blob.
@@ -205,6 +248,20 @@ No prior art exists in the repo. These first tests set the pattern.
 - a downloaded episode plays in airplane mode, with seeking
 - downloads are still present after several days
 
+**In the background on iPhone (stories 61 to 75).** No new seam. Both seams already exist and have prior art:
+
+- **Client, at the UI**, for everything the listener sees or hears: the app is rendered and driven as a user would, with the audio element, the page's visibility and the OS media controls faked. The existing background tests are the pattern (an episode paused while the app is in the background; a file that fails while playing; an app iOS closed while it played). New cases: a long pause with the file still loaded plays straight on; a long pause with the file gone loads afresh; a pause that arrives as the app is hidden, on a file still loading, shows as loading and plays when the app shows again; play and pause on the lock screen from that state; the cued episode's file loads at launch and still plays from a stored copy that appeared since.
+- **The playback log, at its own interface**, for what is written: a fake audio element and a store of text, asserting on the lines. The existing log tests are the pattern. New cases: the episode ID and session state on each line; the two launch lines, for a run that ended with the page told and one that ended without a word; repeats folded into a count.
+
+The audio element fake must be able to do what iOS did in the log: pause a file by itself as the page is hidden, and play it again as the page shows. Tests assert on what the listener sees and what the log says, never on the player engine's own timers or flags.
+
+**Manual check on a real iPhone**, for what no fake can show:
+
+- press play on a stream and lock the phone at once: does the second try at playing, made while hidden, start it, or does iOS refuse? If iOS refuses, that try is removed and the episode waits for the app to show or for play on the lock screen
+- with the app just launched and nothing tapped, does iOS load the cued file at all? If it loads nothing before a tap, the load at launch is removed and the spec's earlier behaviour stays
+- an episode paused for ten minutes with the phone locked plays on from the lock screen, with sound
+- the log's launch line is right after swiping the app away, and after iOS closes it
+
 ## Out of Scope
 
 - More than one user, sign-up, sharing or social features
@@ -217,6 +274,8 @@ No prior art exists in the repo. These first tests set the pattern.
 - Sleep timer, silence trimming, volume boost
 - Listening statistics
 - App store distribution
+- Keeping the app alive when iOS closes it, and starting playback again without a tap after it has been closed. Neither can be done from a web page.
+- Running TinCan as a Safari tab instead of an installed app, or wrapping it in a native shell, to escape other installed web apps being swiped away
 
 ## Further Notes
 
@@ -231,4 +290,10 @@ No prior art exists in the repo. These first tests set the pattern.
   - directory: iTunes Search API (no key needed); Podcast Index is the alternative
   - first-ingest cap of 100 episodes
   - skip intervals of 15 seconds back and 30 forward
+- **Background playback on iPhone, from the playback log of 2026-11-21 to 2026-11-24** (stories 61 to 75):
+  - Playback itself was sound. The position moved at the chosen speed through every stretch in the background, and through every `stalled` event, which only says the stream's loading paused.
+  - Twice, play was pressed and the app hidden one to three seconds later, before the file had loaded. iOS paused the file in the same instant, and it stayed silent for 7 and 14 seconds until the app was shown again, when iOS started it by itself. Streams took 1.5 to 3.6 seconds to load. One of the two was the app's own doing: the file was still loaded, and the long-pause rule threw it away.
+  - Six times the page was closed while it played in the background. The owner had swiped other installed web apps away in the app switcher. iOS appears to close TinCan along with them; this was seen on the phone and fits the log, but no Apple or WebKit account of it was found. The app cannot prevent it. The place kept on the device meant each relaunch picked up where it was. Leaving other installed web apps in the switcher while listening avoids it. Worth reporting to Apple: play audio in one installed web app, swipe another away.
+  - Once, playback ended with nothing logged at all. iOS killed or froze the app outright, cause unknown.
+  - The log could not say which episode a line was about, what the audio session's state was, or how a run had ended. Story 70 onwards exists for that.
 - The name TinCan was not checked against existing apps or trademarks. That only matters if the app is ever published.
