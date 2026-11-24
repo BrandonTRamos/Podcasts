@@ -47,7 +47,7 @@ export function CategoryPicker({
   return (
     <div className="category-picker">
       <label>
-        Category
+        <span className="visually-hidden">Category</span>
         <select value={shown} onChange={handleChange}>
           {byName(categories).map((category) => (
             <option key={category.id} value={category.id}>
