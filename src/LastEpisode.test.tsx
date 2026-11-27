@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseLibraryAction } from './test/ui'
+import { chooseLibraryAction, openLibrary } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = { title: 'The Example Show', artworkUrl: 'https://cdn.example.com/show/artwork.jpg' }
@@ -25,13 +25,14 @@ async function setUp() {
   return { data, podcastId, firstId, device: new FakeDevice() }
 }
 
-/** Opens the app on the device, at the library, as a launch of it would. */
+/** Launches the app on the device and opens the library. */
 async function launch(data: FakeDataApi, device: FakeDevice, audio = new FakeAudio()) {
   const mediaSession = new FakeMediaSession()
   const { unmount } = render(<App services={{ auth: fakeAuth(owner), data, audio, mediaSession, device }} />)
-  await screen.findByRole('heading', { level: 1, name: 'Library' })
+  const user = userEvent.setup()
+  await openLibrary(user)
   await act(async () => {})
-  return { audio, mediaSession, user: userEvent.setup(), unmount }
+  return { audio, mediaSession, user, unmount }
 }
 
 async function openShow(user: User) {

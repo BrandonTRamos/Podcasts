@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseAction } from './test/ui'
+import { chooseAction, openLibrary } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const feedUrl = 'https://feeds.example.com/show.xml'
@@ -62,6 +62,7 @@ function launch(data: Data, device: FakeDevice) {
     user,
     unmount,
     async openShow() {
+      await openLibrary(user, ui)
       await user.click(within(await ui.findByRole('list', { name: 'Podcasts' })).getByRole('button', { name: /The Example Show/ }))
       await ui.findByRole('list', { name: 'Episodes' })
     },
@@ -128,7 +129,7 @@ describe('opening TinCan with no network', () => {
     goOffline(data, device)
     const app = launch(data, device)
 
-    expect(await app.ui.findByRole('heading', { name: 'Library' })).toBeInTheDocument()
+    expect(await app.ui.findByRole('heading', { name: 'Latest episodes' })).toBeInTheDocument()
     await app.openShow()
     expect(within(app.row(second.title)).getByText('Played')).toBeInTheDocument()
     expect(within(app.row(third.title)).getByText('1 hr 30 min left')).toBeInTheDocument()
@@ -141,6 +142,7 @@ describe('opening TinCan with no network', () => {
     const { data } = await backendWithShow()
     const device = new FakeDevice()
     const app = launch(data, device)
+    await openLibrary(app.user, app.ui)
     await app.ui.findByRole('button', { name: /The Example Show/ })
     expect(app.offlineNotice()).not.toBeInTheDocument()
 
@@ -166,7 +168,7 @@ describe('opening TinCan with no network', () => {
     goOffline(data, device)
     const app = launch(data, device)
 
-    expect(await app.ui.findByRole('heading', { name: 'Library' })).toBeInTheDocument()
+    expect(await app.ui.findByRole('heading', { name: 'Latest episodes' })).toBeInTheDocument()
     expect(app.ui.queryByLabelText('Password')).not.toBeInTheDocument()
     expect(app.offlineNotice()).toBeInTheDocument()
     await app.openShow()
@@ -214,7 +216,7 @@ describe('opening TinCan with no network', () => {
     await app.user.type(app.ui.getByLabelText('Password'), owner.password)
     await app.user.click(app.ui.getByRole('button', { name: 'Sign in' }))
 
-    expect(await app.ui.findByRole('heading', { name: 'Library' })).toBeInTheDocument()
+    expect(await app.ui.findByRole('heading', { name: 'Latest episodes' })).toBeInTheDocument()
     await waitFor(() => expect(data.savedState(firstId)).toMatchObject({ played: true }))
   })
 })
@@ -360,6 +362,7 @@ describe('a network that seems up but reaches nothing', () => {
     const { data } = await backendWithShow()
     const device = new FakeDevice()
     const app = launch(data, device)
+    await openLibrary(app.user, app.ui)
     await app.ui.findByRole('button', { name: /The Example Show/ })
     // A captive network: the backend can't be reached, though the device says it is online.
     act(() => data.goOffline())

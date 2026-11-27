@@ -5,6 +5,7 @@ import { App } from './App'
 import { categoryNameProblem } from './categories'
 import { HOLD_MS } from './holdToDrag'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { openLibrary } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 
@@ -24,8 +25,9 @@ async function launch(data: ReturnType<typeof fakeDataApi>) {
   const auth = fakeAuth(owner, { device })
   await auth.signIn(owner.email, owner.password)
   render(<App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device }} />)
-  await screen.findByRole('heading', { name: 'Library' })
-  return { user: userEvent.setup() }
+  const user = userEvent.setup()
+  await openLibrary(user)
+  return { user }
 }
 
 type User = ReturnType<typeof userEvent.setup>

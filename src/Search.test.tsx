@@ -14,12 +14,12 @@ const rome = {
 const romeDaily = { title: 'Rome Daily', author: null, artworkUrl: null, feedUrl: 'https://feeds.example.com/rome-daily.xml' }
 const cooking = { title: 'Cooking Hour', author: 'Chef', artworkUrl: null, feedUrl: 'https://feeds.example.com/cooking.xml' }
 
-/** Renders the app with the owner already signed in, on their library. */
+/** Renders the app with the owner already signed in. */
 async function renderSignedIn(data = fakeDataApi()) {
   const auth = fakeAuth(owner)
   await auth.signIn(owner.email, owner.password)
   render(<App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />)
-  await screen.findByRole('heading', { name: 'Library' })
+  await screen.findByRole('navigation', { name: 'Sections' })
   return { data, user: userEvent.setup() }
 }
 

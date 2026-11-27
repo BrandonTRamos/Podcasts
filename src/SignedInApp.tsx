@@ -174,7 +174,7 @@ export function SignedInApp({
     toldLog.current = true
     device.playbackLog.record(restored ? 'screens restored from a run iOS closed' : 'screens not restored')
   }, [device.playbackLog, restored])
-  const [screen, setScreen] = useState<Screen>(restored?.screen ?? { name: 'library' })
+  const [screen, setScreen] = useState<Screen>(restored?.screen ?? tabScreens.latest)
   /** Now playing takes the place of the current screen; closing it goes back there. */
   const [nowPlayingOpen, setNowPlayingOpen] = useState(restored?.nowPlayingOpen ?? false)
   const [podcasts, setPodcasts] = useState<LoadState<Podcast>>({ status: 'loading' })
@@ -342,7 +342,7 @@ export function SignedInApp({
   const [podcastView, setPodcastView] = useState<PodcastView>(restored?.podcastView ?? 'episodes')
 
   // Kept only while the app is hidden: one closed in plain sight was closed by
-  // the listener, and opens on the library as ever.
+  // the listener, and opens on Latest.
   const view = useRef<View>({ screen, nowPlayingOpen, libraryView, podcastView })
   useEffect(() => {
     view.current = { screen, nowPlayingOpen, libraryView, podcastView }

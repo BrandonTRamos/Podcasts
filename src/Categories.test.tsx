@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseLibraryAction } from './test/ui'
+import { chooseLibraryAction, openLibrary } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 
@@ -23,8 +23,9 @@ async function launch(data = fakeDataApi(), device = new FakeDevice()) {
   const { unmount } = render(
     <App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device }} />,
   )
-  await screen.findByRole('heading', { name: 'Library' })
-  return { user: userEvent.setup(), unmount }
+  const user = userEvent.setup()
+  await openLibrary(user)
+  return { user, unmount }
 }
 
 type User = ReturnType<typeof userEvent.setup>

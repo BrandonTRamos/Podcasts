@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { STAGING_TIMEOUT_MS } from './downloads'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseAction } from './test/ui'
+import { chooseAction, openLibrary } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = { title: 'The Example Show', artworkUrl: 'https://cdn.example.com/show/artwork.jpg' }
@@ -37,6 +37,7 @@ async function setUp() {
   await auth.signIn(owner.email, owner.password)
   render(<App services={{ auth: fakeAuth(owner), data, audio, mediaSession: new FakeMediaSession(), device }} />)
   const user = userEvent.setup()
+  await openLibrary(user)
   await user.click(await screen.findByRole('button', { name: /The Example Show/ }))
   await screen.findByRole('list', { name: 'Episodes' })
   return { data, device, audio, user, episodeId }

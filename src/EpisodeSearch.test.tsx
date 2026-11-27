@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseAction, openShowNotes } from './test/ui'
+import { chooseAction, openLibrary, openShowNotes } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = { title: 'The Example Show' }
@@ -35,6 +35,7 @@ async function renderShow({ data = fakeDataApi(), sequelPlayed = false } = {}) {
   const audio = new FakeAudio()
   render(<App services={{ auth, data, audio, mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />)
   const user = userEvent.setup()
+  await openLibrary(user)
   await user.click(await screen.findByRole('button', { name: /The Example Show/ }))
   await screen.findByRole('list', { name: 'Episodes' })
   return { audio, data, user, podcastId, sequelId, cafeId, guestId, fallId, foundingId }

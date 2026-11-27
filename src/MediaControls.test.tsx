@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { STUCK_MS } from './player'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseLibraryAction } from './test/ui'
+import { chooseLibraryAction, openLibrary } from './test/ui'
 
 // The OS media controls: the lock screen, notification centre, and headphone
 // and Bluetooth buttons, all of which reach the app through the media session.
@@ -40,6 +40,7 @@ async function renderShow({ artworkUrl = show.artworkUrl }: { artworkUrl?: strin
   const device = new FakeDevice()
   render(<App services={{ auth, data, audio, mediaSession, device }} />)
   const user = userEvent.setup()
+  await openLibrary(user)
   await user.click(await screen.findByRole('button', { name: /The Example Show/ }))
   await screen.findByRole('list', { name: 'Episodes' })
   return { audio, mediaSession, device, user }

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { FEED_DEADLINE_MS } from './opmlImport'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { openLibrary } from './test/ui'
 
 // Importing an OPML file: bringing every subscription over from another podcast app.
 
@@ -13,8 +14,9 @@ async function renderSignedIn(data: ReturnType<typeof fakeDataApi>) {
   const auth = fakeAuth(owner)
   await auth.signIn(owner.email, owner.password)
   render(<App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />)
-  await screen.findByRole('heading', { name: 'Library' })
-  return { user: userEvent.setup() }
+  const user = userEvent.setup()
+  await openLibrary(user)
+  return { user }
 }
 
 /** An OPML export as podcast apps write one, listing these feeds (nested in a folder, as some apps do). */
@@ -119,8 +121,8 @@ describe('importing an OPML file', () => {
       const auth = fakeAuth(owner)
       await auth.signIn(owner.email, owner.password)
       render(<App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />)
-      await screen.findByRole('heading', { name: 'Library' })
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      await openLibrary(user)
 
       await importFile(user, opml([feed(1)]))
       await screen.findByRole('status', { name: 'OPML import' })

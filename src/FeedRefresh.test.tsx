@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseAction } from './test/ui'
+import { chooseAction, openLibrary } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const showUrl = 'https://feeds.example.com/show.xml'
@@ -17,8 +17,9 @@ async function renderSignedIn(data: ReturnType<typeof fakeDataApi>, userOptions?
   await auth.signIn(owner.email, owner.password)
   const audio = new FakeAudio()
   render(<App services={{ auth, data, audio, mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />)
-  await screen.findByRole('heading', { name: 'Library' })
-  return { audio, user: userEvent.setup(userOptions) }
+  const user = userEvent.setup(userOptions)
+  await openLibrary(user)
+  return { audio, user }
 }
 
 async function openShow(user: ReturnType<typeof userEvent.setup>, title = show.title) {

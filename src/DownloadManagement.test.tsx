@@ -59,7 +59,7 @@ async function launch(data: FakeDataApi, device: FakeDevice) {
   const audio = new FakeAudio()
   const services = { auth: fakeAuth(owner), data, audio, mediaSession: new FakeMediaSession(), device }
   const { unmount } = render(<App services={services} />)
-  await screen.findByRole('list', { name: 'Podcasts' })
+  await screen.findByRole('navigation', { name: 'Sections' })
   return { audio, user: userEvent.setup(), unmount }
 }
 

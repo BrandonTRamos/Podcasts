@@ -66,14 +66,14 @@ describe('the loading screen', () => {
     await waitFor(() => expect(splash).not.toBeInTheDocument())
   })
 
-  it('gives way to the library when the owner is already signed in', async () => {
+  it('gives way to Latest when the owner is already signed in', async () => {
     const auth = fakeAuth(owner)
     await auth.signIn(owner.email, owner.password)
     const splash = openPage()
 
     startApp(auth)
 
-    expect(await screen.findByRole('heading', { name: 'Library' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Latest episodes' })).toBeInTheDocument()
     wait(SPLASH_MIN_MS)
     await waitFor(() => expect(splash).not.toBeInTheDocument())
   })

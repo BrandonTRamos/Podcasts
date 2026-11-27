@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
 import hostileShowNotes from './test/fixtures/hostile-show-notes.html?raw'
-import { chooseAction, openShowNotes } from './test/ui'
+import { chooseAction, openLibrary, openShowNotes } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = { title: 'The Example Show', author: 'Example Media' }
@@ -35,6 +35,7 @@ async function renderShow(
   const audio = new FakeAudio()
   render(<App services={{ auth, data, audio, mediaSession: new FakeMediaSession(), device }} />)
   const user = userEvent.setup()
+  await openLibrary(user)
   await user.click(await screen.findByRole('button', { name: /The Example Show/ }))
   await screen.findByRole('list', { name: 'Episodes' })
   return { audio, data, user, podcastId, episodeId, device }

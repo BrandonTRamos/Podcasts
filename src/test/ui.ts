@@ -3,6 +3,12 @@ import type userEvent from '@testing-library/user-event'
 
 type User = ReturnType<typeof userEvent.setup>
 
+/** Opens the Library tab in the app under test. */
+export async function openLibrary(user: User, ui: Pick<typeof screen, 'findByRole'> = screen) {
+  const tabs = await ui.findByRole('navigation', { name: 'Sections' })
+  await user.click(within(tabs).getByRole('button', { name: 'Library' }))
+}
+
 /** Opens the "More actions" of the one episode in `row` (an episode's list item, or a list of one). */
 export async function openActions(user: User, row: HTMLElement) {
   await user.click(within(row).getByRole('button', { name: 'More actions' }))
