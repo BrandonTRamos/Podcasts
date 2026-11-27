@@ -3,13 +3,13 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseLibraryAction } from './test/ui'
+import { chooseLibraryAction, openLibrary } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 
-function renderApp(auth = fakeAuth(owner)) {
+function renderApp(auth = fakeAuth(owner), device = new FakeDevice()) {
   const { unmount } = render(
-    <App services={{ auth, data: fakeDataApi(), audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />,
+    <App services={{ auth, data: fakeDataApi(), audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device }} />,
   )
   return { unmount, user: userEvent.setup() }
 }
@@ -26,7 +26,7 @@ describe('a new version', () => {
     await auth.signIn(owner.email, owner.password)
     const device = new FakeDevice()
     render(<App services={{ auth, data: fakeDataApi(), audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device }} />)
-    await screen.findByRole('heading', { name: 'Library' })
+    await screen.findByRole('main')
     expect(screen.queryByText('A new version is available.')).not.toBeInTheDocument()
 
     act(() => device.deployNewVersion())
@@ -41,14 +41,14 @@ describe('getting around', () => {
   it('reaches every section from the tabs at the foot of the screen, and marks the one it is on', async () => {
     const { user } = renderApp()
     await signIn(user, owner.email, owner.password)
-    await screen.findByRole('heading', { name: 'Library' })
+    await screen.findByRole('navigation', { name: 'Sections' })
 
     for (const [tab, heading] of [
+      ['Library', 'Library'],
       ['Latest', 'Latest episodes'],
       ['Queue', 'Queue'],
       ['Downloads', 'Downloads'],
       ['Search', 'Search'],
-      ['Library', 'Library'],
     ]) {
       const tabs = screen.getByRole('navigation', { name: 'Sections' })
       await user.click(within(tabs).getByRole('button', { name: tab }))
@@ -67,13 +67,13 @@ describe('access', () => {
     expect(screen.queryByText(/sign up|create account|register/i)).not.toBeInTheDocument()
   })
 
-  it('takes the owner from sign-in to an empty library', async () => {
+  it('takes the owner from sign-in to Latest by default', async () => {
     const { user } = renderApp()
 
     await signIn(user, owner.email, owner.password)
 
-    expect(await screen.findByRole('heading', { name: 'Library' })).toBeInTheDocument()
-    expect(screen.getByText('No podcasts yet.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Latest episodes' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Latest' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('rejects wrong credentials and stays on the sign-in screen', async () => {
@@ -85,15 +85,16 @@ describe('access', () => {
     expect(screen.getByRole('heading', { name: 'Sign in to TinCan' })).toBeInTheDocument()
   })
 
-  it('keeps the owner signed in across a page reload', async () => {
-    const { unmount, user } = renderApp()
+  it('opens on Latest after reloading with the owner still signed in', async () => {
+    const device = new FakeDevice()
+    const { unmount, user } = renderApp(fakeAuth(owner), device)
     await signIn(user, owner.email, owner.password)
-    await screen.findByRole('heading', { name: 'Library' })
+    await openLibrary(user)
 
     unmount()
-    renderApp()
+    renderApp(fakeAuth(owner), device)
 
-    expect(await screen.findByRole('heading', { name: 'Library' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Latest episodes' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Password')).not.toBeInTheDocument()
   })
 
@@ -101,6 +102,7 @@ describe('access', () => {
     const { user } = renderApp()
     await signIn(user, owner.email, owner.password)
 
+    await openLibrary(user)
     await chooseLibraryAction(user, 'Sign out')
 
     expect(await screen.findByRole('heading', { name: 'Sign in to TinCan' })).toBeInTheDocument()

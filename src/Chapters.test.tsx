@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { chapterIndexAt, nextChapterStart, parseChapters, previousChapterStart } from './chapters'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { openLibrary } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = { title: 'The Example Show', author: 'Example Media' }
@@ -28,6 +29,7 @@ async function playWithNotes(showNotes: string | null) {
   const audio = new FakeAudio()
   render(<App services={{ auth, data, audio, mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />)
   const user = userEvent.setup()
+  await openLibrary(user)
   await user.click(await screen.findByRole('button', { name: /The Example Show/ }))
   await user.click(await screen.findByRole('button', { name: episode.title }))
   const miniPlayer = screen.getByRole('region', { name: 'Mini player' })

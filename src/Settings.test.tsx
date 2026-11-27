@@ -7,14 +7,14 @@ import { chooseLibraryAction } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 
-/** Opens TinCan on `device` with the owner signed in, on their library. */
+/** Opens TinCan on `device` with the owner signed in. */
 async function launch(device = new FakeDevice()) {
   const auth = fakeAuth(owner, { device })
   await auth.signIn(owner.email, owner.password)
   const view = render(
     <App services={{ auth, data: fakeDataApi(), audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device }} />,
   )
-  await screen.findByRole('heading', { name: 'Library' })
+  await screen.findByRole('navigation', { name: 'Sections' })
   return { user: userEvent.setup(), device, unmount: view.unmount }
 }
 

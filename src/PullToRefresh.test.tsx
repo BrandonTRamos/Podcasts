@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { openLibrary } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const showUrl = 'https://feeds.example.com/show.xml'
@@ -12,8 +13,9 @@ async function renderSignedIn(data: ReturnType<typeof fakeDataApi>, device = new
   const auth = fakeAuth(owner)
   await auth.signIn(owner.email, owner.password)
   render(<App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device }} />)
-  await screen.findByRole('heading', { name: 'Library' })
-  return userEvent.setup()
+  const user = userEvent.setup()
+  await openLibrary(user)
+  return user
 }
 
 /** Drags a finger down the page from near its top by `distance`, then lets go. */

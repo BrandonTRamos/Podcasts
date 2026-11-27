@@ -5,7 +5,7 @@ import { App } from './App'
 import { LONG_PRESS_MS } from './longPress'
 import { PLAY_ON_GRACE_MS, STUCK_MS } from './player'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseLibraryAction } from './test/ui'
+import { chooseLibraryAction, openLibrary } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = {
@@ -36,12 +36,13 @@ async function renderShow() {
   return { ...(await launch(data)), data }
 }
 
-/** Opens the app, already signed in, at the show's page, as a fresh launch of it would. */
+/** Launches the app and opens the show's page from the library. */
 async function launch(data: FakeDataApi) {
   const audio = new FakeAudio()
   const services = { auth: fakeAuth(owner), data, audio, mediaSession: new FakeMediaSession(), device: new FakeDevice() }
   const { unmount } = render(<App services={services} />)
   const user = userEvent.setup()
+  await openLibrary(user)
   await user.click(await screen.findByRole('button', { name: /The Example Show/ }))
   await screen.findByRole('list', { name: 'Episodes' })
   return { audio, user, unmount }

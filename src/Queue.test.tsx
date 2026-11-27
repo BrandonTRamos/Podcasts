@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { App } from './App'
 import type { DataApi } from './services'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseAction } from './test/ui'
+import { chooseAction, openLibrary } from './test/ui'
 
 // The queue: episodes lined up to play one after another, the same on every device.
 
@@ -51,6 +51,7 @@ async function openShowOn(data: DataApi) {
   render(<App services={{ auth, data, audio, mediaSession, device: new FakeDevice() }} />, { container })
   const ui = within(container)
   const user = userEvent.setup()
+  await openLibrary(user, ui)
   await user.click(await ui.findByRole('button', { name: /The Example Show/ }))
   await ui.findByRole('list', { name: 'Episodes' })
 

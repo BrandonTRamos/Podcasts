@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { FakeAudio, fakeAuth, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { openLibrary } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const feedUrl = 'https://feeds.example.com/show.xml'
@@ -17,8 +18,9 @@ async function renderSignedIn(data = fakeDataApi()) {
   const auth = fakeAuth(owner)
   await auth.signIn(owner.email, owner.password)
   render(<App services={{ auth, data, audio: new FakeAudio(), mediaSession: new FakeMediaSession(), device: new FakeDevice() }} />)
-  await screen.findByRole('heading', { name: 'Library' })
-  return { data, user: userEvent.setup() }
+  const user = userEvent.setup()
+  await openLibrary(user)
+  return { data, user }
 }
 
 async function subscribeTo(user: ReturnType<typeof userEvent.setup>, url: string) {

@@ -5,6 +5,7 @@ import { App } from './App'
 import { KEEP_PLACE_MS } from './keptPlace'
 import { PLAY_ON_GRACE_MS, RETRY_DELAYS_MS, SETTLED_SECONDS, STALE_PAUSE_MS, STUCK_MS } from './player'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
+import { openLibrary } from './test/ui'
 
 // What the app does while it is in the background (another app in front, or
 // the phone locked), and when the listener comes back to it. iOS may suspend
@@ -50,6 +51,7 @@ async function launch(data: FakeDataApi, device: FakeDevice) {
     unmount,
     miniPlayer: () => ui.getByRole('region', { name: 'Mini player' }),
     async openShow() {
+      await openLibrary(this.user, ui)
       await this.user.click(await ui.findByRole('button', { name: /The Example Show/ }))
       await ui.findByRole('list', { name: 'Episodes' })
     },
@@ -870,7 +872,7 @@ describe('an app iOS closed while it was in the background', () => {
     expect(app.audio.currentTime).toBe(600)
   })
 
-  it('opens on the library after that, once it has been closed in plain sight', async () => {
+  it('opens on Latest once it has been closed in plain sight', async () => {
     const { data, device } = await setUp()
     const before = await launch(data, device)
     await before.openShow()
@@ -880,15 +882,15 @@ describe('an app iOS closed while it was in the background', () => {
 
     const app = await launch(data, device)
 
-    expect(await app.ui.findByRole('heading', { level: 1, name: 'Library' })).toBeInTheDocument()
+    expect(await app.ui.findByRole('heading', { level: 1, name: 'Latest episodes' })).toBeInTheDocument()
   })
 
-  it('opens on the library if what was kept of the screen makes no sense', async () => {
+  it('opens on Latest if what was kept of the screen makes no sense', async () => {
     const { data, device } = await setUp()
     device.storage.set('view', JSON.stringify({ screen: { name: 'podcast' }, nowPlayingOpen: true }))
 
     const app = await launch(data, device)
 
-    expect(await app.ui.findByRole('heading', { level: 1, name: 'Library' })).toBeInTheDocument()
+    expect(await app.ui.findByRole('heading', { level: 1, name: 'Latest episodes' })).toBeInTheDocument()
   })
 })

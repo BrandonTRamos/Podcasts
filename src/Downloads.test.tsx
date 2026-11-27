@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { STALL_MS } from './downloads'
 import { FakeAudio, fakeAuth, type FakeDataApi, fakeDataApi, FakeDevice, FakeMediaSession } from './test/fakes'
-import { chooseAction, openActions, openShowNotes } from './test/ui'
+import { chooseAction, openActions, openLibrary, openShowNotes } from './test/ui'
 
 const owner = { email: 'owner@example.com', password: 'correct horse battery' }
 const show = { title: 'The Example Show', artworkUrl: 'https://cdn.example.com/show/artwork.jpg' }
@@ -43,12 +43,13 @@ async function setUp({ ranges = true }: { ranges?: boolean } = {}) {
   return { data, device, ...(await launch(data, device)) }
 }
 
-/** Opens the app, already signed in, at the show's page, as a fresh launch of it on this device would. */
+/** Launches the app on this device and opens the show's page from the library. */
 async function launch(data: FakeDataApi, device: FakeDevice) {
   const audio = new FakeAudio()
   const services = { auth: fakeAuth(owner), data, audio, mediaSession: new FakeMediaSession(), device }
   const { unmount } = render(<App services={services} />)
   const user = userEvent.setup()
+  await openLibrary(user)
   await user.click(within(await screen.findByRole('list', { name: 'Podcasts' })).getByRole('button', { name: /The Example Show/ }))
   await screen.findByRole('list', { name: 'Episodes' })
   return { audio, user, unmount }
